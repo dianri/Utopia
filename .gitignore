@@ -1,0 +1,15 @@
+# Sistema operativo
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Editores / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Entornos y secretos
+.env
+.env.local
