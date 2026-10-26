@@ -76,10 +76,16 @@ export const App: React.FC = () => {
   const [ghostPings, setGhostPings] = useState<GhostPing[]>([]);
   const [combatLogs, setCombatLogs] = useState<TacticalLogMessage[]>([]);
 
-  // RADAR (EXPLORADOR)
+  // RADAR Y HABILIDADES DE CLASE
   const [isRadarActive, setIsRadarActive] = useState<boolean>(false);
   const [radarCooldown, setRadarCooldown] = useState<number>(0);
   const [radarRemaining, setRadarRemaining] = useState<number>(0);
+  const [isRoleSkillActive, setIsRoleSkillActive] = useState<boolean>(false);
+  const [roleSkillCooldown, setRoleSkillCooldown] = useState<number>(0);
+  const [roleSkillRemaining, setRoleSkillRemaining] = useState<number>(0);
+
+  const isRoleSkillActiveRef = useRef<boolean>(false);
+  isRoleSkillActiveRef.current = isRoleSkillActive;
 
   // COFRE Y EXTRACCIÓN (30s)
   const [chestCountdown, setChestCountdown] = useState<number>(30);
@@ -560,8 +566,10 @@ export const App: React.FC = () => {
       if (result.attackedPlayerId && result.attackDamage > 0) {
         const victim = playersRef.current.find((p) => p.id === result.attackedPlayerId);
         if (victim) {
-          const newHp = Math.max(0, victim.hp - result.attackDamage);
-          realtimeRef.current.broadcastPlayerHit(victim.id, result.attackDamage, newHp);
+          const isShielded = isRoleSkillActiveRef.current && victim.id === myPlayerRef.current?.id && myPlayerRef.current?.role === 'tank';
+          const damageApplied = isShielded ? Math.round(result.attackDamage * 0.5) : result.attackDamage;
+          const newHp = Math.max(0, victim.hp - damageApplied);
+          realtimeRef.current.broadcastPlayerHit(victim.id, damageApplied, newHp);
           // Si el host es la víctima
           if (victim.id === myPlayerRef.current?.id) {
             setMyPlayer((prev) => (prev ? { ...prev, hp: newHp, isAlive: newHp > 0 } : null));
@@ -607,7 +615,10 @@ export const App: React.FC = () => {
 
       const dist = getDistanceMeters(playerCoords, currentMonster);
       const equippedWeapon = player.equippedWeapon || DEFAULT_WEAPONS_BY_ROLE[player.role];
-      const { damage, rangeMeters } = getModifiedWeaponStats(equippedWeapon, player.role);
+      const baseStats = getModifiedWeaponStats(equippedWeapon, player.role);
+      const isMarksmanBoosted = isRoleSkillActiveRef.current && player.role === 'marksman';
+      const rangeMeters = isMarksmanBoosted ? Math.round(baseStats.rangeMeters * 1.5) : baseStats.rangeMeters;
+      const damage = isMarksmanBoosted ? Math.round(baseStats.damage * 1.25) : baseStats.damage;
 
       // Verificar si el monstruo está en rango y visible
       const isVisible = dist <= 120; // Si está a rango de disparo efectivo
@@ -757,22 +768,72 @@ export const App: React.FC = () => {
   }, [myPlayer?.lat, myPlayer?.lng, myPlayer?.isAlive, crates, room?.centerLat, room?.centerLng, realtime]);
 
   // ==========================================
-  // HABILIDAD RADAR DEL EXPLORADOR (COOLDOWN 60s, DURACIÓN 10s)
+  // HABILIDADES ACTIVAS DE ROL / ACCIONES ESPECIALES
   // ==========================================
-  const handleActivateRadar = () => {
-    if (radarCooldown > 0 || !myPlayer || myPlayer.role !== 'scout') return;
+  const handleActivateRoleSkill = useCallback(() => {
+    if (roleSkillCooldown > 0 || !myPlayer || !myPlayer.isAlive) return;
 
-    setIsRadarActive(true);
-    setRadarRemaining(10);
-    setRadarCooldown(60);
+    if (myPlayer.role === 'scout') {
+      // EXPLORADOR: RADAR TÁCTICO (revela al monstruo 10s, cooldown 60s)
+      setIsRadarActive(true);
+      setIsRoleSkillActive(true);
+      setRadarRemaining(10);
+      setRoleSkillRemaining(10);
+      setRoleSkillCooldown(60);
 
-    realtime.broadcastRadarActivated(myPlayer.nickname, Date.now() + 10000);
+      realtime.broadcastRadarActivated(myPlayer.nickname, Date.now() + 10000);
+      soundEffects.playRadarPing();
+      addLog('¡Radar Táctico activado! Monstruo revelado a la escuadra.', 'info');
+    } else if (myPlayer.role === 'medic') {
+      // MÉDICO: PULSO DE CURACIÓN (Cura +35 HP a sí mismo y aliados a <25m, cooldown 45s, duración 5s)
+      setIsRoleSkillActive(true);
+      setRoleSkillRemaining(5);
+      setRoleSkillCooldown(45);
 
-    // Temporizador de duración de 10s
+      setMyPlayer((prev) => (prev ? { ...prev, hp: Math.min(prev.maxHp, prev.hp + 35) } : null));
+      setPlayers((prev) =>
+        prev.map((p) => {
+          if (!p.isAlive) return p;
+          const myPos = { lat: myPlayer.lat ?? room?.centerLat ?? 0, lng: myPlayer.lng ?? room?.centerLng ?? 0 };
+          const pPos = { lat: p.lat ?? 0, lng: p.lng ?? 0 };
+          const dist = getDistanceMeters(myPos, pPos);
+          if (dist <= 25) {
+            return { ...p, hp: Math.min(p.maxHp, p.hp + 35) };
+          }
+          return p;
+        })
+      );
+
+      soundEffects.playCrateLoot();
+      addLog('¡Pulso Curativo activado! +35 HP aplicados a aliados cercanos.', 'loot');
+    } else if (myPlayer.role === 'tank') {
+      // TANQUE: PROVOCACIÓN / ESCUDO (Atrae agro del monstruo y reduce daño 50% durante 8s, cooldown 45s)
+      setIsRoleSkillActive(true);
+      setRoleSkillRemaining(8);
+      setRoleSkillCooldown(45);
+
+      if (monsterAIRef.current) {
+        monsterAIRef.current.setAggroTarget(myPlayer.id);
+      }
+      realtime.broadcastMonsterDamaged(1, monster.hp);
+      soundEffects.vibrate([150, 50, 150]);
+      addLog('¡Provocación y Escudo defensivo activados! El Monstruo fija su furia en ti.', 'combat');
+    } else if (myPlayer.role === 'marksman') {
+      // TIRADOR: DISPARO PRECISO / OJO DE HALCÓN (+50% Rango táctico durante 8s, cooldown 40s)
+      setIsRoleSkillActive(true);
+      setRoleSkillRemaining(8);
+      setRoleSkillCooldown(40);
+
+      soundEffects.playGunshot();
+      addLog('¡Ojo de Halcón activado! Rango de disparo +50% y puntería extendida.', 'combat');
+    }
+
+    // Temporizador de duración de habilidad
     const durTimer = window.setInterval(() => {
-      setRadarRemaining((prev) => {
+      setRoleSkillRemaining((prev) => {
         if (prev <= 1) {
           clearInterval(durTimer);
+          setIsRoleSkillActive(false);
           setIsRadarActive(false);
           return 0;
         }
@@ -780,9 +841,9 @@ export const App: React.FC = () => {
       });
     }, 1000);
 
-    // Temporizador de cooldown de 60s
+    // Temporizador de cooldown de habilidad
     const cdTimer = window.setInterval(() => {
-      setRadarCooldown((prev) => {
+      setRoleSkillCooldown((prev) => {
         if (prev <= 1) {
           clearInterval(cdTimer);
           return 0;
@@ -790,7 +851,7 @@ export const App: React.FC = () => {
         return prev - 1;
       });
     }, 1000);
-  };
+  }, [roleSkillCooldown, myPlayer, realtime, addLog, room?.centerLat, room?.centerLng, monster.hp]);
 
   // ==========================================
   // REANIMACIÓN DE COMPAÑEROS CAÍDOS
@@ -1670,15 +1731,19 @@ export const App: React.FC = () => {
           <WeaponWheel
             weapon={myPlayer.equippedWeapon || DEFAULT_WEAPONS_BY_ROLE[myPlayer.role]}
             distToMonster={distToMonster}
-            isInRange={distToMonster <= (myPlayer.equippedWeapon?.rangeMeters ?? 25)}
+            isInRange={
+              distToMonster <=
+              ((myPlayer.equippedWeapon?.rangeMeters ?? 25) *
+                (isRoleSkillActive && myPlayer.role === 'marksman' ? 1.5 : 1))
+            }
             isFiring={isFiringWeapon}
           />
 
           <RoleSkillButton
             role={myPlayer.role}
-            cooldownRemaining={radarCooldown}
-            isActive={isRadarActive}
-            onActivate={handleActivateRadar}
+            cooldownRemaining={roleSkillCooldown}
+            isActive={isRoleSkillActive || isRadarActive}
+            onActivate={handleActivateRoleSkill}
             isAlive={myPlayer.isAlive}
           />
 
