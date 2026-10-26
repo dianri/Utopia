@@ -93,6 +93,11 @@ export const App: React.FC = () => {
   const [showLeaderboard, setShowLeaderboard] = useState<boolean>(false);
   const [stealthMode, setStealthMode] = useState<boolean>(soundEffects.isStealth());
   const [cancelledAlertMessage, setCancelledAlertMessage] = useState<string | null>(null);
+  const [savedActiveRoomCode, setSavedActiveRoomCode] = useState<string | null>(() => {
+    return localStorage.getItem('utopia_active_room');
+  });
+
+  const handleJoinRoomRef = useRef<((config: { code: string; nickname?: string; role?: PlayerRole }) => Promise<void>) | null>(null);
 
   // REF DE LA IA DEL MONSTRUO (HOST)
   const monsterAIRef = useRef<MonsterAIController | null>(null);
@@ -128,18 +133,82 @@ export const App: React.FC = () => {
     setCombatLogs((prev) => [...prev.slice(-20), newMsg]);
   }, []);
 
-  // 1. INICIALIZAR SESIÓN ANÓNIMA Y DETECTAR URL PARAM ?room=CODE
+  // 1. INICIALIZAR SESIÓN ANÓNIMA, VERIFICAR SESIÓN ACTIVA Y DETECTAR URL PARAM ?room=CODE
   useEffect(() => {
-    ensureAnonymousAuth().then((uid) => {
-      setCurrentUserId(uid);
-    });
+    // Limpieza oportunista de partidas inactivas en segundo plano al cargar el lobby principal
+    (supabase.rpc as any)('cleanup_stale_games').catch(() => {});
 
-    const params = new URLSearchParams(window.location.search);
-    const roomCodeParam = params.get('room');
-    if (roomCodeParam) {
-      setJoinModalInitialCode(roomCodeParam.toUpperCase());
-      setShowJoinModal(true);
-    }
+    ensureAnonymousAuth().then(async (uid) => {
+      setCurrentUserId(uid);
+
+      // Comprobar si existe una sala activa guardada en localStorage
+      const activeCode = localStorage.getItem('utopia_active_room');
+      if (activeCode) {
+        try {
+          const { data: activeGame } = await (supabase
+            .from('games') as any)
+            .select('id, code, status')
+            .eq('code', activeCode.toUpperCase())
+            .in('status', ['lobby', 'playing'])
+            .maybeSingle();
+
+          if (activeGame) {
+            const { data: existingPlayer } = await (supabase
+              .from('players') as any)
+              .select('id')
+              .eq('game_id', activeGame.id)
+              .eq('user_id', uid)
+              .maybeSingle();
+
+            if (existingPlayer) {
+              setSavedActiveRoomCode(activeGame.code);
+            } else {
+              localStorage.removeItem('utopia_active_room');
+              setSavedActiveRoomCode(null);
+            }
+          } else {
+            localStorage.removeItem('utopia_active_room');
+            setSavedActiveRoomCode(null);
+          }
+        } catch (err) {
+          console.warn('Error al verificar sesión activa previa:', err);
+        }
+      }
+
+      // Comprobar parámetro ?room=CODE en la URL
+      const params = new URLSearchParams(window.location.search);
+      const roomCodeParam = params.get('room');
+      if (roomCodeParam) {
+        const codeUpper = roomCodeParam.toUpperCase();
+        try {
+          const { data: urlGame } = await (supabase
+            .from('games') as any)
+            .select('id, code, status')
+            .eq('code', codeUpper)
+            .in('status', ['lobby', 'playing'])
+            .maybeSingle();
+
+          if (urlGame) {
+            const { data: existingPlayer } = await (supabase
+              .from('players') as any)
+              .select('id')
+              .eq('game_id', urlGame.id)
+              .eq('user_id', uid)
+              .maybeSingle();
+
+            if (existingPlayer && handleJoinRoomRef.current) {
+              // Reconexión automática directa si ya es participante registrado
+              handleJoinRoomRef.current({ code: codeUpper });
+              return;
+            }
+          }
+        } catch {
+          // continuar a abrir el modal
+        }
+        setJoinModalInitialCode(codeUpper);
+        setShowJoinModal(true);
+      }
+    });
   }, []);
 
   // Reacción ante cancelación remota de la partida por el anfitrión
@@ -148,6 +217,8 @@ export const App: React.FC = () => {
     setCancelledAlertMessage(reason);
     monsterAIRef.current = null;
     soundEffects.stopAll();
+    localStorage.removeItem('utopia_active_room');
+    setSavedActiveRoomCode(null);
 
     setTimeout(() => {
       setRoom(null);
@@ -272,7 +343,10 @@ export const App: React.FC = () => {
       onGameCancelled: (payload) => {
         handleRemoteGameCancelled(payload?.reason || 'Misión abortada por el anfitrión');
       },
-    }
+    },
+    !!myPlayer?.isHost,
+    room?.id ?? null,
+    room?.status ?? null
   );
 
   // Solicitar sincronización de partida al conectarse al canal Realtime si la partida está en curso
@@ -706,6 +780,8 @@ export const App: React.FC = () => {
   const handleGameEnd = async (result: 'victory' | 'defeat') => {
     if (!room) return;
 
+    localStorage.removeItem('utopia_active_room');
+    setSavedActiveRoomCode(null);
     setRoom((prev) => (prev ? { ...prev, status: result } : null));
 
     // Actualizar en base de datos mediante RPC o update
@@ -754,6 +830,8 @@ export const App: React.FC = () => {
     monsterAIRef.current = null;
     soundEffects.stopAll();
 
+    localStorage.removeItem('utopia_active_room');
+    setSavedActiveRoomCode(null);
     setRoom(null);
     setMyPlayer(null);
     setPlayers([]);
@@ -772,6 +850,8 @@ export const App: React.FC = () => {
     monsterAIRef.current = null;
     soundEffects.stopAll();
 
+    localStorage.removeItem('utopia_active_room');
+    setSavedActiveRoomCode(null);
     setRoom(null);
     setMyPlayer(null);
     setPlayers([]);
@@ -953,13 +1033,15 @@ export const App: React.FC = () => {
     setPlayers([hostPlayer]);
     setCrates(generatedCrates);
     resetPosition(hostSpawnPoint);
+    localStorage.setItem('utopia_active_room', gameData.code);
+    setSavedActiveRoomCode(gameData.code);
     setShowCreateModal(false);
   };
 
   const handleJoinRoom = async (config: {
     code: string;
-    nickname: string;
-    role: PlayerRole;
+    nickname?: string;
+    role?: PlayerRole;
   }) => {
     soundEffects.initOnUserInteraction();
     const userId = currentUserId || (await ensureAnonymousAuth());
@@ -976,41 +1058,100 @@ export const App: React.FC = () => {
       return;
     }
 
-    const maxHp = getMaxHpForRole(config.role);
-
-    // Calcular spawn point dinámico dentro del radio de juego de la sala (entre 20% y 70%)
-    const roomCenter: Coordinates = {
-      lat: gameData.center_lat,
-      lng: gameData.center_lng,
-    };
-    const playerSpawnPoint = getRandomSpawnPointInPlayArea(
-      roomCenter,
-      gameData.play_area_radius,
-      0.2,
-      0.7
-    );
-
-    // Insertar jugador en la sala con su posición de spawn dinámica
-    const { data: playerData, error: playerError } = await (supabase
-      .from('players') as any)
-      .insert({
-        game_id: gameData.id,
-        user_id: userId,
-        nickname: config.nickname,
-        role: config.role,
-        hp: maxHp,
-        max_hp: maxHp,
-        is_alive: true,
-        lat: playerSpawnPoint.lat,
-        lng: playerSpawnPoint.lng,
-      })
-      .select()
-      .single();
-
-    if (playerError || !playerData) {
-      console.error('Error al unirse:', playerError);
-      alert('No se pudo unir a la sala. Es posible que ya estés dentro.');
+    // Comprobar estado de la partida
+    if (gameData.status === 'victory' || gameData.status === 'defeat' || gameData.status === 'cancelled') {
+      alert(`La partida ya ha concluido (Estado: ${gameData.status.toUpperCase()}).`);
+      localStorage.removeItem('utopia_active_room');
+      setSavedActiveRoomCode(null);
       return;
+    }
+
+    // 1. Verificar si este usuario ya está registrado en la sala (Reconexión sin error de unique key)
+    const { data: existingPlayer } = await (supabase
+      .from('players') as any)
+      .select('*')
+      .eq('game_id', gameData.id)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    let playerData = existingPlayer;
+    let spawnCoords: Coordinates;
+
+    if (!existingPlayer) {
+      // 2. Si es un jugador nuevo:
+      // Si falta apodo o rol, abrir el modal de unión para que lo introduzca
+      if (!config.nickname || !config.role) {
+        setJoinModalInitialCode(config.code.toUpperCase());
+        setShowJoinModal(true);
+        return;
+      }
+
+      // 3. Comprobar colisión de apodo con otros jugadores en la sala
+      const { data: teammates } = await (supabase
+        .from('players') as any)
+        .select('nickname')
+        .eq('game_id', gameData.id);
+
+      let finalNickname = config.nickname.trim();
+      if (teammates && teammates.length > 0) {
+        const takenNicknames = new Set(
+          teammates.map((p: any) => (p.nickname || '').trim().toLowerCase())
+        );
+        if (takenNicknames.has(finalNickname.toLowerCase())) {
+          let suffix = 2;
+          while (takenNicknames.has(`${finalNickname}_${suffix}`.toLowerCase())) {
+            suffix++;
+          }
+          finalNickname = `${finalNickname}_${suffix}`;
+          addLog(`Apodo en uso. Asignado apodo de escuadra: ${finalNickname}`, 'info');
+        }
+      }
+
+      const maxHp = getMaxHpForRole(config.role);
+
+      // Calcular spawn point dinámico dentro del radio de juego de la sala (entre 20% y 70%)
+      const roomCenter: Coordinates = {
+        lat: gameData.center_lat,
+        lng: gameData.center_lng,
+      };
+      spawnCoords = getRandomSpawnPointInPlayArea(
+        roomCenter,
+        gameData.play_area_radius,
+        0.2,
+        0.7
+      );
+
+      // Insertar nuevo jugador
+      const { data: insertedData, error: playerError } = await (supabase
+        .from('players') as any)
+        .insert({
+          game_id: gameData.id,
+          user_id: userId,
+          nickname: finalNickname,
+          role: config.role,
+          hp: maxHp,
+          max_hp: maxHp,
+          is_alive: true,
+          lat: spawnCoords.lat,
+          lng: spawnCoords.lng,
+        })
+        .select()
+        .single();
+
+      if (playerError || !insertedData) {
+        console.error('Error al unirse:', playerError);
+        alert('No se pudo unir a la sala. Inténtalo de nuevo.');
+        return;
+      }
+      playerData = insertedData;
+      addLog(`¡Te has unido a la escuadra como ${playerData.nickname}!`, 'info');
+    } else {
+      // Reconexión transparente de jugador existente
+      spawnCoords = {
+        lat: playerData.lat ?? gameData.center_lat,
+        lng: playerData.lng ?? gameData.center_lng,
+      };
+      addLog(`¡Bienvenido de vuelta, ${playerData.nickname}! Reconectando a la misión...`, 'info');
     }
 
     const currentRoom: GameRoom = {
@@ -1029,24 +1170,31 @@ export const App: React.FC = () => {
       createdAt: gameData.created_at,
     };
 
+    const finalRole = (playerData.role as PlayerRole) || config.role || 'medic';
+    const finalMaxHp = playerData.max_hp ?? getMaxHpForRole(finalRole);
+
     const player: Player = {
       id: playerData.id,
       userId,
       gameId: gameData.id,
-      nickname: config.nickname,
-      role: config.role,
-      hp: maxHp,
-      maxHp,
-      isAlive: true,
-      lat: playerSpawnPoint.lat,
-      lng: playerSpawnPoint.lng,
-      damageDealt: 0,
-      revivesDone: 0,
-      cratesOpened: 0,
-      monsterKills: 0,
+      nickname: playerData.nickname,
+      role: finalRole,
+      hp: playerData.hp ?? finalMaxHp,
+      maxHp: finalMaxHp,
+      isAlive: playerData.is_alive ?? true,
+      lat: spawnCoords.lat,
+      lng: spawnCoords.lng,
+      damageDealt: playerData.damage_dealt ?? 0,
+      revivesDone: playerData.revives_done ?? 0,
+      cratesOpened: playerData.crates_opened ?? 0,
+      monsterKills: playerData.monster_kills ?? 0,
       isHost: gameData.host_id === userId,
-      equippedWeapon: DEFAULT_WEAPONS_BY_ROLE[config.role],
+      equippedWeapon: DEFAULT_WEAPONS_BY_ROLE[finalRole],
     };
+
+    // Guardar sala activa en localStorage para reconexiones futuras
+    localStorage.setItem('utopia_active_room', gameData.code);
+    setSavedActiveRoomCode(gameData.code);
 
     // Sincronizar posición del monstruo en el cofre del tesoro de la sala como base
     setMonster({
@@ -1077,8 +1225,8 @@ export const App: React.FC = () => {
           hp: d.hp,
           maxHp: d.max_hp,
           isAlive: d.is_alive,
-          lat: d.id === player.id ? playerSpawnPoint.lat : (d.lat ?? gameData.center_lat),
-          lng: d.id === player.id ? playerSpawnPoint.lng : (d.lng ?? gameData.center_lng),
+          lat: d.id === player.id ? spawnCoords.lat : (d.lat ?? gameData.center_lat),
+          lng: d.id === player.id ? spawnCoords.lng : (d.lng ?? gameData.center_lng),
           damageDealt: d.damage_dealt,
           revivesDone: d.revives_done,
           cratesOpened: d.crates_opened,
@@ -1091,7 +1239,7 @@ export const App: React.FC = () => {
       setPlayers([player]);
     }
 
-    // Si la partida ya está en combate (late join), configurar airdrops iniciales de contingencia
+    // Si la partida ya está en combate (late join o reconexión), configurar airdrops iniciales de contingencia
     if (gameData.status === 'playing') {
       const fallbackCrates: SupplyCrate[] = [];
       const weaponPool = [
@@ -1116,14 +1264,14 @@ export const App: React.FC = () => {
         });
       }
       setCrates(fallbackCrates);
-      addLog('¡Te has incorporado a una partida en combate! Encuentra a tu escuadra.', 'warning');
     }
 
     setRoom(currentRoom);
     setMyPlayer(player);
-    resetPosition(playerSpawnPoint);
+    resetPosition(spawnCoords);
     setShowJoinModal(false);
   };
+  handleJoinRoomRef.current = handleJoinRoom;
 
   const handleStartGame = async () => {
     if (!room || !myPlayer?.isHost) return;
@@ -1273,6 +1421,43 @@ export const App: React.FC = () => {
               <p className="text-xs sm:text-sm font-mono text-slate-300 max-w-md">
                 Juego cooperativo táctico en tiempo real. Explora el mapa con GPS o Tap-to-Move, saquea airdrops con tu escuadra y asegura el cofre antes de que el Monstruo os devore.
               </p>
+
+              {/* BOTÓN DESTACADO: REANUDAR MISIÓN EN CURSO */}
+              {savedActiveRoomCode && (
+                <div className="w-full max-w-sm p-3.5 bg-gradient-to-r from-amber-500/15 via-yellow-500/10 to-amber-500/15 border-2 border-amber-500/80 rounded-2xl shadow-xl shadow-amber-500/10 flex flex-col gap-2 animate-pulse mt-1">
+                  <div className="flex items-center justify-between text-xs font-mono">
+                    <span className="text-amber-400 font-bold flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                      MISIÓN EN CURSO
+                    </span>
+                    <span className="text-white font-mono font-bold tracking-widest bg-hud-dark px-2.5 py-0.5 rounded border border-amber-500/50">
+                      {savedActiveRoomCode}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        soundEffects.initOnUserInteraction();
+                        handleJoinRoom({ code: savedActiveRoomCode });
+                      }}
+                      className="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 text-black font-mono font-black text-xs uppercase tracking-wider shadow-md hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <span>Reanudar Misión en Curso</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        localStorage.removeItem('utopia_active_room');
+                        setSavedActiveRoomCode(null);
+                      }}
+                      className="px-3 py-2.5 rounded-xl bg-hud-dark border border-hud-border text-hud-muted hover:text-white font-mono text-xs hover:border-red-500/50"
+                      title="Descartar sesión previa"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* ACCIONES RÁPIDAS DE LOBBY */}
               <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm mt-1">
