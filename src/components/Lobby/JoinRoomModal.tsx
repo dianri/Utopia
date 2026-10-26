@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { PlayerRole } from '../../types/game';
-import { Shield, HeartPulse, Eye, Crosshair, LogIn } from 'lucide-react';
+import { supabase, ensureAnonymousAuth } from '../../lib/supabase';
+import { Shield, HeartPulse, Eye, Crosshair, LogIn, RefreshCw } from 'lucide-react';
 
 interface JoinRoomModalProps {
   initialCode?: string;
@@ -16,12 +17,60 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
   const [code, setCode] = useState<string>(initialCode.toUpperCase());
   const [nickname, setNickname] = useState<string>('');
   const [role, setRole] = useState<PlayerRole>('medic');
+  const [isExistingMember, setIsExistingMember] = useState<boolean>(false);
+  const [existingNickname, setExistingNickname] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialCode) {
       setCode(initialCode.toUpperCase());
     }
   }, [initialCode]);
+
+  // Comprobar si el usuario actual ya pertenece a esta sala para facilitar reconexión
+  useEffect(() => {
+    const cleanCode = code.trim().toUpperCase();
+    if (cleanCode.length === 6) {
+      let isMounted = true;
+      ensureAnonymousAuth().then(async (uid) => {
+        try {
+          const { data: g } = await (supabase.from('games') as any)
+            .select('id')
+            .eq('code', cleanCode)
+            .in('status', ['lobby', 'playing'])
+            .maybeSingle();
+
+          if (g && isMounted) {
+            const { data: p } = await (supabase.from('players') as any)
+              .select('nickname, role')
+              .eq('game_id', g.id)
+              .eq('user_id', uid)
+              .maybeSingle();
+
+            if (p && isMounted) {
+              setIsExistingMember(true);
+              setExistingNickname(p.nickname);
+              if (p.role) setRole(p.role as PlayerRole);
+              if (!nickname) setNickname(p.nickname);
+              return;
+            }
+          }
+        } catch (err) {
+          console.warn('Error al verificar membresía existente:', err);
+        }
+        if (isMounted) {
+          setIsExistingMember(false);
+          setExistingNickname(null);
+        }
+      });
+
+      return () => {
+        isMounted = false;
+      };
+    } else {
+      setIsExistingMember(false);
+      setExistingNickname(null);
+    }
+  }, [code]);
 
   const roleOptions: { id: PlayerRole; label: string; desc: string; icon: React.ReactNode; color: string }[] = [
     {
