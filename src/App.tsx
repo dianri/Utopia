@@ -43,7 +43,6 @@ import { GhostOverlay } from './components/HUD/GhostOverlay';
 import { CreateRoomModal } from './components/Lobby/CreateRoomModal';
 import { JoinRoomModal } from './components/Lobby/JoinRoomModal';
 import { WaitingRoom } from './components/Lobby/WaitingRoom';
-import { GameExplorer } from './components/Lobby/GameExplorer';
 
 import { VictoryModal } from './components/PostGame/VictoryModal';
 import { DefeatModal } from './components/PostGame/DefeatModal';
@@ -1164,12 +1163,12 @@ export const App: React.FC = () => {
         />
       ) : (
         /* PANTALLA DE INICIO / LOBBY PRINCIPAL */
-        <div className="w-full h-full flex flex-col justify-between p-6 sm:p-10 relative overflow-hidden bg-gradient-to-b from-[#080c10] via-[#0d1520] to-[#080c10]">
+        <div className="w-full h-full flex flex-col justify-between p-4 sm:p-8 relative overflow-y-auto bg-gradient-to-b from-[#080c10] via-[#0d1520] to-[#080c10]">
           {/* LÍNEAS TÁCTICAS HUD */}
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#00f0ff08_1px,transparent_1px),linear-gradient(to_bottom,#00f0ff08_1px,transparent_1px)] bg-[size:3rem_3rem] pointer-events-none" />
 
           {/* CABECERA */}
-          <div className="relative z-10 flex items-center justify-between">
+          <div className="relative z-10 flex items-center justify-between pb-3 border-b border-hud-border/40">
             <div className="flex items-center gap-2">
               <span className="text-2xl">⚡</span>
               <span className="text-xs font-mono font-black text-hud-cyan tracking-widest uppercase">
@@ -1189,51 +1188,57 @@ export const App: React.FC = () => {
             </button>
           </div>
 
-          {/* HERO CENTRAL */}
-          <div className="relative z-10 max-w-xl mx-auto text-center flex flex-col items-center gap-4 my-auto">
-            <div className="w-20 h-20 rounded-2xl bg-hud-cyan/10 border-2 border-hud-cyan/60 flex items-center justify-center text-4xl shadow-2xl shadow-hud-cyan/20 animate-pulse">
-              👹
+          {/* CONTENEDOR CENTRAL */}
+          <div className="relative z-10 max-w-2xl mx-auto w-full flex flex-col items-center gap-6 my-auto py-6">
+            {/* HERO PRINCIPAL */}
+            <div className="flex flex-col items-center text-center gap-3">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-hud-cyan/10 border-2 border-hud-cyan/60 flex items-center justify-center text-3xl sm:text-4xl shadow-2xl shadow-hud-cyan/20 animate-pulse">
+                👹
+              </div>
+
+              <h1 className="text-2xl sm:text-4xl font-mono font-black tracking-wider uppercase text-white drop-shadow">
+                Las Meriendas <br />
+                <span className="bg-gradient-to-r from-hud-cyan via-teal-300 to-emerald-400 bg-clip-text text-transparent">
+                  Monster Hunt
+                </span>
+              </h1>
+
+              <p className="text-xs sm:text-sm font-mono text-slate-300 max-w-md">
+                Juego cooperativo táctico en tiempo real. Explora el mapa con GPS o Tap-to-Move, saquea airdrops con tu escuadra y asegura el cofre antes de que el Monstruo os devore.
+              </p>
+
+              {/* ACCIONES RÁPIDAS DE LOBBY */}
+              <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm mt-1">
+                <button
+                  onClick={() => {
+                    soundEffects.initOnUserInteraction();
+                    setShowCreateModal(true);
+                  }}
+                  className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-hud-cyan to-teal-400 text-black font-mono font-black text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-hud-cyan/30 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <Play className="w-4 h-4 fill-current" />
+                  <span>Crear Partida</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    soundEffects.initOnUserInteraction();
+                    setJoinModalInitialCode('');
+                    setShowJoinModal(true);
+                  }}
+                  className="flex-1 py-3 px-4 rounded-xl bg-hud-panel border-2 border-hud-cyan/60 hover:border-hud-cyan text-hud-cyan font-mono font-black text-xs sm:text-sm uppercase tracking-wider shadow-md hover:bg-hud-cyan/10 active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Unirse con Código</span>
+                </button>
+              </div>
             </div>
 
-            <h1 className="text-3xl sm:text-5xl font-mono font-black tracking-wider uppercase text-white drop-shadow">
-              Las Meriendas <br />
-              <span className="bg-gradient-to-r from-hud-cyan via-teal-300 to-emerald-400 bg-clip-text text-transparent">
-                Monster Hunt
-              </span>
-            </h1>
 
-            <p className="text-xs sm:text-sm font-mono text-slate-300 max-w-md">
-              Juego cooperativo táctico en tiempo real. Explora el mapa con GPS o Tap-to-Move, saquea airdrops con tu escuadra y asegura el cofre antes de que el Monstruo os devore.
-            </p>
-
-            {/* BOTONES DE ENTRADA */}
-            <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm mt-3">
-              <button
-                onClick={() => {
-                  soundEffects.initOnUserInteraction();
-                  setShowCreateModal(true);
-                }}
-                className="flex-1 py-3.5 px-4 rounded-xl bg-gradient-to-r from-hud-cyan to-teal-400 text-black font-mono font-black text-sm uppercase tracking-wider shadow-lg shadow-hud-cyan/30 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2"
-              >
-                <Play className="w-4 h-4 fill-current" />
-                <span>Crear Partida</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  soundEffects.initOnUserInteraction();
-                  setShowJoinModal(true);
-                }}
-                className="flex-1 py-3.5 px-4 rounded-xl bg-hud-panel border-2 border-hud-cyan/60 hover:border-hud-cyan text-hud-cyan font-mono font-black text-sm uppercase tracking-wider shadow-md hover:bg-hud-cyan/10 active:scale-95 transition-all flex items-center justify-center gap-2"
-              >
-                <Users className="w-4 h-4" />
-                <span>Unirse con Código</span>
-              </button>
-            </div>
           </div>
 
           {/* PIE DE PÁGINA */}
-          <div className="relative z-10 text-center text-[10px] font-mono text-hud-muted">
+          <div className="relative z-10 text-center text-[10px] font-mono text-hud-muted pt-4 border-t border-hud-border/40">
             Desarrollado para Utopia • Supabase Realtime • MapLibre OpenFreeMap • Web Audio API
           </div>
         </div>
@@ -1372,7 +1377,7 @@ export const App: React.FC = () => {
 
       {showJoinModal && (
         <JoinRoomModal
-          initialCode={new URLSearchParams(window.location.search).get('room') || ''}
+          initialCode={joinModalInitialCode}
           onConfirm={handleJoinRoom}
           onCancel={() => setShowJoinModal(false)}
         />
