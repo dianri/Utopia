@@ -5,12 +5,17 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ## [Unreleased]
 ### Added
+- Cleanup system for stale/abandoned games (migración SQL con `updated_at`, trigger `tr_games_updated_at`, procedimiento `cleanup_stale_games()`, keep-alive del anfitrión cada 2 min en `useGameRealtime.ts` y filtro anti-salas fantasma >45 min en `GameExplorer.tsx`).
 - Protocolo de trabajo multi-agente en paralelo en `AGENTS.md`.
 - Sistema para listar partidas públicas/privadas y unirse a partidas empezadas (en curso).
 - Mecanismo para cancelar/abandonar partidas desde el HUD (en curso).
+- Persistencia de sesión de sala activa en `localStorage` (`utopia_active_room`) con botón de acceso rápido para "Reanudar Misión en Curso".
+- Detección reactiva de membresía previa en `JoinRoomModal.tsx` con modo de reconexión directa.
 
 ### Fixed
 - Corrección del punto de spawn de jugadores para evitar apariciones por defecto fuera del área de juego.
+- **Reconexión transparente de jugadores:** Se comprueba la existencia previa del usuario en la tabla `players` antes de realizar un `insert`, evitando el error de clave duplicada `unique(game_id, user_id)` y permitiendo restaurar la sesión sin volver a pedir rol ni apodo.
+- **Manejo de apodos duplicados:** Asignación automática de sufijo numérico (`_2`, `_3`, etc.) cuando un usuario distinto intenta unirse con el mismo apodo en una misma sala activa.
 
 ## [0.2.0] - 2026-10-26
 ### Fixed
