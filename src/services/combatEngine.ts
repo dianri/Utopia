@@ -1,4 +1,4 @@
-import type { Weapon, PlayerRole } from '../types/game';
+import type { Weapon, PlayerRole, SupplyCrate, CrateType } from '../types/game';
 
 export const WEAPON_REGISTRY: Record<string, Weapon> = {
   baseball_bat: {
@@ -114,4 +114,142 @@ export function getReviveDurationSeconds(role: PlayerRole): number {
 export function getReviveDistanceMeters(role: PlayerRole): number {
   if (role === 'medic') return 35; // Médico doble radio efectivo
   return 20; // Estándar 20m
+}
+
+export interface CrateVisualInfo {
+  type: CrateType;
+  label: string;
+  icon: string;
+  badgeBg: string;
+  borderColor: string;
+  textColor: string;
+  glowColor: string;
+}
+
+/**
+ * Retorna la información visual (icono, colores, etiqueta) según el tipo o recompensa de la caja de suministros
+ */
+export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
+  if (crate.crateType) {
+    switch (crate.crateType) {
+      case 'medkit':
+        return {
+          type: 'medkit',
+          label: 'Botiquín',
+          icon: '❤️',
+          badgeBg: 'bg-emerald-950/90',
+          borderColor: 'border-emerald-400',
+          textColor: 'text-emerald-300',
+          glowColor: 'bg-emerald-500/25',
+        };
+      case 'ammo':
+        return {
+          type: 'ammo',
+          label: 'Munición',
+          icon: '⚡',
+          badgeBg: 'bg-amber-950/90',
+          borderColor: 'border-amber-400',
+          textColor: 'text-amber-300',
+          glowColor: 'bg-amber-500/25',
+        };
+      case 'rifle':
+        return {
+          type: 'rifle',
+          label: 'Rifle Táctico',
+          icon: '🎯',
+          badgeBg: 'bg-cyan-950/90',
+          borderColor: 'border-cyan-400',
+          textColor: 'text-cyan-300',
+          glowColor: 'bg-cyan-500/25',
+        };
+      case 'shotgun':
+        return {
+          type: 'shotgun',
+          label: 'Escopeta',
+          icon: '💥',
+          badgeBg: 'bg-purple-950/90',
+          borderColor: 'border-purple-400',
+          textColor: 'text-purple-300',
+          glowColor: 'bg-purple-500/25',
+        };
+      case 'melee':
+        return {
+          type: 'melee',
+          label: 'Cuchillo / Bate',
+          icon: '🗡️',
+          badgeBg: 'bg-yellow-950/90',
+          borderColor: 'border-yellow-400',
+          textColor: 'text-yellow-300',
+          glowColor: 'bg-yellow-500/25',
+        };
+    }
+  }
+
+  // Si no se asignó crateType explícito, inferir a partir del arma y recompensas
+  const weapon = crate.weaponReward;
+  if (weapon?.id === 'assault_rifle') {
+    return {
+      type: 'rifle',
+      label: 'Rifle Táctico',
+      icon: '🎯',
+      badgeBg: 'bg-cyan-950/90',
+      borderColor: 'border-cyan-400',
+      textColor: 'text-cyan-300',
+      glowColor: 'bg-cyan-500/25',
+    };
+  }
+  if (weapon?.id === 'combat_shotgun') {
+    return {
+      type: 'shotgun',
+      label: 'Escopeta',
+      icon: '💥',
+      badgeBg: 'bg-purple-950/90',
+      borderColor: 'border-purple-400',
+      textColor: 'text-purple-300',
+      glowColor: 'bg-purple-500/25',
+    };
+  }
+  if (weapon?.id === 'baseball_bat' || weapon?.id === 'tactical_knife' || weapon?.type === 'melee') {
+    return {
+      type: 'melee',
+      label: 'Cuchillo / Bate',
+      icon: '🗡️',
+      badgeBg: 'bg-yellow-950/90',
+      borderColor: 'border-yellow-400',
+      textColor: 'text-yellow-300',
+      glowColor: 'bg-yellow-500/25',
+    };
+  }
+  if (crate.healReward >= 50) {
+    return {
+      type: 'medkit',
+      label: 'Botiquín',
+      icon: '❤️',
+      badgeBg: 'bg-emerald-950/90',
+      borderColor: 'border-emerald-400',
+      textColor: 'text-emerald-300',
+      glowColor: 'bg-emerald-500/25',
+    };
+  }
+  if (crate.ammoReward >= 30) {
+    return {
+      type: 'ammo',
+      label: 'Munición',
+      icon: '⚡',
+      badgeBg: 'bg-amber-950/90',
+      borderColor: 'border-amber-400',
+      textColor: 'text-amber-300',
+      glowColor: 'bg-amber-500/25',
+    };
+  }
+
+  return {
+    type: 'medkit',
+    label: 'Botiquín',
+    icon: '❤️',
+    badgeBg: 'bg-emerald-950/90',
+    borderColor: 'border-emerald-400',
+    textColor: 'text-emerald-300',
+    glowColor: 'bg-emerald-500/25',
+  };
 }

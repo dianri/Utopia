@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import type { MovementMode, PlayerRole, Coordinates } from '../../types/game';
-import { Shield, HeartPulse, Eye, Crosshair, MapPin, Navigation, Play, Globe, Lock } from 'lucide-react';
+import type { MovementMode, PlayerRole, Coordinates, PlayerSpeed } from '../../types/game';
+import { Shield, HeartPulse, Eye, Crosshair, MapPin, Navigation, Play, Globe, Lock, Gauge } from 'lucide-react';
 
 interface CreateRoomModalProps {
   onConfirm: (config: {
@@ -8,6 +8,7 @@ interface CreateRoomModalProps {
     isPublic: boolean;
     radiusMeters: number;
     movementMode: MovementMode;
+    playerSpeed: PlayerSpeed;
     center: Coordinates;
     nickname: string;
     role: PlayerRole;
@@ -20,6 +21,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
   const [isPublic, setIsPublic] = useState<boolean>(true);
   const [areaKm2, setAreaKm2] = useState<number>(1.0); // 0.5 a 3.0 km²
   const [movementMode, setMovementMode] = useState<MovementMode>('manual');
+  const [playerSpeed, setPlayerSpeed] = useState<PlayerSpeed>('normal');
   const [nickname, setNickname] = useState<string>('');
   const [role, setRole] = useState<PlayerRole>('scout');
   const [center, setCenter] = useState<Coordinates>({
@@ -98,6 +100,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
       isPublic,
       radiusMeters,
       movementMode,
+      playerSpeed,
       center,
       nickname: nickname.trim(),
       role,
@@ -249,7 +252,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
                 }`}
               >
                 <span>👆</span>
-                <span>Tap-to-Move (5 km/h)</span>
+                <span>Tap-to-Move (Pantalla)</span>
               </button>
 
               <button
@@ -263,6 +266,76 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
               >
                 <Navigation className="w-4 h-4" />
                 <span>GPS Real en Vivo</span>
+              </button>
+            </div>
+          </div>
+
+          {/* SELECTOR DE VELOCIDAD DE DESPLAZAMIENTO (TAP-TO-MOVE) */}
+          <div className="bg-hud-panel border border-hud-border p-3 rounded-xl flex flex-col gap-2">
+            <div className="flex justify-between items-center text-xs font-mono">
+              <div className="flex items-center gap-1.5 text-hud-muted">
+                <Gauge className="w-3.5 h-3.5 text-hud-cyan" />
+                <span>Velocidad de Movimiento (Tap-to-Move):</span>
+              </div>
+              <span className="text-hud-cyan font-bold text-[11px]">
+                {playerSpeed === 'slow' && '0.8 m/s (~3 km/h)'}
+                {playerSpeed === 'normal' && '1.4 m/s (~5 km/h)'}
+                {playerSpeed === 'fast' && '2.8 m/s (~10 km/h)'}
+                {playerSpeed === 'very_fast' && '4.5 m/s (~16 km/h)'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={() => setPlayerSpeed('slow')}
+                className={`flex flex-col items-center justify-center p-2 rounded-lg border font-mono text-xs transition-all ${
+                  playerSpeed === 'slow'
+                    ? 'border-hud-cyan bg-hud-cyan/15 text-hud-cyan shadow-md shadow-hud-cyan/20'
+                    : 'border-hud-border bg-hud-dark text-hud-muted hover:border-hud-border/80'
+                }`}
+              >
+                <span className="font-bold">Lento</span>
+                <span className="text-[10px] opacity-75">3 km/h (Sigilo)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPlayerSpeed('normal')}
+                className={`flex flex-col items-center justify-center p-2 rounded-lg border font-mono text-xs transition-all ${
+                  playerSpeed === 'normal'
+                    ? 'border-hud-cyan bg-hud-cyan/15 text-hud-cyan shadow-md shadow-hud-cyan/20'
+                    : 'border-hud-border bg-hud-dark text-hud-muted hover:border-hud-border/80'
+                }`}
+              >
+                <span className="font-bold">Normal</span>
+                <span className="text-[10px] opacity-75">5 km/h (Paso)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPlayerSpeed('fast')}
+                className={`flex flex-col items-center justify-center p-2 rounded-lg border font-mono text-xs transition-all ${
+                  playerSpeed === 'fast'
+                    ? 'border-hud-cyan bg-hud-cyan/15 text-hud-cyan shadow-md shadow-hud-cyan/20'
+                    : 'border-hud-border bg-hud-dark text-hud-muted hover:border-hud-border/80'
+                }`}
+              >
+                <span className="font-bold">Rápido</span>
+                <span className="text-[10px] opacity-75">10 km/h (Trote)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPlayerSpeed('very_fast')}
+                className={`flex flex-col items-center justify-center p-2 rounded-lg border font-mono text-xs transition-all ${
+                  playerSpeed === 'very_fast'
+                    ? 'border-hud-cyan bg-hud-cyan/15 text-hud-cyan shadow-md shadow-hud-cyan/20'
+                    : 'border-hud-border bg-hud-dark text-hud-muted hover:border-hud-border/80'
+                }`}
+              >
+                <span className="font-bold">Muy Rápido</span>
+                <span className="text-[10px] opacity-75">16 km/h (Sprint)</span>
               </button>
             </div>
           </div>

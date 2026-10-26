@@ -9,9 +9,11 @@ import type {
   GhostPing,
   MovementMode,
   PlayerRole,
+  PlayerSpeed,
 } from '../types/game';
+import { PLAYER_SPEED_MPS } from '../types/game';
 import { createGeoJsonCircle, getDistanceMeters } from '../services/geoUtils';
-import { getVisionRadius } from '../services/combatEngine';
+import { getVisionRadius, getCrateVisualInfo } from '../services/combatEngine';
 import { Locate, Compass } from 'lucide-react';
 
 interface GameMapProps {
@@ -24,6 +26,7 @@ interface GameMapProps {
   crates: SupplyCrate[];
   ghostPings: GhostPing[];
   movementMode: MovementMode;
+  playerSpeed?: PlayerSpeed;
   isRadarActive: boolean;
   onMapClick: (coords: Coordinates) => void;
   onReviveAttempt?: (targetPlayer: Player) => void;
@@ -39,6 +42,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   crates,
   ghostPings,
   movementMode,
+  playerSpeed = 'normal',
   isRadarActive,
   onMapClick,
 }) => {
@@ -162,6 +166,34 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           'line-width': 1.5,
           'line-opacity': 0.4,
           'line-dasharray': [2, 3],
+        },
+      });
+
+      // 4. Capas dinámicas: Radio de interacción de suministros (40m)
+      map.addSource('crates-zones', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
+      map.addLayer({
+        id: 'crates-zones-fill',
+        type: 'fill',
+        source: 'crates-zones',
+        paint: {
+          'fill-color': '#00ffaa',
+          'fill-opacity': 0.08,
+        },
+      });
+
+      map.addLayer({
+        id: 'crates-zones-outline',
+        type: 'line',
+        source: 'crates-zones',
+        paint: {
+          'line-color': '#00ffaa',
+          'line-width': 1.5,
+          'line-opacity': 0.35,
+          'line-dasharray': [2, 2],
         },
       });
     });
@@ -360,11 +392,26 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   }, [treasureLocation.lat, treasureLocation.lng]);
 
   // ==========================================
-  // 6. MARCADORES DE CAJAS DE SUMINISTROS (AIRDROPS)
+  // 6. MARCADORES Y RADIOS DE CAJAS DE SUMINISTROS (AIRDROPS)
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+
+    // Actualizar zonas de interacción de 40m translúcidas en el mapa
+    if (isMapLoadedRef.current) {
+      const source = map.getSource('crates-zones') as maplibregl.GeoJSONSource;
+      if (source) {
+        const activeCrates = crates.filter((c) => !c.opened);
+        const features = activeCrates.map(
+          (c) => createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40)
+        );
+        source.setData({
+          type: 'FeatureCollection',
+          features,
+        });
+      }
+    }
 
     const currentCrateIds = new Set(crates.map((c) => c.id));
     crateMarkersRef.current.forEach((marker, id) => {
@@ -383,17 +430,20 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         return;
       }
 
+      const info = getCrateVisualInfo(crate);
+
       if (!crateMarkersRef.current.has(crate.id)) {
         const el = document.createElement('div');
         el.className = 'crate-marker flex flex-col items-center select-none cursor-pointer';
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
-            <div class="w-9 h-9 bg-emerald-600 border-2 border-emerald-300 rounded-md shadow-md shadow-emerald-500/40 flex items-center justify-center text-white text-base">
-              📦
+            <div class="absolute w-12 h-12 ${info.glowColor} rounded-full animate-ping"></div>
+            <div class="w-9 h-9 ${info.badgeBg} border-2 ${info.borderColor} rounded-lg shadow-lg flex items-center justify-center text-lg">
+              ${info.icon}
             </div>
           </div>
-          <span class="mt-0.5 px-1.5 py-0.2 text-[9px] font-bold bg-hud-dark/90 border border-emerald-500/50 text-emerald-300 rounded">
-            Loot (40m)
+          <span class="mt-1 px-1.5 py-0.5 text-[9px] font-mono font-bold bg-hud-dark/95 border ${info.borderColor} ${info.textColor} rounded uppercase tracking-wider whitespace-nowrap shadow-md">
+            ${info.label} (40m)
           </span>
         `;
 
@@ -656,7 +706,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       {/* AVISO TAP-TO-MOVE */}
       {movementMode === 'manual' && myPlayer.isAlive && (
         <div className="absolute top-20 left-4 z-20 bg-hud-dark/80 border border-hud-cyan/40 backdrop-blur-sm px-2.5 py-1 rounded text-[11px] font-mono text-hud-cyan shadow pointer-events-none">
-          👆 Toca el mapa para moverte (1.4 m/s)
+          👆 Toca el mapa para moverte ({PLAYER_SPEED_MPS[playerSpeed].toFixed(1)} m/s)
         </div>
       )}
     </div>
