@@ -16,6 +16,7 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 - Detección reactiva de membresía previa en `JoinRoomModal.tsx` con modo de reconexión directa.
 
 ### Fixed
+- **Sincronización en tiempo real del movimiento multijugador (`player_move`):** Estandarizado el canal Realtime a `game_room:${game.id}` (UUID), verificación estricta del estado `'SUBSCRIBED'` antes de emitir broadcasts, payload ampliado con `{ userId, playerId, lat, lng, hp, isAlive }`, throttling de 250ms durante animaciones de desplazamiento en Tap-to-Move con envío inmediato de llegada/GPS para evitar saturación de websocket, actualización suave sin desmontar instancias de `maplibregl.Marker` y preservación de coordenadas activas en el listener de cambios de base de datos (`postgres_changes`).
 - **Anclaje visual y renderizado del monstruo en el mapa (`GameMap.tsx`):** Eliminada la clase `transition-transform duration-300` del elemento raíz del marcador que provocaba retraso, deslizamiento y flotación respecto al terreno al arrastrar o hacer zoom. Se fijó `anchor: 'center'` nativo, mantenimiento de referencia única en `monsterMarkerRef` y alternancia de niebla de guerra con `style.display = 'none'` sin destruir/recrear el nodo DOM en cada frame.
 - Fixed: Removed unsupported .catch() on PostgrestBuilder RPC call (sustituido por invocaciones asíncronas seguras con try/catch en App.tsx, GameExplorer.tsx y useGameRealtime.ts).
 - Corrección del punto de spawn de jugadores para evitar apariciones por defecto fuera del área de juego.
