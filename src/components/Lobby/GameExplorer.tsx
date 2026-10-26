@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Users, Navigation, Radio, Flame, RefreshCw, ChevronRight, ShieldAlert } from 'lucide-react';
+import { Users, Navigation, Radio, Flame, RefreshCw, ChevronRight, ShieldAlert, Lock, Globe } from 'lucide-react';
 
 export interface ActiveGameItem {
   id: string;
   code: string;
   name: string;
+  is_public?: boolean;
   status: 'lobby' | 'playing';
   movement_mode: 'gps' | 'manual';
   play_area_radius: number;
@@ -15,7 +16,7 @@ export interface ActiveGameItem {
 }
 
 interface GameExplorerProps {
-  onJoinGame: (code: string) => void;
+  onJoinGame: (code: string, isPrivate?: boolean, targetGame?: ActiveGameItem) => void;
   onCreateGame?: () => void;
 }
 
@@ -39,6 +40,7 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
           id,
           code,
           name,
+          is_public,
           status,
           movement_mode,
           play_area_radius,
@@ -49,7 +51,6 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
             is_alive
           )
         `)
-        .eq('is_public', true)
         .in('status', ['lobby', 'playing'])
         .or(`updated_at.gt.${cutoffTime},and(updated_at.is.null,created_at.gt.${cutoffTime})`)
         .order('created_at', { ascending: false });
@@ -61,6 +62,7 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
             id,
             code,
             name,
+            is_public,
             status,
             movement_mode,
             play_area_radius,
@@ -70,7 +72,6 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
               is_alive
             )
           `)
-          .eq('is_public', true)
           .in('status', ['lobby', 'playing'])
           .gt('created_at', cutoffTime)
           .order('created_at', { ascending: false });
@@ -177,7 +178,7 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
       {loading ? (
         <div className="p-8 rounded-2xl bg-hud-panel/40 border border-hud-border/60 flex flex-col items-center justify-center gap-3 text-hud-muted font-mono text-xs">
           <RefreshCw className="w-5 h-5 animate-spin text-hud-cyan" />
-          <span>Buscando operaciones tácticas públicas...</span>
+          <span>Escaneando operaciones tácticas activas...</span>
         </div>
       ) : error ? (
         <div className="p-4 rounded-xl bg-red-950/30 border border-red-500/40 text-red-300 font-mono text-xs flex items-center justify-between">
@@ -200,10 +201,10 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
           </div>
           <div className="flex flex-col gap-1 max-w-sm">
             <span className="text-xs font-mono font-bold text-white uppercase tracking-wider">
-              No hay operaciones públicas activas
+              No hay operaciones activas
             </span>
             <span className="text-[11px] font-mono text-hud-muted">
-              Sé el primero en desplegar una partida pública en este sector o ingresa mediante código privado.
+              Sé el primero en desplegar una partida en este sector o ingresa mediante código directo.
             </span>
           </div>
           {onCreateGame && (
@@ -211,7 +212,7 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
               onClick={onCreateGame}
               className="mt-1 px-4 py-2 rounded-xl bg-hud-cyan/15 border border-hud-cyan/60 text-hud-cyan hover:bg-hud-cyan/25 font-mono text-xs font-bold uppercase tracking-wider transition-all"
             >
-              + Desplegar Partida Pública
+              + Desplegar Operación
             </button>
           )}
         </div>
@@ -223,29 +224,56 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
             const totalPlayers = playerList.length;
             const livingPlayers = playerList.filter((p) => p.is_alive).length;
             const isPlaying = g.status === 'playing';
+            const isPrivate = g.is_public === false;
 
             return (
               <div
                 key={g.id}
-                className="bg-hud-panel/80 hover:bg-hud-panel border border-hud-border hover:border-hud-cyan/60 rounded-xl p-3.5 flex flex-col justify-between gap-3 transition-all shadow-md group"
+                className={`bg-hud-panel/80 hover:bg-hud-panel border rounded-xl p-3.5 flex flex-col justify-between gap-3 transition-all shadow-md group ${
+                  isPrivate
+                    ? 'border-amber-500/30 hover:border-amber-500/60'
+                    : 'border-hud-border hover:border-hud-cyan/60'
+                }`}
               >
-                {/* FILA SUPERIOR: NOMBRE, CÓDIGO Y ESTADO */}
+                {/* FILA SUPERIOR: NOMBRE, CÓDIGO Y ESTADOS */}
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex flex-col min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-mono font-black text-white truncate">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm font-mono font-black text-white truncate max-w-[140px] sm:max-w-[180px]">
                         {g.name || 'Operación Las Meriendas'}
                       </span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-hud-dark border border-hud-border font-bold text-hud-muted group-hover:text-hud-cyan transition-colors">
-                        #{g.code}
+
+                      {/* BADGE DE PRIVACIDAD */}
+                      {isPrivate ? (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-mono font-black uppercase px-1.5 py-0.5 rounded bg-amber-500/15 border border-amber-500/40 text-amber-300">
+                          <Lock className="w-2.5 h-2.5 text-amber-400" />
+                          <span>Acceso Restringido</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[9px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-hud-cyan/15 border border-hud-cyan/40 text-hud-cyan">
+                          <Globe className="w-2.5 h-2.5 text-hud-cyan" />
+                          <span>Pública</span>
+                        </span>
+                      )}
+
+                      {/* CÓDIGO: VISIBLE EN PÚBLICAS, ENMASCARADO EN PRIVADAS */}
+                      <span
+                        className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-bold transition-colors ${
+                          isPrivate
+                            ? 'bg-amber-950/40 border border-amber-500/30 text-amber-300 tracking-widest'
+                            : 'bg-hud-dark border border-hud-border text-hud-muted group-hover:text-hud-cyan'
+                        }`}
+                      >
+                        {isPrivate ? '••••••' : `#${g.code}`}
                       </span>
                     </div>
+
                     <span className="text-[10px] font-mono text-hud-muted mt-0.5">
                       {formatTimeAgo(g.created_at)}
                     </span>
                   </div>
 
-                  {/* BADGE DE ESTADO */}
+                  {/* BADGE DE ESTADO DE JUEGO */}
                   {isPlaying ? (
                     <span className="flex-shrink-0 inline-flex items-center gap-1.5 text-[10px] font-mono font-black uppercase px-2 py-0.5 rounded-full bg-red-500/15 border border-red-500/40 text-red-400">
                       <Flame className="w-3 h-3 text-red-400 animate-pulse" />
@@ -291,17 +319,28 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
                   </span>
                 </div>
 
-                {/* BOTÓN UNIRSE */}
+                {/* BOTÓN DE ACCIÓN: VERDE EN PÚBLICAS, ÁMBAR/DESBLOQUEO EN PRIVADAS */}
                 <button
-                  onClick={() => onJoinGame(g.code)}
+                  onClick={() => onJoinGame(g.code, isPrivate, g)}
                   className={`w-full py-2 px-3 rounded-lg font-mono font-black text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all shadow-md active:scale-95 ${
-                    isPlaying
-                      ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black shadow-orange-500/20'
-                      : 'bg-gradient-to-r from-hud-cyan to-teal-400 hover:brightness-110 text-black shadow-hud-cyan/20'
+                    isPrivate
+                      ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black shadow-amber-500/20'
+                      : isPlaying
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:brightness-110 text-black shadow-emerald-500/20'
+                      : 'bg-gradient-to-r from-emerald-500 to-teal-400 hover:brightness-110 text-black shadow-emerald-500/20'
                   }`}
                 >
-                  <span>{isPlaying ? 'Unirse al Combate' : 'Unirse a la Sala'}</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
+                  {isPrivate ? (
+                    <>
+                      <Lock className="w-3.5 h-3.5" />
+                      <span>Acceso Privado</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>{isPlaying ? 'Unirse al Combate' : 'Unirse'}</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </>
+                  )}
                 </button>
               </div>
             );

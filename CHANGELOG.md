@@ -5,6 +5,9 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ## [Unreleased]
 ### Added
+- **Explorador de Operaciones Unificado (Públicas y Privadas):** Listado completo de salas activas en `GameExplorer.tsx` eliminando la restricción exclusiva de públicas.
+- **Diferenciación visual y seguridad en tarjetas de sala:** Indicador `Globe` para partidas públicas e indicador ámbar de "Acceso Restringido" con `Lock` para privadas, con enmascaramiento de código (`••••••`) y botón dedicado "Acceso Privado".
+- **Control de Acceso por Código para Partidas Privadas:** Validación obligatoria del código de 6 letras en `JoinRoomModal.tsx` al intentar ingresar a una operación privada, impidiendo el acceso y disparando alarma sonora y alerta visual en caso de discrepancia.
 - Cleanup system for stale/abandoned games (migración SQL con `updated_at`, trigger `tr_games_updated_at`, procedimiento `cleanup_stale_games()`, keep-alive del anfitrión cada 2 min en `useGameRealtime.ts` y filtro anti-salas fantasma >45 min en `GameExplorer.tsx`).
 - Protocolo de trabajo multi-agente en paralelo en `AGENTS.md`.
 - Sistema para listar partidas públicas/privadas y unirse a partidas empezadas (en curso).
