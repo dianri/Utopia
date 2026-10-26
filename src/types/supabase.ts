@@ -31,6 +31,7 @@ export type Database = {
           status: string
           treasure_lat: number
           treasure_lng: number
+          updated_at: string
         }
         Insert: {
           center_lat: number
@@ -48,6 +49,7 @@ export type Database = {
           status?: string
           treasure_lat: number
           treasure_lng: number
+          updated_at?: string
         }
         Update: {
           center_lat?: number
@@ -65,6 +67,7 @@ export type Database = {
           status?: string
           treasure_lat?: number
           treasure_lng?: number
+          updated_at?: string
         }
         Relationships: []
       }
@@ -199,6 +202,7 @@ export type Database = {
       }
     }
     Functions: {
+      cleanup_stale_games: { Args: never; Returns: undefined }
       generate_room_code: { Args: never; Returns: string }
       set_game_status: {
         Args: { p_game_id: string; p_status: string }

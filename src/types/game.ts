@@ -94,6 +94,8 @@ export interface GameRoom {
   startedAt?: string | null;
   endedAt?: string | null;
   createdAt: string;
+  updatedAt?: string;
+  updated_at?: string;
 }
 
 export interface MatchStatEntry {

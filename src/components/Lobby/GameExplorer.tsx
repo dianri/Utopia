@@ -10,6 +10,7 @@ export interface ActiveGameItem {
   movement_mode: 'gps' | 'manual';
   play_area_radius: number;
   created_at: string;
+  updated_at?: string;
   players?: { id: string; is_alive: boolean }[];
 }
 
@@ -29,7 +30,10 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
     setError(null);
 
     try {
-      const { data, error: fetchErr } = await (supabase
+      // Filtrar partidas fantasma cuyo updated_at tenga más de 45 minutos de antigüedad
+      const cutoffTime = new Date(Date.now() - 45 * 60 * 1000).toISOString();
+
+      let { data, error: fetchErr } = await (supabase
         .from('games') as any)
         .select(`
           id,
@@ -39,6 +43,7 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
           movement_mode,
           play_area_radius,
           created_at,
+          updated_at,
           players (
             id,
             is_alive
@@ -46,7 +51,32 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
         `)
         .eq('is_public', true)
         .in('status', ['lobby', 'playing'])
+        .or(`updated_at.gt.${cutoffTime},and(updated_at.is.null,created_at.gt.${cutoffTime})`)
         .order('created_at', { ascending: false });
+
+      if (fetchErr && (fetchErr.message?.includes('updated_at') || fetchErr.code === '42703')) {
+        // Fallback defensivo si la migración de updated_at aún no se ha ejecutado en Supabase
+        const fallback = await (supabase.from('games') as any)
+          .select(`
+            id,
+            code,
+            name,
+            status,
+            movement_mode,
+            play_area_radius,
+            created_at,
+            players (
+              id,
+              is_alive
+            )
+          `)
+          .eq('is_public', true)
+          .in('status', ['lobby', 'playing'])
+          .gt('created_at', cutoffTime)
+          .order('created_at', { ascending: false });
+        data = fallback.data;
+        fetchErr = fallback.error;
+      }
 
       if (fetchErr) {
         console.error('Error fetching active games:', fetchErr);
@@ -66,6 +96,9 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
   }, []);
 
   useEffect(() => {
+    // Purga oportunista de partidas inactivas en segundo plano al montar el explorador
+    (supabase.rpc as any)('cleanup_stale_games').catch(() => {});
+
     fetchActiveGames();
 
     // Suscripción en tiempo real para cambios en games y players
