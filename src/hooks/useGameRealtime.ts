@@ -16,6 +16,7 @@ interface RealtimeCallbacks {
   onChestCountdown?: (payload: { secondsRemaining: number; holdersCount: number }) => void;
   onRequestStateSync?: () => void;
   onFullStateSync?: (payload: { monster: Monster; crates: SupplyCrate[]; chestCountdown: number; holdersCount: number }) => void;
+  onGameCancelled?: (payload: { reason?: string }) => void;
   onPresenceSync?: (activeUserIds: string[]) => void;
 }
 
@@ -107,7 +108,12 @@ export function useGameRealtime(
       callbacksRef.current.onFullStateSync?.(payload);
     });
 
-    // 12. PRESENCE (QUIÉN ESTÁ ONLINE)
+    // 12. CANCELACIÓN / ABORTO DE PARTIDA POR EL HOST
+    channel.on('broadcast', { event: 'game_cancelled' }, ({ payload }) => {
+      callbacksRef.current.onGameCancelled?.(payload);
+    });
+
+    // 13. PRESENCE (QUIÉN ESTÁ ONLINE)
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
@@ -237,6 +243,14 @@ export function useGameRealtime(
     });
   }, []);
 
+  const broadcastGameCancelled = useCallback((reason: string = 'Misión abortada por el anfitrión') => {
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'game_cancelled',
+      payload: { reason },
+    });
+  }, []);
+
   return {
     isConnected,
     onlineUsers,
@@ -251,5 +265,6 @@ export function useGameRealtime(
     broadcastChestCountdown,
     broadcastRequestStateSync,
     broadcastFullStateSync,
+    broadcastGameCancelled,
   };
 }
