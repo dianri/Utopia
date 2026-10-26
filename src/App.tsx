@@ -89,6 +89,7 @@ export const App: React.FC = () => {
   // MODALES
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [showJoinModal, setShowJoinModal] = useState<boolean>(false);
+  const [joinModalInitialCode, setJoinModalInitialCode] = useState<string>('');
   const [showLeaderboard, setShowLeaderboard] = useState<boolean>(false);
   const [stealthMode, setStealthMode] = useState<boolean>(soundEffects.isStealth());
 
@@ -105,6 +106,15 @@ export const App: React.FC = () => {
 
   const roomRef = useRef<GameRoom | null>(room);
   roomRef.current = room;
+
+  const cratesRef = useRef<SupplyCrate[]>(crates);
+  cratesRef.current = crates;
+
+  const chestCountdownRef = useRef<number>(chestCountdown);
+  chestCountdownRef.current = chestCountdown;
+
+  const chestHoldersCountRef = useRef<number>(chestHoldersCount);
+  chestHoldersCountRef.current = chestHoldersCount;
 
   // Logging táctico
   const addLog = useCallback((text: string, type: TacticalLogMessage['type'] = 'info') => {
@@ -126,6 +136,7 @@ export const App: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const roomCodeParam = params.get('room');
     if (roomCodeParam) {
+      setJoinModalInitialCode(roomCodeParam.toUpperCase());
       setShowJoinModal(true);
     }
   }, []);
@@ -213,8 +224,43 @@ export const App: React.FC = () => {
         setChestCountdown(secondsRemaining);
         setChestHoldersCount(holdersCount);
       },
+      onRequestStateSync: () => {
+        // Si somos el Host, transmitimos el estado actual del juego al jugador recién incorporado
+        if (myPlayerRef.current?.isHost) {
+          realtime.broadcastFullStateSync({
+            monster: monsterRef.current,
+            crates: cratesRef.current,
+            chestCountdown: chestCountdownRef.current,
+            holdersCount: chestHoldersCountRef.current,
+          });
+        }
+      },
+      onFullStateSync: (payload) => {
+        // Jugador que se une en partida empezada recibe el estado completo del juego
+        if (!myPlayerRef.current?.isHost) {
+          if (payload.monster) {
+            setMonster(payload.monster);
+          }
+          if (payload.crates && payload.crates.length > 0) {
+            setCrates(payload.crates);
+          }
+          if (typeof payload.chestCountdown === 'number') {
+            setChestCountdown(payload.chestCountdown);
+          }
+          if (typeof payload.holdersCount === 'number') {
+            setChestHoldersCount(payload.holdersCount);
+          }
+        }
+      },
     }
   );
+
+  // Solicitar sincronización de partida al conectarse al canal Realtime si la partida está en curso
+  useEffect(() => {
+    if (room?.status === 'playing' && !myPlayer?.isHost && realtime.isConnected) {
+      realtime.broadcastRequestStateSync();
+    }
+  }, [room?.status, myPlayer?.isHost, realtime.isConnected]);
 
   // ==========================================
   // GEOLOCALIZACIÓN Y MOVIMIENTO (GPS O MANUAL)
@@ -936,7 +982,7 @@ export const App: React.FC = () => {
       equippedWeapon: DEFAULT_WEAPONS_BY_ROLE[config.role],
     };
 
-    // Sincronizar posición del monstruo en el cofre del tesoro de la sala
+    // Sincronizar posición del monstruo en el cofre del tesoro de la sala como base
     setMonster({
       lat: gameData.treasure_lat,
       lng: gameData.treasure_lng,
@@ -947,6 +993,65 @@ export const App: React.FC = () => {
       speedMps: 2.8,
       isEnraged: false,
     });
+
+    // Cargar todos los compañeros de escuadra registrados en la sala
+    const { data: teammatesData } = await (supabase
+      .from('players') as any)
+      .select('*')
+      .eq('game_id', gameData.id);
+
+    if (teammatesData && teammatesData.length > 0) {
+      setPlayers(
+        teammatesData.map((d: any) => ({
+          id: d.id,
+          userId: d.user_id,
+          gameId: d.game_id,
+          nickname: d.nickname,
+          role: d.role as PlayerRole,
+          hp: d.hp,
+          maxHp: d.max_hp,
+          isAlive: d.is_alive,
+          lat: d.id === player.id ? playerSpawnPoint.lat : (d.lat ?? gameData.center_lat),
+          lng: d.id === player.id ? playerSpawnPoint.lng : (d.lng ?? gameData.center_lng),
+          damageDealt: d.damage_dealt,
+          revivesDone: d.revives_done,
+          cratesOpened: d.crates_opened,
+          monsterKills: d.monster_kills,
+          isHost: d.user_id === gameData.host_id,
+          equippedWeapon: DEFAULT_WEAPONS_BY_ROLE[d.role as PlayerRole],
+        }))
+      );
+    } else {
+      setPlayers([player]);
+    }
+
+    // Si la partida ya está en combate (late join), configurar airdrops iniciales de contingencia
+    if (gameData.status === 'playing') {
+      const fallbackCrates: SupplyCrate[] = [];
+      const weaponPool = [
+        WEAPON_REGISTRY.combat_shotgun,
+        WEAPON_REGISTRY.assault_rifle,
+        WEAPON_REGISTRY.pistol_9mm,
+      ];
+      for (let i = 0; i < 4; i++) {
+        const dropPoint = getRandomPointInCircle(
+          { lat: gameData.center_lat, lng: gameData.center_lng },
+          gameData.play_area_radius * 0.7
+        );
+        fallbackCrates.push({
+          id: `crate_${gameData.id}_${i}`,
+          lat: dropPoint.lat,
+          lng: dropPoint.lng,
+          opened: false,
+          droppedAt: Date.now(),
+          weaponReward: weaponPool[i % weaponPool.length],
+          healReward: 40,
+          ammoReward: 30,
+        });
+      }
+      setCrates(fallbackCrates);
+      addLog('¡Te has incorporado a una partida en combate! Encuentra a tu escuadra.', 'warning');
+    }
 
     setRoom(currentRoom);
     setMyPlayer(player);
