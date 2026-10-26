@@ -248,9 +248,21 @@ export const App: React.FC = () => {
       onMonsterUpdate: (updatedMonster) => {
         setMonster(updatedMonster);
       },
-      onPlayerMove: ({ playerId, lat, lng }) => {
+      onPlayerMove: ({ playerId, userId, lat, lng, hp, isAlive }) => {
         setPlayers((prev) =>
-          prev.map((p) => (p.id === playerId ? { ...p, lat, lng } : p))
+          prev.map((p) => {
+            const matches =
+              (playerId && p.id === playerId) ||
+              (userId && p.userId === userId);
+            if (!matches) return p;
+            return {
+              ...p,
+              lat,
+              lng,
+              hp: hp !== undefined ? hp : p.hp,
+              isAlive: isAlive !== undefined ? isAlive : p.isAlive,
+            };
+          })
         );
       },
       onPlayerDamaged: ({ playerId, damage, currentHp }) => {
@@ -367,8 +379,10 @@ export const App: React.FC = () => {
   // ==========================================
   // GEOLOCALIZACIÓN Y MOVIMIENTO (GPS O MANUAL)
   // ==========================================
+  const lastMoveBroadcastTimeRef = useRef<number>(0);
+
   const handlePositionChange = useCallback(
-    (coords: Coordinates) => {
+    (coords: Coordinates, isFinal?: boolean) => {
       if (!myPlayerRef.current) return;
 
       setMyPlayer((prev) => (prev ? { ...prev, lat: coords.lat, lng: coords.lng } : null));
@@ -379,7 +393,17 @@ export const App: React.FC = () => {
       );
 
       // Transmitir posición a los compañeros de equipo en tiempo real
-      realtime.broadcastPlayerMove(coords.lat, coords.lng);
+      // Envío inmediato si es posición final (llegada / fix GPS), o con throttling de 250ms durante animación Tap-to-Move
+      const now = performance.now();
+      if (isFinal || now - lastMoveBroadcastTimeRef.current >= 250) {
+        lastMoveBroadcastTimeRef.current = now;
+        realtime.broadcastPlayerMove(
+          coords.lat,
+          coords.lng,
+          myPlayerRef.current.hp,
+          myPlayerRef.current.isAlive
+        );
+      }
     },
     [realtime]
   );
@@ -430,23 +454,29 @@ export const App: React.FC = () => {
             .select('*')
             .eq('game_id', room.id);
           if (data) {
-            setPlayers(
-              (data as any[]).map((d) => ({
-                id: d.id,
-                userId: d.user_id,
-                gameId: d.game_id,
-                nickname: d.nickname,
-                role: d.role as PlayerRole,
-                hp: d.hp,
-                maxHp: d.max_hp,
-                isAlive: d.is_alive,
-                lat: d.lat ?? room.centerLat,
-                lng: d.lng ?? room.centerLng,
-                damageDealt: d.damage_dealt,
-                revivesDone: d.revives_done,
-                cratesOpened: d.crates_opened,
-                monsterKills: d.monster_kills,
-              }))
+            setPlayers((prev) =>
+              (data as any[]).map((d) => {
+                const existing = prev.find(
+                  (p) => p.id === d.id || (d.user_id && p.userId === d.user_id)
+                );
+                return {
+                  id: d.id,
+                  userId: d.user_id,
+                  gameId: d.game_id,
+                  nickname: d.nickname,
+                  role: d.role as PlayerRole,
+                  hp: d.hp,
+                  maxHp: d.max_hp,
+                  isAlive: d.is_alive,
+                  lat: existing?.lat ?? d.lat ?? room.centerLat,
+                  lng: existing?.lng ?? d.lng ?? room.centerLng,
+                  damageDealt: d.damage_dealt,
+                  revivesDone: d.revives_done,
+                  cratesOpened: d.crates_opened,
+                  monsterKills: d.monster_kills,
+                  isHost: d.user_id === room.hostId,
+                };
+              })
             );
           }
         }

@@ -6,7 +6,7 @@ import { soundEffects } from '../services/soundEffects';
 
 interface RealtimeCallbacks {
   onMonsterUpdate?: (monster: Monster) => void;
-  onPlayerMove?: (payload: { playerId: string; lat: number; lng: number }) => void;
+  onPlayerMove?: (payload: { playerId?: string; userId?: string; lat: number; lng: number; hp?: number; isAlive?: boolean }) => void;
   onPlayerDamaged?: (payload: { playerId: string; damage: number; currentHp: number }) => void;
   onMonsterDamaged?: (payload: { damage: number; fromPlayerId: string; currentHp: number }) => void;
   onGhostPing?: (ping: GhostPing) => void;
@@ -30,6 +30,7 @@ export function useGameRealtime(
   gameStatus?: string | null
 ) {
   const channelRef = useRef<RealtimeChannel | null>(null);
+  const isSubscribedRef = useRef<boolean>(false);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const callbacksRef = useRef(callbacks);
@@ -59,16 +60,19 @@ export function useGameRealtime(
   }, [isHost, gameId, gameStatus]);
 
   useEffect(() => {
-    if (!roomCode || !myPlayerId) {
+    const targetRoomId = gameId || roomCode;
+    if (!targetRoomId || !myPlayerId) {
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
+        isSubscribedRef.current = false;
         setIsConnected(false);
       }
       return;
     }
 
-    const channelName = `room:${roomCode.toUpperCase()}`;
+    // Estandarización del canal usando game.id (UUID)
+    const channelName = `game_room:${targetRoomId}`;
     const channel = supabase.channel(channelName, {
       config: {
         broadcast: { ack: false, self: false },
@@ -83,6 +87,7 @@ export function useGameRealtime(
 
     // 2. ESCUCHAR MOVIMIENTO DE JUGADORES
     channel.on('broadcast', { event: 'player_move' }, ({ payload }) => {
+      console.log('[Realtime:Move] Receive:', payload);
       callbacksRef.current.onPlayerMove?.(payload);
     });
 
@@ -149,13 +154,15 @@ export function useGameRealtime(
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
+          isSubscribedRef.current = true;
           setIsConnected(true);
           await channel.track({
             playerId: myPlayerId,
             userId: myUserId,
             onlineAt: new Date().toISOString(),
           });
-        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          isSubscribedRef.current = false;
           setIsConnected(false);
         }
       });
@@ -163,35 +170,50 @@ export function useGameRealtime(
     channelRef.current = channel;
 
     return () => {
+      isSubscribedRef.current = false;
       if (channelRef.current) {
         supabase.removeChannel(channelRef.current);
         channelRef.current = null;
         setIsConnected(false);
       }
     };
-  }, [roomCode, myPlayerId, myUserId]);
+  }, [roomCode, gameId, myPlayerId, myUserId]);
 
   // EMISORES BROADCAST
 
   const broadcastMonsterUpdate = useCallback((monster: Monster) => {
-    channelRef.current?.send({
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
       type: 'broadcast',
       event: 'monster_update',
       payload: { monster },
     });
   }, []);
 
-  const broadcastPlayerMove = useCallback((lat: number, lng: number) => {
-    if (!myPlayerId) return;
-    channelRef.current?.send({
-      type: 'broadcast',
-      event: 'player_move',
-      payload: { playerId: myPlayerId, lat, lng },
-    });
-  }, [myPlayerId]);
+  const broadcastPlayerMove = useCallback(
+    (lat: number, lng: number, hp?: number, isAlive?: boolean) => {
+      if (!channelRef.current || !isSubscribedRef.current) return;
+      const payload = {
+        userId: myUserId,
+        playerId: myPlayerId,
+        lat,
+        lng,
+        hp,
+        isAlive,
+      };
+      console.log('[Realtime:Move] Emit:', payload);
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'player_move',
+        payload,
+      });
+    },
+    [myUserId, myPlayerId]
+  );
 
   const broadcastPlayerHit = useCallback((playerId: string, damage: number, currentHp: number) => {
-    channelRef.current?.send({
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
       type: 'broadcast',
       event: 'player_hit',
       payload: { playerId, damage, currentHp },
@@ -199,8 +221,8 @@ export function useGameRealtime(
   }, []);
 
   const broadcastMonsterDamaged = useCallback((damage: number, currentHp: number) => {
-    if (!myPlayerId) return;
-    channelRef.current?.send({
+    if (!channelRef.current || !isSubscribedRef.current || !myPlayerId) return;
+    channelRef.current.send({
       type: 'broadcast',
       event: 'monster_damaged',
       payload: { damage, fromPlayerId: myPlayerId, currentHp },
@@ -208,7 +230,8 @@ export function useGameRealtime(
   }, [myPlayerId]);
 
   const broadcastGhostPing = useCallback((ping: GhostPing) => {
-    channelRef.current?.send({
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
       type: 'broadcast',
       event: 'ghost_ping',
       payload: { ping },
@@ -216,7 +239,8 @@ export function useGameRealtime(
   }, []);
 
   const broadcastRadarActivated = useCallback((nickname: string, expiresAt: number) => {
-    channelRef.current?.send({
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
       type: 'broadcast',
       event: 'radar_activated',
       payload: { activatedBy: nickname, expiresAt },
@@ -224,8 +248,8 @@ export function useGameRealtime(
   }, []);
 
   const broadcastCrateLooted = useCallback((crateId: string, playerNickname: string, weaponName: string) => {
-    if (!myPlayerId) return;
-    channelRef.current?.send({
+    if (!channelRef.current || !isSubscribedRef.current || !myPlayerId) return;
+    channelRef.current.send({
       type: 'broadcast',
       event: 'crate_looted',
       payload: { crateId, playerId: myPlayerId, playerNickname, weaponName },
@@ -233,7 +257,8 @@ export function useGameRealtime(
   }, [myPlayerId]);
 
   const broadcastPlayerRevived = useCallback((revivedPlayerId: string, reviverNickname: string) => {
-    channelRef.current?.send({
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
       type: 'broadcast',
       event: 'player_revived',
       payload: { revivedPlayerId, reviverNickname },
@@ -241,7 +266,8 @@ export function useGameRealtime(
   }, []);
 
   const broadcastChestCountdown = useCallback((secondsRemaining: number, holdersCount: number) => {
-    channelRef.current?.send({
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
       type: 'broadcast',
       event: 'chest_countdown',
       payload: { secondsRemaining, holdersCount },
@@ -249,7 +275,8 @@ export function useGameRealtime(
   }, []);
 
   const broadcastRequestStateSync = useCallback(() => {
-    channelRef.current?.send({
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
       type: 'broadcast',
       event: 'request_state_sync',
       payload: {},
@@ -262,7 +289,8 @@ export function useGameRealtime(
     chestCountdown: number;
     holdersCount: number;
   }) => {
-    channelRef.current?.send({
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
       type: 'broadcast',
       event: 'full_state_sync',
       payload: state,
@@ -270,7 +298,8 @@ export function useGameRealtime(
   }, []);
 
   const broadcastGameCancelled = useCallback((reason: string = 'Misión abortada por el anfitrión') => {
-    channelRef.current?.send({
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
       type: 'broadcast',
       event: 'game_cancelled',
       payload: { reason },

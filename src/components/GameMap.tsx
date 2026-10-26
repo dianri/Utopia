@@ -462,7 +462,7 @@ export const GameMap: React.FC<GameMapProps> = ({
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
             ${isMe ? '<div class="absolute w-12 h-12 bg-cyan-400/20 rounded-full animate-ping"></div>' : ''}
-            <div class="w-9 h-9 rounded-full ${p.isAlive ? roleColors[p.role] : 'bg-gray-700 border-gray-400'} border-2 shadow-lg flex items-center justify-center text-sm font-bold text-white">
+            <div id="avatar-icon-${p.id}" class="w-9 h-9 rounded-full ${p.isAlive ? roleColors[p.role] : 'bg-gray-700 border-gray-400'} border-2 shadow-lg flex items-center justify-center text-sm font-bold text-white">
               ${p.isAlive ? roleIcons[p.role] : '🪦'}
             </div>
           </div>
@@ -488,6 +488,11 @@ export const GameMap: React.FC<GameMapProps> = ({
         if (hpBar) {
           hpBar.style.width = `${hpPercent}%`;
           hpBar.className = `h-full ${p.isAlive ? (hpPercent < 30 ? 'bg-red-500' : 'bg-emerald-400') : 'bg-gray-600'}`;
+        }
+        const avatarIcon = document.getElementById(`avatar-icon-${p.id}`);
+        if (avatarIcon) {
+          avatarIcon.className = `w-9 h-9 rounded-full ${p.isAlive ? roleColors[p.role] : 'bg-gray-700 border-gray-400'} border-2 shadow-lg flex items-center justify-center text-sm font-bold text-white`;
+          avatarIcon.textContent = p.isAlive ? roleIcons[p.role] : '🪦';
         }
       }
     });

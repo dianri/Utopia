@@ -6,7 +6,7 @@ interface UseGeolocationOptions {
   mode: MovementMode;
   initialPosition: Coordinates | null;
   positionKey?: string | null;
-  onPositionChange: (pos: Coordinates) => void;
+  onPositionChange: (pos: Coordinates, isFinal?: boolean) => void;
   isAlive: boolean;
   isSlowed?: boolean;
 }
@@ -50,6 +50,7 @@ export function useGeolocation({
     setCurrentPosition(coords);
     currentPosRef.current = coords;
     setTargetPosition(null);
+    onPositionChangeRef.current(coords, true);
   }, []);
 
   // ==========================================
@@ -76,7 +77,7 @@ export function useGeolocation({
         setIsGpsActive(true);
         setGpsError(null);
         setCurrentPosition(coords);
-        onPositionChangeRef.current(coords);
+        onPositionChangeRef.current(coords, true);
       },
       (err) => {
         console.warn('Error GPS:', err.message);
@@ -128,7 +129,7 @@ export function useGeolocation({
       );
 
       setCurrentPosition(position);
-      onPositionChangeRef.current(position);
+      onPositionChangeRef.current(position, arrived);
 
       if (!arrived) {
         animFrame = requestAnimationFrame(loop);
