@@ -167,6 +167,21 @@ export const GameMap: React.FC<GameMapProps> = ({
     mapRef.current = map;
 
     return () => {
+      if (monsterMarkerRef.current) {
+        monsterMarkerRef.current.remove();
+        monsterMarkerRef.current = null;
+      }
+      if (chestMarkerRef.current) {
+        chestMarkerRef.current.remove();
+        chestMarkerRef.current = null;
+      }
+      playerMarkersRef.current.forEach((m) => m.remove());
+      playerMarkersRef.current.clear();
+      crateMarkersRef.current.forEach((m) => m.remove());
+      crateMarkersRef.current.clear();
+      pingMarkersRef.current.forEach((m) => m.remove());
+      pingMarkersRef.current.clear();
+
       map.remove();
       mapRef.current = null;
       isMapLoadedRef.current = false;
@@ -246,7 +261,7 @@ export const GameMap: React.FC<GameMapProps> = ({
         </span>
       `;
 
-      chestMarkerRef.current = new maplibregl.Marker({ element: el })
+      chestMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
         .setLngLat([treasureLocation.lng, treasureLocation.lat])
         .addTo(map);
     } else {
@@ -293,7 +308,7 @@ export const GameMap: React.FC<GameMapProps> = ({
           </span>
         `;
 
-        const marker = new maplibregl.Marker({ element: el })
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([crate.lng, crate.lat])
           .addTo(map);
 
@@ -305,7 +320,7 @@ export const GameMap: React.FC<GameMapProps> = ({
   }, [crates]);
 
   // ==========================================
-  // MARCADOR DEL MONSTRUO (CON NIEBLA DE GUERRA)
+  // MARCADOR DEL MONSTRUO (CON NIEBLA DE GUERRA Y ANCLAJE PRECISO)
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
@@ -315,12 +330,13 @@ export const GameMap: React.FC<GameMapProps> = ({
     const distToMonster = getDistanceMeters(myCoords, monster);
     const visionRadius = getVisionRadius(myPlayer.role, isRadarActive);
     const isVisible = distToMonster <= visionRadius || isRadarActive;
+    const isAlive = monster.state !== 'dead' && monster.hp > 0;
 
-    // Si el monstruo está muerto o fuera de visión, ocultar marcador
-    if (!isVisible || monster.state === 'dead' || monster.hp <= 0) {
+    // Si el monstruo no debe ser visible o está muerto, ocultar mediante style.display
+    // (no destruimos el marcador para evitar desanclaje o recreaciones continuas)
+    if (!isVisible || !isAlive) {
       if (monsterMarkerRef.current) {
-        monsterMarkerRef.current.remove();
-        monsterMarkerRef.current = null;
+        monsterMarkerRef.current.getElement().style.display = 'none';
       }
       return;
     }
@@ -328,14 +344,18 @@ export const GameMap: React.FC<GameMapProps> = ({
     const hpPercent = Math.max(0, Math.min(100, (monster.hp / monster.maxHp) * 100));
     const isEnraged = monster.isEnraged || monster.state === 'enraged';
 
+    // 1. Crear el marcador una única vez si no existe aún
     if (!monsterMarkerRef.current) {
       const el = document.createElement('div');
-      el.className = 'monster-marker flex flex-col items-center select-none pointer-events-none transition-transform duration-300';
+      // NOTA CRÍTICA: Jamás usar transition-transform en el contenedor del marcador
+      // ya que rompe la sincronización del ciclo de proyección por transform de MapLibre GL
+      // provocando que el monstruo flote o se deslice al arrastrar o hacer zoom.
+      el.className = 'monster-marker flex flex-col items-center select-none pointer-events-none';
       el.id = 'monster-hud-marker';
       el.innerHTML = `
         <div class="relative flex items-center justify-center">
-          <div class="absolute ${isEnraged ? 'w-16 h-16 bg-red-600/40 animate-ping' : 'w-14 h-14 bg-purple-600/30 animate-pulse'} rounded-full"></div>
-          <div class="w-12 h-12 ${isEnraged ? 'bg-red-700 border-2 border-red-400' : 'bg-purple-800 border-2 border-purple-400'} rounded-full shadow-2xl flex items-center justify-center text-2xl">
+          <div id="monster-glow" class="absolute ${isEnraged ? 'w-16 h-16 bg-red-600/40 animate-ping' : 'w-14 h-14 bg-purple-600/30 animate-pulse'} rounded-full"></div>
+          <div id="monster-avatar" class="w-12 h-12 ${isEnraged ? 'bg-red-700 border-2 border-red-400' : 'bg-purple-800 border-2 border-purple-400'} rounded-full shadow-2xl flex items-center justify-center text-2xl">
             👹
           </div>
         </div>
@@ -343,23 +363,59 @@ export const GameMap: React.FC<GameMapProps> = ({
           <div class="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
             <div id="monster-hp-bar" class="h-full ${isEnraged ? 'bg-red-500' : 'bg-purple-500'}" style="width: ${hpPercent}%"></div>
           </div>
-          <span class="block text-center text-[9px] font-black text-red-300 uppercase tracking-tighter">
+          <span id="monster-status-text" class="block text-center text-[9px] font-black text-red-300 uppercase tracking-tighter">
             ${isEnraged ? 'Fase 2: Furia' : 'Monstruo'}
           </span>
         </div>
       `;
 
-      monsterMarkerRef.current = new maplibregl.Marker({ element: el })
+      monsterMarkerRef.current = new maplibregl.Marker({
+        element: el,
+        anchor: 'center',
+      })
         .setLngLat([monster.lng, monster.lat])
         .addTo(map);
     } else {
+      // 2. Si ya existe, asegurar visibilidad, actualizar posición fija y actualizar atributos DOM
+      const markerEl = monsterMarkerRef.current.getElement();
+      markerEl.style.display = '';
       monsterMarkerRef.current.setLngLat([monster.lng, monster.lat]);
-      const hpBar = document.getElementById('monster-hp-bar');
+
+      const hpBar = markerEl.querySelector('#monster-hp-bar') as HTMLElement | null;
       if (hpBar) {
         hpBar.style.width = `${hpPercent}%`;
+        hpBar.className = `h-full ${isEnraged ? 'bg-red-500' : 'bg-purple-500'}`;
+      }
+
+      const glow = markerEl.querySelector('#monster-glow');
+      if (glow) {
+        glow.className = `absolute ${isEnraged ? 'w-16 h-16 bg-red-600/40 animate-ping' : 'w-14 h-14 bg-purple-600/30 animate-pulse'} rounded-full`;
+      }
+
+      const avatar = markerEl.querySelector('#monster-avatar');
+      if (avatar) {
+        avatar.className = `w-12 h-12 ${isEnraged ? 'bg-red-700 border-2 border-red-400' : 'bg-purple-800 border-2 border-purple-400'} rounded-full shadow-2xl flex items-center justify-center text-2xl`;
+      }
+
+      const statusText = markerEl.querySelector('#monster-status-text');
+      if (statusText) {
+        statusText.textContent = isEnraged ? 'Fase 2: Furia' : 'Monstruo';
       }
     }
-  }, [monster, myPlayer.lat, myPlayer.lng, myPlayer.role, isRadarActive, center]);
+  }, [
+    monster.lat,
+    monster.lng,
+    monster.hp,
+    monster.maxHp,
+    monster.state,
+    monster.isEnraged,
+    myPlayer.lat,
+    myPlayer.lng,
+    myPlayer.role,
+    isRadarActive,
+    center.lat,
+    center.lng,
+  ]);
 
   // ==========================================
   // MARCADORES DE JUGADORES (ALIADOS Y PROPIO)
@@ -420,7 +476,7 @@ export const GameMap: React.FC<GameMapProps> = ({
           </div>
         `;
 
-        const marker = new maplibregl.Marker({ element: el })
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([lng, lat])
           .addTo(map);
 
@@ -468,7 +524,7 @@ export const GameMap: React.FC<GameMapProps> = ({
           </span>
         `;
 
-        const marker = new maplibregl.Marker({ element: el })
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([ping.lng, ping.lat])
           .addTo(map);
 
