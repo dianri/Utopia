@@ -1,43 +1,91 @@
-# Utopia
+# Las Meriendas: Monster Hunt 👹⚔️
 
-Repositorio del proyecto **Utopia**.
+> **Utopia** — Juego web cooperativo y táctico de geolocalización en tiempo real desarrollado como Progressive Web App (PWA).
 
-## Estado
+---
 
-Proyecto recién inicializado. Aún no hay código ni estructura de carpetas.
+## 🎮 Descripción y Mecánicas
 
-## Primeros pasos
+En **Las Meriendas: Monster Hunt**, una escuadra de hasta 4 cazadores debe coordinarse en un mapa táctico del mundo real para saquear airdrops de armas, defenderse del temible Monstruo de Las Meriendas y asegurar el cofre del tesoro para lograr la victoria.
 
+### Características Principales
+
+- **Modos de Movimiento Dual:**
+  - **GPS Real:** Geolocalización de alta precisión en vivo (`navigator.geolocation.watchPosition`).
+  - **Tap-to-Move:** Pulsa en cualquier punto del mapa para moverte con paso humano simulado a 1.4 m/s (~5 km/h).
+- **Clases de Combate:**
+  - **Médico:** Reanimación de aliados caídos en 10s (en lugar de 20s) y radio de curación ampliado a 35m.
+  - **Tanque:** +50% de vida base (150 HP) y atracción de agro prioritario del monstruo.
+  - **Explorador:** Radio de visión de 105m y habilidad activa **Radar Táctico** (cooldown 60s, revela al monstruo durante 10s a todos los aliados).
+  - **Tirador:** +35% de daño a distancia y mayor alcance de tiro efectivo.
+- **Motor de Mapas Vectoriales:** MapLibre GL con estilos vectoriales libres de OpenFreeMap (modo oscuro acelerado por WebGL a 60 FPS).
+- **IA del Monstruo (Host-driven):**
+  - **Patrulla:** Vigilancia circular en torno al cofre.
+  - **Persecución:** Detección de radio de agresión y ataque continuo cuerpo a cuerpo.
+  - **Fase 2 (Enfurecimiento):** Al bajar del 30% de HP, velocidad +40%, rugido ensordecedor y ralentización de jugadores cercanos.
+  - **Muerte Temporal:** Desaparición con cuenta atrás visible de 60s y resurrección en el cofre.
+- **Audio y Hápticos Procedurales:** Sintetizador con Web Audio API (disparos, latidos cardíacos, rugidos, alarmas y fanfarria triunfal sin archivos externos pesados) y Navigator Vibration API para alerta por proximidad.
+- **Modo Sigilo / Discreto:** Alterna el audio para confiar únicamente en pulsos táctiles y HUD visual.
+- **Modo Fantasma y Resurrección:** Al caer a 0 HP, conviértete en tumba y envía pings tácticos de alerta a tus aliados mientras te reaniman.
+- **Condición de Victoria:** Asegura el cofre permaneciendo en un radio de 20m durante 30 segundos continuos mientras el monstruo entra en furia hacia el cofre.
+- **Ranking Histórico Persistente:** Tabla de clasificación conectada a PostgreSQL en Supabase con desglose de estadísticas (daño, revividos, cajas y bajas).
+
+---
+
+## 🛠️ Stack Tecnológico
+
+- **Frontend:** React 18+, Vite, TypeScript estricto.
+- **Estilos & HUD:** Tailwind CSS (diseño táctico oscuro mobile-first), Lucide React, Canvas Confetti.
+- **Motor de Mapas:** `maplibre-gl` con azulejos libres de OpenFreeMap.
+- **Sonido y Hápticos:** Web Audio API procedural + Navigator Vibration API.
+- **PWA:** `vite-plugin-pwa` con Service Worker agresivo, precache de assets y soporte offline.
+- **Backend & Realtime:** Supabase.
+  - Autenticación Anónima (`signInAnonymously()`).
+  - Base de datos relacional PostgreSQL con RLS estricto y triggers automáticos.
+  - Supabase Realtime (Canales combinados con `broadcast` para movimiento sin saturar la BD y `presence` para estados de conexión).
+
+---
+
+## 🚀 Instalación y Puesta en Marcha
+
+### 1. Clonar el repositorio
 ```bash
 git clone https://github.com/dianri/Utopia.git
 cd Utopia
 ```
 
-## Estructura
-
-Por definir según la tecnología que se use.
-
-## Flujo de trabajo
-
-Las normas de trabajo del proyecto están en [`AGENTS.md`](./AGENTS.md) y son de obligado cumplimiento:
-
-1. Cada tarea se desarrolla en una rama `features/nombre-descriptivo` o `fix/nombre-del-error`.
-2. Antes de commitear, la compilación debe terminar con 0 errores y 0 advertencias.
-3. Tras fusionar en `main`, se actualizan `AGENTS.md` y este `README.md` si aplica.
-
+### 2. Instalar dependencias
 ```bash
-git checkout -b features/mi-tarea
-# ... trabajo ...
-git add -A && git commit -m "feat: mi tarea"
-git checkout main && git merge features/mi-tarea && git push
+npm install
 ```
 
-## Backend
+### 3. Configurar variables de entorno
+Copia la plantilla `.env.example` a `.env` y añade tus claves de Supabase:
+```bash
+cp .env.example .env
+```
+Configura:
+```env
+VITE_SUPABASE_URL=https://iadiswktxduqetzjujli.supabase.co
+VITE_SUPABASE_ANON_KEY=tu_clave_anonima_aqui
+```
 
-Base de datos y autenticación con [Supabase](https://supabase.com/dashboard/project/iadiswktxduqetzjujli) (proyecto `iadiswktxduqetzjujli`). El esquema se gestiona mediante migraciones versionadas.
+### 4. Ejecutar en desarrollo
+```bash
+npm run dev
+```
 
-> Los tokens de acceso (`sbp_…`), las claves `service_role` y los archivos `.env*` **nunca** se suben al repositorio.
+### 5. Compilación para producción (Quality Gate)
+```bash
+npm run build
+```
+Genera la carpeta `dist/` optimizada con división de módulos (`vendor`, `maplibre`, `supabase`) y Service Worker PWA activo.
 
-## Licencia
+---
 
-Por definir.
+## 🌿 Flujo de Desarrollo
+
+Cumpliendo las directrices de [`AGENTS.md`](./AGENTS.md):
+- Todas las características se desarrollan en ramas `features/*` o `fix/*`.
+- El comando `npm run build` debe finalizar con **0 errores y 0 advertencias** antes de cualquier commit o merge.
+- Sincronización continua de documentación post-feature.

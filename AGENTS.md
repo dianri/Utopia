@@ -33,8 +33,8 @@ Datos objetivos del repositorio que el agente debe tener presentes:
 - **Repositorio:** <https://github.com/dianri/Utopia> (público).
 - **Backend:** Supabase, proyecto `iadiswktxduqetzjujli` (`https://iadiswktxduqetzjujli.supabase.co`).
 - **Acceso a datos:** servidor MCP `supabase` (remoto, scopeado a ese proyecto). Para cambios de esquema usar `apply_migration`; `execute_sql` solo para consultas.
-- **Stack de aplicación:** por definir (aún no hay `package.json`).
-- **Comando de build:** pendiente de definir. Cuando exista, el Quality Gate de la sección 2 se ejecuta con `npm run build` (o el equivalente del stack elegido) antes de cada commit y merge.
+- **Stack de aplicación:** React 18+, Vite, TypeScript, Tailwind CSS, MapLibre GL, Supabase JS, Web Audio API, `vite-plugin-pwa`.
+- **Comando de build:** `npm run build` (`tsc && vite build`). El Quality Gate de la sección 2 se ejecuta obligatoriamente antes de cada commit y merge asegurando 0 errores y 0 advertencias.
 
 ### Secretos
 
