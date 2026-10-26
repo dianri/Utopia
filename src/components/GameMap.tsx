@@ -448,8 +448,8 @@ export const GameMap: React.FC<GameMapProps> = ({
   }, [ghostPings]);
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-hud-dark">
-      <div ref={mapContainerRef} className="w-full h-full" />
+    <div className="relative w-screen h-screen overflow-hidden bg-hud-dark">
+      <div ref={mapContainerRef} id="map" className="w-full h-full" />
 
       {/* BOTÓN DE CENTRAR CÁMARA */}
       <button

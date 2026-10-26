@@ -41,6 +41,14 @@ class SoundEffectsService {
     return this.stealthMode;
   }
 
+  /**
+   * Desbloquea de forma perezosa el AudioContext tras la primera interacción
+   * del usuario respetando las políticas de reproducción automática (autoplay) de iOS/Android
+   */
+  public initOnUserInteraction() {
+    this.initContext();
+  }
+
   public toggleMute() {
     this.isMuted = !this.isMuted;
     return this.isMuted;

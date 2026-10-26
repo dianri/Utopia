@@ -81,6 +81,17 @@ npm run build
 ```
 Genera la carpeta `dist/` optimizada con división de módulos (`vendor`, `maplibre`, `supabase`) y Service Worker PWA activo.
 
+### 6. Despliegue en Vercel
+El repositorio incluye [`vercel.json`](./vercel.json) con la regla de reescritura para Single Page Applications (SPA).
+Para desplegar en Vercel:
+1. Conecta el repositorio en Vercel.
+2. En **Settings > Environment Variables**, añade:
+   - `VITE_SUPABASE_URL` = `https://iadiswktxduqetzjujli.supabase.co`
+   - `VITE_SUPABASE_ANON_KEY` = tu clave pública/anónima de Supabase
+3. La aplicación cuenta con blindaje contra fallos de inicialización:
+   - Si no se configuran las variables en Vercel, la aplicación no crashea en pantalla negra; muestra un banner descriptivo y activa el modo de demostración local.
+   - Cuenta con un `<ErrorBoundary>` táctico que captura cualquier excepción de WebGL, audio o geolocalización mostrando el diagnóstico en pantalla.
+
 ---
 
 ## 🌿 Flujo de Desarrollo
