@@ -24,13 +24,37 @@ export function useGameRealtime(
   roomCode: string | null,
   myPlayerId: string | null,
   myUserId: string | null,
-  callbacks: RealtimeCallbacks
+  callbacks: RealtimeCallbacks,
+  isHost?: boolean,
+  gameId?: string | null,
+  gameStatus?: string | null
 ) {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
+
+  // Keep-alive de actividad del Host (cada 2 minutos) para evitar que la sala expire
+  useEffect(() => {
+    if (!isHost || !gameId) return;
+    if (gameStatus && gameStatus !== 'lobby' && gameStatus !== 'playing') return;
+
+    // Actualización inicial
+    (supabase.from('games') as any)
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', gameId)
+      .then();
+
+    const interval = setInterval(() => {
+      (supabase.from('games') as any)
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', gameId)
+        .then();
+    }, 120_000); // 2 minutos
+
+    return () => clearInterval(interval);
+  }, [isHost, gameId, gameStatus]);
 
   useEffect(() => {
     if (!roomCode || !myPlayerId) {
