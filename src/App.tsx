@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase, ensureAnonymousAuth } from './lib/supabase';
 import type {
   GameRoom,
@@ -123,15 +123,33 @@ export const App: React.FC = () => {
   const chestHoldersCountRef = useRef<number>(chestHoldersCount);
   chestHoldersCountRef.current = chestHoldersCount;
 
-  // Logging táctico
+  // Logging táctico con descarte de duplicados y contador acumulativo
   const addLog = useCallback((text: string, type: TacticalLogMessage['type'] = 'info') => {
-    const newMsg: TacticalLogMessage = {
-      id: crypto.randomUUID(),
-      timestamp: Date.now(),
-      text,
-      type,
-    };
-    setCombatLogs((prev) => [...prev.slice(-20), newMsg]);
+    setCombatLogs((prev) => {
+      const last = prev[prev.length - 1];
+      if (last && last.text === text && last.type === type) {
+        // Actualizar timestamp y contador acumulativo sin apilar avisos repetidos
+        const updated = [...prev];
+        updated[updated.length - 1] = {
+          ...last,
+          timestamp: Date.now(),
+          count: (last.count || 1) + 1,
+        };
+        return updated;
+      }
+      const newMsg: TacticalLogMessage = {
+        id: crypto.randomUUID(),
+        timestamp: Date.now(),
+        text,
+        type,
+        count: 1,
+      };
+      return [...prev.slice(-19), newMsg];
+    });
+  }, []);
+
+  const handleDismissLog = useCallback((id: string) => {
+    setCombatLogs((prev) => prev.filter((m) => m.id !== id));
   }, []);
 
   // 1. INICIALIZAR SESIÓN ANÓNIMA, VERIFICAR SESIÓN ACTIVA Y DETECTAR URL PARAM ?room=CODE
@@ -1327,7 +1345,7 @@ export const App: React.FC = () => {
     addLog('¡OPERACIÓN INICIADA! Buscad suministros y asegurad el tesoro.', 'info');
   };
 
-  const handleMapClick = (coords: Coordinates) => {
+  const handleMapClick = useCallback((coords: Coordinates) => {
     if (!room) return;
 
     if (myPlayer && !myPlayer.isAlive) {
@@ -1360,7 +1378,7 @@ export const App: React.FC = () => {
         setManualDestination(coords);
       }
     }
-  };
+  }, [room, myPlayer, addLog, realtime]);
 
   const handleGhostPing = (type: GhostPing['type']) => {
     if (!myPlayer) return;
@@ -1394,6 +1412,15 @@ export const App: React.FC = () => {
   const isOutOfPlayArea = room ? distToCenter > room.playAreaRadius : false;
   const outOfAreaMeters = room ? Math.round(distToCenter - room.playAreaRadius) : 0;
 
+  const mapCenter = useMemo(
+    () => ({ lat: room?.centerLat ?? 0, lng: room?.centerLng ?? 0 }),
+    [room?.centerLat, room?.centerLng]
+  );
+  const mapTreasureLocation = useMemo(
+    () => ({ lat: room?.treasureLat ?? 0, lng: room?.treasureLng ?? 0 }),
+    [room?.treasureLat, room?.treasureLng]
+  );
+
   // ==========================================
   // RENDERIZADO DE LA INTERFAZ
   // ==========================================
@@ -1402,9 +1429,9 @@ export const App: React.FC = () => {
       {/* 1. MAPA TÁCTICO WEBGL A PANTALLA COMPLETA */}
       {room && myPlayer ? (
         <GameMap
-          center={{ lat: room.centerLat, lng: room.centerLng }}
+          center={mapCenter}
           playAreaRadius={room.playAreaRadius}
-          treasureLocation={{ lat: room.treasureLat, lng: room.treasureLng }}
+          treasureLocation={mapTreasureLocation}
           myPlayer={myPlayer}
           players={players}
           monster={monster}
@@ -1611,7 +1638,7 @@ export const App: React.FC = () => {
 
           <RespawnTimer secondsRemaining={monster.respawnTimeRemaining} />
 
-          <CombatLog messages={combatLogs} />
+          <CombatLog messages={combatLogs} onDismiss={handleDismissLog} />
 
           {/* AVISO TÁCTICO: FUERA DEL ÁREA DE JUEGO */}
           {isOutOfPlayArea && (
