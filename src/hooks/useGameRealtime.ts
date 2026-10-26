@@ -40,18 +40,20 @@ export function useGameRealtime(
     if (!isHost || !gameId) return;
     if (gameStatus && gameStatus !== 'lobby' && gameStatus !== 'playing') return;
 
-    // Actualización inicial
-    (supabase.from('games') as any)
-      .update({ updated_at: new Date().toISOString() })
-      .eq('id', gameId)
-      .then();
+    const touchGameActivity = async () => {
+      try {
+        await (supabase.from('games') as any)
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', gameId);
+      } catch (err) {
+        console.warn('Error al enviar pulso de actividad del host:', err);
+      }
+    };
 
-    const interval = setInterval(() => {
-      (supabase.from('games') as any)
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', gameId)
-        .then();
-    }, 120_000); // 2 minutos
+    // Actualización inicial
+    touchGameActivity();
+
+    const interval = setInterval(touchGameActivity, 120_000); // 2 minutos
 
     return () => clearInterval(interval);
   }, [isHost, gameId, gameStatus]);
