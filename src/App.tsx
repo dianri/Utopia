@@ -43,7 +43,7 @@ import { GhostOverlay } from './components/HUD/GhostOverlay';
 import { CreateRoomModal } from './components/Lobby/CreateRoomModal';
 import { JoinRoomModal } from './components/Lobby/JoinRoomModal';
 import { WaitingRoom } from './components/Lobby/WaitingRoom';
-import { GameExplorer } from './components/Lobby/GameExplorer';
+import { GameExplorer, type ActiveGameItem } from './components/Lobby/GameExplorer';
 
 import { VictoryModal } from './components/PostGame/VictoryModal';
 import { DefeatModal } from './components/PostGame/DefeatModal';
@@ -90,6 +90,7 @@ export const App: React.FC = () => {
   const [showCreateModal, setShowCreateModal] = useState<boolean>(false);
   const [showJoinModal, setShowJoinModal] = useState<boolean>(false);
   const [joinModalInitialCode, setJoinModalInitialCode] = useState<string>('');
+  const [targetPrivateGame, setTargetPrivateGame] = useState<{ id: string; code: string; name?: string } | null>(null);
   const [showLeaderboard, setShowLeaderboard] = useState<boolean>(false);
   const [stealthMode, setStealthMode] = useState<boolean>(soundEffects.isStealth());
   const [cancelledAlertMessage, setCancelledAlertMessage] = useState<string | null>(null);
@@ -1482,6 +1483,7 @@ export const App: React.FC = () => {
                 <button
                   onClick={() => {
                     soundEffects.initOnUserInteraction();
+                    setTargetPrivateGame(null);
                     setJoinModalInitialCode('');
                     setShowJoinModal(true);
                   }}
@@ -1497,16 +1499,22 @@ export const App: React.FC = () => {
             <div className="w-full flex items-center gap-3">
               <div className="flex-1 h-px bg-hud-border/60" />
               <span className="text-[10px] font-mono text-hud-muted uppercase tracking-widest">
-                RADAR PÚBLICO
+                RADAR DE OPERACIONES TÁCTICAS
               </span>
               <div className="flex-1 h-px bg-hud-border/60" />
             </div>
 
-            {/* EXPLORADOR DE PARTIDAS PÚBLICAS */}
+            {/* EXPLORADOR DE OPERACIONES TÁCTICAS (PÚBLICAS Y PRIVADAS) */}
             <GameExplorer
-              onJoinGame={(code: string) => {
+              onJoinGame={(code: string, isPrivate?: boolean, targetGame?: ActiveGameItem) => {
                 soundEffects.initOnUserInteraction();
-                setJoinModalInitialCode(code);
+                if (isPrivate && targetGame) {
+                  setTargetPrivateGame({ id: targetGame.id, code: targetGame.code, name: targetGame.name });
+                  setJoinModalInitialCode('');
+                } else {
+                  setTargetPrivateGame(null);
+                  setJoinModalInitialCode(code);
+                }
                 setShowJoinModal(true);
               }}
               onCreateGame={() => {
@@ -1655,8 +1663,12 @@ export const App: React.FC = () => {
       {showJoinModal && (
         <JoinRoomModal
           initialCode={joinModalInitialCode}
+          targetPrivateGame={targetPrivateGame}
           onConfirm={handleJoinRoom}
-          onCancel={() => setShowJoinModal(false)}
+          onCancel={() => {
+            setShowJoinModal(false);
+            setTargetPrivateGame(null);
+          }}
         />
       )}
 
