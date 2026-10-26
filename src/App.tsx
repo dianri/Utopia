@@ -5,12 +5,15 @@ import type {
   Player,
   Monster,
   SupplyCrate,
+  CrateType,
   GhostPing,
   TacticalLogMessage,
   MovementMode,
   PlayerRole,
+  PlayerSpeed,
   Coordinates,
 } from './types/game';
+import { PLAYER_SPEED_MPS } from './types/game';
 import {
   DEFAULT_WEAPONS_BY_ROLE,
   WEAPON_REGISTRY,
@@ -428,6 +431,7 @@ export const App: React.FC = () => {
 
   const { setManualDestination, resetPosition } = useGeolocation({
     mode: room?.movementMode ?? 'manual',
+    baseSpeedMps: room?.playerSpeed ? PLAYER_SPEED_MPS[room.playerSpeed] : 1.4,
     initialPosition:
       myPlayer?.lat != null && myPlayer?.lng != null
         ? { lat: myPlayer.lat, lng: myPlayer.lng }
@@ -922,6 +926,7 @@ export const App: React.FC = () => {
     isPublic: boolean;
     radiusMeters: number;
     movementMode: MovementMode;
+    playerSpeed: PlayerSpeed;
     center: Coordinates;
     nickname: string;
     role: PlayerRole;
@@ -959,6 +964,7 @@ export const App: React.FC = () => {
       host_id: userId,
       status: 'lobby',
       movement_mode: config.movementMode,
+      player_speed: config.playerSpeed || 'normal',
       play_area_radius: config.radiusMeters,
       center_lat: config.center.lat,
       center_lng: config.center.lng,
@@ -969,21 +975,33 @@ export const App: React.FC = () => {
     let gameData: any = null;
     let gameError: any = null;
 
-    const resWithPublic = await (supabase.from('games') as any)
+    // Inserción completa con is_public y player_speed
+    const resFull = await (supabase.from('games') as any)
       .insert({ ...basePayload, is_public: config.isPublic })
       .select()
       .single();
 
-    if (resWithPublic.error) {
-      // Fallback si la columna is_public no existiera en la tabla remota
-      const resFallback = await (supabase.from('games') as any)
-        .insert(basePayload)
+    if (resFull.error) {
+      // Fallback defensivo si player_speed no existe aún en la tabla remota
+      const { player_speed, ...legacyPayload } = basePayload;
+      const resWithPublic = await (supabase.from('games') as any)
+        .insert({ ...legacyPayload, is_public: config.isPublic })
         .select()
         .single();
-      gameData = resFallback.data;
-      gameError = resFallback.error;
+
+      if (resWithPublic.error) {
+        // Fallback mínimo sin is_public ni player_speed
+        const resFallback = await (supabase.from('games') as any)
+          .insert(legacyPayload)
+          .select()
+          .single();
+        gameData = resFallback.data;
+        gameError = resFallback.error;
+      } else {
+        gameData = resWithPublic.data;
+      }
     } else {
-      gameData = resWithPublic.data;
+      gameData = resFull.data;
     }
 
     if (gameError || !gameData) {
@@ -1023,6 +1041,7 @@ export const App: React.FC = () => {
       status: gameData.status,
       isPublic: gameData.is_public ?? config.isPublic ?? true,
       movementMode: gameData.movement_mode,
+      playerSpeed: (gameData.player_speed as PlayerSpeed) ?? config.playerSpeed ?? 'normal',
       playAreaRadius: gameData.play_area_radius,
       centerLat: gameData.center_lat,
       centerLng: gameData.center_lng,
@@ -1062,25 +1081,34 @@ export const App: React.FC = () => {
       isEnraged: false,
     });
 
-    // Generar airdrops iniciales
+    // Generar airdrops iniciales con variedad táctica y recompensas visibles
     const generatedCrates: SupplyCrate[] = [];
-    const weaponPool = [
-      WEAPON_REGISTRY.combat_shotgun,
-      WEAPON_REGISTRY.assault_rifle,
-      WEAPON_REGISTRY.pistol_9mm,
+    const crateTemplates: {
+      type: CrateType;
+      weapon: typeof WEAPON_REGISTRY[keyof typeof WEAPON_REGISTRY];
+      heal: number;
+      ammo: number;
+    }[] = [
+      { type: 'rifle', weapon: WEAPON_REGISTRY.assault_rifle, heal: 25, ammo: 60 },
+      { type: 'shotgun', weapon: WEAPON_REGISTRY.combat_shotgun, heal: 25, ammo: 24 },
+      { type: 'medkit', weapon: WEAPON_REGISTRY.pistol_9mm, heal: 80, ammo: 20 },
+      { type: 'ammo', weapon: WEAPON_REGISTRY.pistol_9mm, heal: 20, ammo: 90 },
+      { type: 'melee', weapon: WEAPON_REGISTRY.baseball_bat, heal: 35, ammo: 15 },
     ];
 
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       const dropPoint = getRandomPointInCircle(config.center, config.radiusMeters * 0.7);
+      const template = crateTemplates[i % crateTemplates.length];
       generatedCrates.push({
         id: crypto.randomUUID(),
         lat: dropPoint.lat,
         lng: dropPoint.lng,
         opened: false,
         droppedAt: Date.now(),
-        weaponReward: weaponPool[i % weaponPool.length],
-        healReward: 40,
-        ammoReward: 30,
+        crateType: template.type,
+        weaponReward: template.weapon,
+        healReward: template.heal,
+        ammoReward: template.ammo,
       });
     }
 
@@ -1218,6 +1246,7 @@ export const App: React.FC = () => {
       status: gameData.status,
       isPublic: gameData.is_public ?? true,
       movementMode: gameData.movement_mode,
+      playerSpeed: (gameData.player_speed as PlayerSpeed) ?? 'normal',
       playAreaRadius: gameData.play_area_radius,
       centerLat: gameData.center_lat,
       centerLng: gameData.center_lng,
@@ -1298,25 +1327,34 @@ export const App: React.FC = () => {
     // Si la partida ya está en combate (late join o reconexión), configurar airdrops iniciales de contingencia
     if (gameData.status === 'playing') {
       const fallbackCrates: SupplyCrate[] = [];
-      const weaponPool = [
-        WEAPON_REGISTRY.combat_shotgun,
-        WEAPON_REGISTRY.assault_rifle,
-        WEAPON_REGISTRY.pistol_9mm,
+      const crateTemplates: {
+        type: CrateType;
+        weapon: typeof WEAPON_REGISTRY[keyof typeof WEAPON_REGISTRY];
+        heal: number;
+        ammo: number;
+      }[] = [
+        { type: 'rifle', weapon: WEAPON_REGISTRY.assault_rifle, heal: 25, ammo: 60 },
+        { type: 'shotgun', weapon: WEAPON_REGISTRY.combat_shotgun, heal: 25, ammo: 24 },
+        { type: 'medkit', weapon: WEAPON_REGISTRY.pistol_9mm, heal: 80, ammo: 20 },
+        { type: 'ammo', weapon: WEAPON_REGISTRY.pistol_9mm, heal: 20, ammo: 90 },
+        { type: 'melee', weapon: WEAPON_REGISTRY.baseball_bat, heal: 35, ammo: 15 },
       ];
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < 5; i++) {
         const dropPoint = getRandomPointInCircle(
           { lat: gameData.center_lat, lng: gameData.center_lng },
           gameData.play_area_radius * 0.7
         );
+        const template = crateTemplates[i % crateTemplates.length];
         fallbackCrates.push({
           id: `crate_${gameData.id}_${i}`,
           lat: dropPoint.lat,
           lng: dropPoint.lng,
           opened: false,
           droppedAt: Date.now(),
-          weaponReward: weaponPool[i % weaponPool.length],
-          healReward: 40,
-          ammoReward: 30,
+          crateType: template.type,
+          weaponReward: template.weapon,
+          healReward: template.heal,
+          ammoReward: template.ammo,
         });
       }
       setCrates(fallbackCrates);
@@ -1438,6 +1476,7 @@ export const App: React.FC = () => {
           crates={crates}
           ghostPings={ghostPings}
           movementMode={room.movementMode}
+          playerSpeed={room.playerSpeed}
           isRadarActive={isRadarActive}
           onMapClick={handleMapClick}
         />

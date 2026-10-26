@@ -4,6 +4,17 @@ export type GameStatus = 'lobby' | 'playing' | 'victory' | 'defeat' | 'cancelled
 
 export type MovementMode = 'gps' | 'manual';
 
+export type PlayerSpeed = 'slow' | 'normal' | 'fast' | 'very_fast';
+
+export const PLAYER_SPEED_MPS: Record<PlayerSpeed, number> = {
+  slow: 0.8,      // ~3 km/h (paso relajado / sigilo)
+  normal: 1.4,    // ~5 km/h (paso humano estándar)
+  fast: 2.8,      // ~10 km/h (trote ligero)
+  very_fast: 4.5, // ~16 km/h (sprint)
+};
+
+export type CrateType = 'medkit' | 'ammo' | 'rifle' | 'shotgun' | 'melee';
+
 export interface Coordinates {
   lat: number;
   lng: number;
@@ -64,6 +75,7 @@ export interface SupplyCrate {
   lng: number;
   opened: boolean;
   droppedAt: number;
+  crateType?: CrateType;
   weaponReward: Weapon;
   healReward: number;
   ammoReward: number;
@@ -86,6 +98,7 @@ export interface GameRoom {
   status: GameStatus;
   isPublic: boolean;
   movementMode: MovementMode;
+  playerSpeed?: PlayerSpeed;
   playAreaRadius: number; // in meters
   centerLat: number;
   centerLng: number;

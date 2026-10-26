@@ -4,6 +4,7 @@ import { stepTowards } from '../services/geoUtils';
 
 interface UseGeolocationOptions {
   mode: MovementMode;
+  baseSpeedMps?: number;
   initialPosition: Coordinates | null;
   positionKey?: string | null;
   onPositionChange: (pos: Coordinates, isFinal?: boolean) => void;
@@ -13,6 +14,7 @@ interface UseGeolocationOptions {
 
 export function useGeolocation({
   mode,
+  baseSpeedMps = 1.4,
   initialPosition,
   positionKey,
   onPositionChange,
@@ -97,7 +99,7 @@ export function useGeolocation({
   }, [mode, isAlive]);
 
   // ==========================================
-  // MODO MANUAL: TAP-TO-MOVE (1.4 m/s)
+  // MODO MANUAL: TAP-TO-MOVE (Interpolación lineal según velocidad de sala)
   // ==========================================
   const setManualDestination = useCallback(
     (target: Coordinates) => {
@@ -113,7 +115,8 @@ export function useGeolocation({
     let animFrame: number;
     let lastTime = performance.now();
 
-    const speedMps = isSlowed ? 0.7 : 1.4; // 1.4 m/s (~5 km/h) paso humano normal, 0.7 m/s si está ralentizado
+    const effectiveBaseSpeed = baseSpeedMps && baseSpeedMps > 0 ? baseSpeedMps : 1.4;
+    const speedMps = isSlowed ? effectiveBaseSpeed * 0.5 : effectiveBaseSpeed;
 
     const loop = (time: number) => {
       if (!currentPosRef.current) return;
@@ -143,7 +146,7 @@ export function useGeolocation({
     return () => {
       cancelAnimationFrame(animFrame);
     };
-  }, [mode, targetPosition, isAlive, isSlowed]);
+  }, [mode, targetPosition, isAlive, isSlowed, baseSpeedMps]);
 
   return {
     currentPosition,
