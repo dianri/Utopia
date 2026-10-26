@@ -78,6 +78,7 @@ Cada agente debe cumplir y reportar el siguiente checklist al culminar su interv
 - [ ] ¿He ejecutado `npm run build` sin errores de compilación ni advertencias de tipos TypeScript?
 - [ ] ¿He probado que la aplicación compila con `vite-plugin-pwa` y no rompe los chunks de build?
 - [ ] ¿Se ha documentado en el mensaje de commit qué módulos fueron modificados y qué endpoints o eventos de Supabase se vieron afectados?
+- [ ] ¿He registrado mis cambios (Added, Changed, Fixed, Database) en la sección [Unreleased] de CHANGELOG.md?
 
 ---
 
