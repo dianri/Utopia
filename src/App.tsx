@@ -307,6 +307,9 @@ export const App: React.FC = () => {
       },
       onMonsterDamaged: ({ damage, fromPlayerId, currentHp }) => {
         setMonster((prev) => ({ ...prev, hp: currentHp }));
+        if (fromPlayerId && monsterAIRef.current) {
+          monsterAIRef.current.setAggroTarget(fromPlayerId);
+        }
         setPlayers((prev) =>
           prev.map((p) =>
             p.id === fromPlayerId
@@ -388,6 +391,16 @@ export const App: React.FC = () => {
     !!myPlayer?.isHost,
     room?.id ?? null,
     room?.status ?? null
+  );
+
+  const realtimeRef = useRef(realtime);
+  realtimeRef.current = realtime;
+
+  const addLogRef = useRef(addLog);
+  addLogRef.current = addLog;
+
+  const isHost = Boolean(
+    myPlayer?.isHost || (room && myPlayer && room.hostId === myPlayer.userId)
   );
 
   // Solicitar sincronización de partida al conectarse al canal Realtime si la partida está en curso
@@ -514,19 +527,25 @@ export const App: React.FC = () => {
   // BUCLE DE IA DEL MONSTRUO (EJECUTADO EN EL CLIENTE HOST CADA 1000MS)
   // ==========================================
   useEffect(() => {
-    if (room?.status !== 'playing' || !myPlayer?.isHost) return;
+    if (room?.status !== 'playing' || !isHost) return;
+
+    const treasureCoords: Coordinates = {
+      lat: room.treasureLat || room.centerLat,
+      lng: room.treasureLng || room.centerLng,
+    };
 
     if (!monsterAIRef.current) {
-      monsterAIRef.current = new MonsterAIController({
-        lat: room.treasureLat,
-        lng: room.treasureLng,
-      });
+      monsterAIRef.current = new MonsterAIController(treasureCoords);
+    } else {
+      monsterAIRef.current.setTreasureLocation(treasureCoords);
     }
 
     const interval = window.setInterval(() => {
       if (!monsterAIRef.current) return;
 
-      const isContest = chestHoldersCount >= Math.min(2, playersRef.current.filter((p) => p.isAlive).length);
+      const isContest =
+        chestHoldersCountRef.current >=
+        Math.min(2, playersRef.current.filter((p) => p.isAlive).length);
 
       const result = monsterAIRef.current.update(
         monsterRef.current,
@@ -535,14 +554,14 @@ export const App: React.FC = () => {
       );
 
       setMonster(result.updatedMonster);
-      realtime.broadcastMonsterUpdate(result.updatedMonster);
+      realtimeRef.current.broadcastMonsterUpdate(result.updatedMonster);
 
       // Si el monstruo atacó a un jugador
       if (result.attackedPlayerId && result.attackDamage > 0) {
         const victim = playersRef.current.find((p) => p.id === result.attackedPlayerId);
         if (victim) {
           const newHp = Math.max(0, victim.hp - result.attackDamage);
-          realtime.broadcastPlayerHit(victim.id, result.attackDamage, newHp);
+          realtimeRef.current.broadcastPlayerHit(victim.id, result.attackDamage, newHp);
           // Si el host es la víctima
           if (victim.id === myPlayerRef.current?.id) {
             setMyPlayer((prev) => (prev ? { ...prev, hp: newHp, isAlive: newHp > 0 } : null));
@@ -551,18 +570,18 @@ export const App: React.FC = () => {
       }
 
       if (result.justEnraged) {
-        addLog('¡EL MONSTRUO SE HA ENFURECIDO (FASE 2)! RUGIDO Y VELOCIDAD +40%', 'warning');
+        addLogRef.current('¡EL MONSTRUO SE HA ENFURECIDO (FASE 2)! RUGIDO Y VELOCIDAD +40%', 'warning');
       }
 
       if (result.justRespawned) {
-        addLog('¡El Monstruo ha resucitado en el cofre del tesoro!', 'warning');
+        addLogRef.current('¡El Monstruo ha resucitado en el cofre del tesoro!', 'warning');
       }
     }, 1000);
 
     return () => {
       clearInterval(interval);
     };
-  }, [room?.status, myPlayer?.isHost, chestHoldersCount, realtime, addLog]);
+  }, [room?.status, isHost, room?.treasureLat, room?.treasureLng, room?.centerLat, room?.centerLng]);
 
   // ==========================================
   // BUCLE DE COMBATE AUTOMÁTICO Y CADENCIA DE DISPARO (250MS)
