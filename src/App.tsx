@@ -33,6 +33,7 @@ import { soundEffects } from './services/soundEffects';
 import { MonsterAIController } from './services/monsterAI';
 import { useGameRealtime } from './hooks/useGameRealtime';
 import { useGeolocation } from './hooks/useGeolocation';
+import { useCombatLoop } from './hooks/useCombatLoop';
 
 import { GameMap } from './components/GameMap';
 import { TacticalHeader } from './components/HUD/TacticalHeader';
@@ -592,87 +593,42 @@ export const App: React.FC = () => {
   }, [room?.status, isHost, room?.treasureLat, room?.treasureLng, room?.centerLat, room?.centerLng]);
 
   // ==========================================
-  // BUCLE DE COMBATE AUTOMÁTICO Y CADENCIA DE DISPARO (250MS)
+  // BUCLE DE COMBATE CONTINUO EN MOVIMIENTO (MANUAL Y AUTOMÁTICO)
   // ==========================================
-  const [isFiringWeapon, setIsFiringWeapon] = useState<boolean>(false);
+  const { isFiringWeapon, manualAttack } = useCombatLoop({
+    isPlaying: room?.status === 'playing' && !!myPlayer?.isAlive,
+    myPlayer,
+    monster,
+    roomCenter: room ? { lat: room.centerLat, lng: room.centerLng } : undefined,
+    isRoleSkillActive,
+    onAttackMonster: (damage, newHp, weapon, now) => {
+      realtimeRef.current.broadcastMonsterDamaged(damage, newHp);
+      setMonster((prev) => ({ ...prev, hp: newHp }));
 
-  useEffect(() => {
-    if (room?.status !== 'playing' || !myPlayer?.isAlive) return;
-
-    const interval = window.setInterval(() => {
-      const player = myPlayerRef.current;
-      const currentMonster = monsterRef.current;
-
-      if (!player || !player.isAlive || currentMonster.hp <= 0 || currentMonster.state === 'dead') {
-        setIsFiringWeapon(false);
-        return;
+      if (myPlayerRef.current && monsterAIRef.current) {
+        monsterAIRef.current.setAggroTarget(myPlayerRef.current.id);
       }
 
-      const playerCoords: Coordinates = {
-        lat: player.lat ?? room.centerLat,
-        lng: player.lng ?? room.centerLng,
-      };
+      setMyPlayer((prev) => {
+        if (!prev) return null;
+        const updatedWeapon =
+          weapon.ammo > 0 ? { ...weapon, ammo: weapon.ammo - 1 } : weapon;
 
-      const dist = getDistanceMeters(playerCoords, currentMonster);
-      const equippedWeapon = player.equippedWeapon || DEFAULT_WEAPONS_BY_ROLE[player.role];
-      const baseStats = getModifiedWeaponStats(equippedWeapon, player.role);
-      const isMarksmanBoosted = isRoleSkillActiveRef.current && player.role === 'marksman';
-      const rangeMeters = isMarksmanBoosted ? Math.round(baseStats.rangeMeters * 1.5) : baseStats.rangeMeters;
-      const damage = isMarksmanBoosted ? Math.round(baseStats.damage * 1.25) : baseStats.damage;
-
-      // Verificar si el monstruo está en rango y visible
-      const isVisible = dist <= 120; // Si está a rango de disparo efectivo
-      if (dist <= rangeMeters && isVisible) {
-        const now = Date.now();
-        const lastAttack = player.lastAttackTime || 0;
-
-        if (now - lastAttack >= equippedWeapon.fireRateMs) {
-          // Comprobar munición
-          if (equippedWeapon.ammo !== -1 && equippedWeapon.ammo <= 0) {
-            // Munición agotada: cambiar a arma cuerpo a cuerpo de emergencia
-            setMyPlayer((prev) =>
-              prev ? { ...prev, equippedWeapon: WEAPON_REGISTRY.baseball_bat } : null
-            );
-            addLog('¡Sin munición! Cambiando a bate de emergencia', 'warning');
-            return;
-          }
-
-          // Disparo efectuado
-          setIsFiringWeapon(true);
-          setTimeout(() => setIsFiringWeapon(false), 200);
-
-          soundEffects.playGunshot(equippedWeapon.type === 'melee' ? 'melee' : 'rifle');
-          soundEffects.vibrate(30);
-
-          const newHp = Math.max(0, currentMonster.hp - damage);
-          realtime.broadcastMonsterDamaged(damage, newHp);
-          setMonster((prev) => ({ ...prev, hp: newHp }));
-
-          // Actualizar estado del jugador
-          setMyPlayer((prev) => {
-            if (!prev) return null;
-            const updatedWeapon =
-              equippedWeapon.ammo > 0
-                ? { ...equippedWeapon, ammo: equippedWeapon.ammo - 1 }
-                : equippedWeapon;
-
-            return {
-              ...prev,
-              lastAttackTime: now,
-              damageDealt: prev.damageDealt + damage,
-              equippedWeapon: updatedWeapon,
-            };
-          });
-        }
-      } else {
-        setIsFiringWeapon(false);
-      }
-    }, 250);
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [room?.status, myPlayer?.isAlive, room?.centerLat, room?.centerLng, realtime, addLog]);
+        return {
+          ...prev,
+          lastAttackTime: now,
+          damageDealt: prev.damageDealt + damage,
+          equippedWeapon: updatedWeapon,
+        };
+      });
+    },
+    onOutOfAmmo: (fallbackWeapon) => {
+      setMyPlayer((prev) => (prev ? { ...prev, equippedWeapon: fallbackWeapon } : null));
+    },
+    onLog: (text, type) => {
+      addLog(text, type);
+    },
+  });
 
   // ==========================================
   // BUCLE DE CAPTURA DEL COFRE (CONDICIÓN DE VICTORIA)
@@ -1737,6 +1693,7 @@ export const App: React.FC = () => {
                 (isRoleSkillActive && myPlayer.role === 'marksman' ? 1.5 : 1))
             }
             isFiring={isFiringWeapon}
+            onAttack={manualAttack}
           />
 
           <RoleSkillButton
