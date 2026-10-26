@@ -13,6 +13,10 @@ En **Las Meriendas: Monster Hunt**, una escuadra de hasta 4 cazadores debe coord
 - **Modos de Movimiento Dual:**
   - **GPS Real:** Geolocalización de alta precisión en vivo (`navigator.geolocation.watchPosition`). Si el jugador se encuentra fuera del perímetro del juego, un aviso táctico en el HUD muestra la distancia exacta a la que se encuentra del área de operaciones sin teletransportar al jugador.
   - **Tap-to-Move:** Pulsa en cualquier punto del mapa para moverte con paso humano simulado a 1.4 m/s (~5 km/h). La navegación respeta los límites del círculo de juego reajustando el rumbo al perímetro interior si se pulsa fuera.
+- **Partidas Públicas vs. Privadas y Explorador de Operaciones en Vivo:**
+  - **Selector de Privacidad:** Al crear una operación, el anfitrión puede elegir entre **Pública** (visible en el radar del lobby para incorporación inmediata con 1 toque) o **Privada** (oculta, accesible exclusivamente mediante código de 6 letras o enlace directo `/?room=CODIGO`).
+  - **Explorador Táctico en el Lobby:** Listado en tiempo real de operaciones activas (`lobby` o `playing`) con estado en combate/espera, número de agentes conectados/vivos, modo de control (GPS o Manual) y acceso directo con selección de clase.
+  - **Incorporación a Partidas Empezadas (Late Join / In-Game Reconnect):** Si un jugador entra a una partida que ya ha comenzado (`playing`), recibe un spawn seguro y uniforme dentro de la zona de juego activa y sincroniza de inmediato el estado del monstruo, cajas restantes y escuadra vía Supabase Realtime sin reiniciar la partida.
 - **Sistema de Spawn y Posicionamiento Dinámico:**
   - Los jugadores (tanto anfitrión como aliados que se unen) aparecen distribuidos de forma segura y uniforme en una corona circular interior (entre el 20% y el 70% del radio de juego respecto al centro), evitando teletransportes a coordenadas fijas o aparecer encima del tesoro.
   - Sincronización completa de coordenadas de cámara (`center_lat`, `center_lng`) y tesoro entre todos los clientes conectados a través de Supabase.

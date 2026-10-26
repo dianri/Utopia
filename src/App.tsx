@@ -43,6 +43,7 @@ import { GhostOverlay } from './components/HUD/GhostOverlay';
 import { CreateRoomModal } from './components/Lobby/CreateRoomModal';
 import { JoinRoomModal } from './components/Lobby/JoinRoomModal';
 import { WaitingRoom } from './components/Lobby/WaitingRoom';
+import { GameExplorer } from './components/Lobby/GameExplorer';
 
 import { VictoryModal } from './components/PostGame/VictoryModal';
 import { DefeatModal } from './components/PostGame/DefeatModal';
@@ -1234,7 +1235,27 @@ export const App: React.FC = () => {
               </div>
             </div>
 
+            {/* SEPARADOR TÁCTICO */}
+            <div className="w-full flex items-center gap-3">
+              <div className="flex-1 h-px bg-hud-border/60" />
+              <span className="text-[10px] font-mono text-hud-muted uppercase tracking-widest">
+                RADAR PÚBLICO
+              </span>
+              <div className="flex-1 h-px bg-hud-border/60" />
+            </div>
 
+            {/* EXPLORADOR DE PARTIDAS PÚBLICAS */}
+            <GameExplorer
+              onJoinGame={(code: string) => {
+                soundEffects.initOnUserInteraction();
+                setJoinModalInitialCode(code);
+                setShowJoinModal(true);
+              }}
+              onCreateGame={() => {
+                soundEffects.initOnUserInteraction();
+                setShowCreateModal(true);
+              }}
+            />
           </div>
 
           {/* PIE DE PÁGINA */}
