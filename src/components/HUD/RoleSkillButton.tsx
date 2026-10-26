@@ -19,73 +19,121 @@ export const RoleSkillButton: React.FC<RoleSkillButtonProps> = ({
 }) => {
   if (!isAlive) return null;
 
-  if (role === 'scout') {
-    const isReady = cooldownRemaining <= 0;
+  const isReady = cooldownRemaining <= 0;
 
-    return (
-      <div className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-2 sm:right-4 z-20 pointer-events-auto flex flex-col items-center">
-        <button
-          onClick={onActivate}
-          disabled={!isReady}
-          className={`relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl border-2 flex flex-col items-center justify-center shadow-2xl transition-all active:scale-95 ${
-            isActive
-              ? 'bg-hud-cyan/30 border-hud-cyan text-hud-cyan shadow-hud-cyan/50 ring-2 ring-hud-cyan animate-pulse'
-              : isReady
-              ? 'bg-gradient-to-br from-amber-600 to-yellow-500 border-yellow-300 text-black shadow-amber-500/50 hover:brightness-110'
-              : 'bg-hud-card/90 border-hud-border text-hud-muted opacity-80 cursor-not-allowed'
-          }`}
-          title="Activar Radar Táctico (Revela el monstruo a todo el equipo)"
-        >
-          <Radio className={`w-6 h-6 sm:w-7 sm:h-7 ${isReady && !isActive ? 'animate-pulse' : ''}`} />
-          <span className="text-[9px] font-mono font-black uppercase mt-0.5">
-            {isActive ? 'ACTIVO' : isReady ? 'RADAR' : `${cooldownRemaining}s`}
-          </span>
+  // Parámetros y temática visual según la clase
+  const roleConfig = {
+    scout: {
+      name: 'RADAR',
+      title: 'Radar Táctico (Revela al monstruo 10s)',
+      icon: Radio,
+      maxCd: 60,
+      activeColor: 'bg-hud-cyan/30 border-hud-cyan text-hud-cyan ring-4 ring-hud-cyan/50 shadow-hud-cyan/50',
+      readyColor: 'bg-gradient-to-br from-cyan-600 to-teal-500 border-cyan-300 text-white shadow-cyan-500/50 hover:brightness-110',
+      strokeColor: '#00f0ff',
+    },
+    medic: {
+      name: 'CURA',
+      title: 'Pulso de Curación (+35 HP aliados cercanos)',
+      icon: HeartPulse,
+      maxCd: 45,
+      activeColor: 'bg-emerald-500/30 border-emerald-400 text-emerald-300 ring-4 ring-emerald-400/50 shadow-emerald-500/50',
+      readyColor: 'bg-gradient-to-br from-emerald-600 to-green-500 border-emerald-300 text-white shadow-emerald-500/50 hover:brightness-110',
+      strokeColor: '#10b981',
+    },
+    tank: {
+      name: 'ESCUDO',
+      title: 'Provocación y Escudo (Atrae agro y -50% daño)',
+      icon: Shield,
+      maxCd: 45,
+      activeColor: 'bg-blue-500/30 border-blue-400 text-blue-300 ring-4 ring-blue-400/50 shadow-blue-500/50',
+      readyColor: 'bg-gradient-to-br from-blue-600 to-indigo-600 border-blue-300 text-white shadow-blue-500/50 hover:brightness-110',
+      strokeColor: '#3b82f6',
+    },
+    marksman: {
+      name: 'ALCANCE',
+      title: 'Ojo de Halcón (+50% Rango de disparo)',
+      icon: Crosshair,
+      maxCd: 40,
+      activeColor: 'bg-amber-500/30 border-amber-400 text-amber-300 ring-4 ring-amber-400/50 shadow-amber-500/50',
+      readyColor: 'bg-gradient-to-br from-amber-600 to-orange-500 border-yellow-300 text-white shadow-amber-500/50 hover:brightness-110',
+      strokeColor: '#f59e0b',
+    },
+  }[role];
 
-          {/* Anillo de cooldown */}
-          {!isReady && (
-            <div
-              className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center font-mono font-black text-white text-base"
-            >
-              {cooldownRemaining}s
-            </div>
-          )}
-        </button>
-      </div>
-    );
-  }
+  const IconComponent = roleConfig.icon;
 
-  // Indicador pasivo para otros roles
+  // Cálculo del anillo circular SVG de cooldown
+  const radius = 28;
+  const circumference = 2 * Math.PI * radius;
+  const progressPercent = cooldownRemaining > 0 ? cooldownRemaining / roleConfig.maxCd : 0;
+  const strokeDashoffset = circumference * progressPercent;
+
   return (
-    <div className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] right-2 sm:right-4 z-20 pointer-events-none max-w-[calc(100vw-12rem)] sm:max-w-xs">
-      <div className="bg-hud-dark/90 border border-hud-border/80 backdrop-blur-md px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl shadow-xl flex items-center gap-2 overflow-hidden">
-        {role === 'tank' && (
+    <div className="fixed bottom-6 right-4 z-30 pb-[env(safe-area-inset-bottom,1rem)] pointer-events-auto flex flex-col items-center select-none">
+      <button
+        onClick={onActivate}
+        disabled={!isReady}
+        className={`relative w-16 h-16 sm:w-18 sm:h-18 rounded-full border-2 flex flex-col items-center justify-center shadow-2xl transition-all cursor-pointer ${
+          isActive
+            ? `${roleConfig.activeColor} animate-pulse scale-105`
+            : isReady
+            ? `${roleConfig.readyColor} active:scale-95`
+            : 'bg-hud-dark/95 border-hud-border/80 text-hud-muted cursor-not-allowed opacity-90'
+        }`}
+        title={roleConfig.title}
+        aria-label={roleConfig.title}
+      >
+        {/* Anillo SVG de progreso circular para el tiempo de recarga */}
+        <svg
+          className="absolute inset-0 w-full h-full -rotate-90 pointer-events-none"
+          viewBox="0 0 64 64"
+        >
+          {/* Anillo de fondo */}
+          <circle
+            cx="32"
+            cy="32"
+            r={radius}
+            fill="none"
+            stroke="rgba(0, 0, 0, 0.5)"
+            strokeWidth="3.5"
+          />
+          {/* Anillo de cuenta atrás activo */}
+          {!isReady && (
+            <circle
+              cx="32"
+              cy="32"
+              r={radius}
+              fill="none"
+              stroke={roleConfig.strokeColor}
+              strokeWidth="3.5"
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeDashoffset}
+              strokeLinecap="round"
+              className="transition-all duration-300"
+            />
+          )}
+        </svg>
+
+        {/* Contenido interior: Icono y etiqueta o temporizador */}
+        {isReady || isActive ? (
           <>
-            <Shield className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400 shrink-0" />
-            <div className="flex flex-col text-left min-w-0">
-              <span className="text-[9px] sm:text-[10px] font-mono font-bold text-blue-300 truncate">PASIVA: AGRO</span>
-              <span className="text-[8px] sm:text-[9px] font-mono text-hud-muted truncate">+50% HP | Atrae Monstruo</span>
-            </div>
+            <IconComponent className={`w-7 h-7 sm:w-8 sm:h-8 ${isActive ? 'animate-bounce' : ''}`} />
+            <span className="text-[10px] font-mono font-black uppercase tracking-wider mt-0.5 leading-none">
+              {isActive ? 'ACTIVO' : roleConfig.name}
+            </span>
           </>
+        ) : (
+          <div className="flex flex-col items-center justify-center">
+            <span className="text-sm sm:text-base font-mono font-black text-white leading-tight">
+              {cooldownRemaining}s
+            </span>
+            <span className="text-[8px] font-mono text-hud-muted uppercase tracking-tighter">
+              {roleConfig.name}
+            </span>
+          </div>
         )}
-        {role === 'medic' && (
-          <>
-            <HeartPulse className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-400 shrink-0" />
-            <div className="flex flex-col text-left min-w-0">
-              <span className="text-[9px] sm:text-[10px] font-mono font-bold text-emerald-300 truncate">PASIVA: MÉDICO</span>
-              <span className="text-[8px] sm:text-[9px] font-mono text-hud-muted truncate">Reanima en 10s | Doble radio</span>
-            </div>
-          </>
-        )}
-        {role === 'marksman' && (
-          <>
-            <Crosshair className="w-4 h-4 sm:w-5 sm:h-5 text-red-400 shrink-0" />
-            <div className="flex flex-col text-left min-w-0">
-              <span className="text-[9px] sm:text-[10px] font-mono font-bold text-red-300 truncate">PASIVA: FRANCOTIRADOR</span>
-              <span className="text-[8px] sm:text-[9px] font-mono text-hud-muted truncate">+35% Daño | Rango largo</span>
-            </div>
-          </>
-        )}
-      </div>
+      </button>
     </div>
   );
 };

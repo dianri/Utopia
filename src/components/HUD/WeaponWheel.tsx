@@ -19,22 +19,22 @@ export const WeaponWheel: React.FC<WeaponWheelProps> = ({
   const renderWeaponIcon = (iconName: string) => {
     switch (iconName) {
       case 'ShieldAlert':
-        return <ShieldAlert className="w-4 h-4 sm:w-5 sm:h-5" />;
+        return <ShieldAlert className="w-5 h-5 sm:w-6 sm:h-6" />;
       case 'Crosshair':
-        return <Crosshair className="w-4 h-4 sm:w-5 sm:h-5" />;
+        return <Crosshair className="w-5 h-5 sm:w-6 sm:h-6" />;
       case 'Zap':
-        return <Zap className="w-4 h-4 sm:w-5 sm:h-5" />;
+        return <Zap className="w-5 h-5 sm:w-6 sm:h-6" />;
       case 'Flame':
-        return <Flame className="w-4 h-4 sm:w-5 sm:h-5" />;
+        return <Flame className="w-5 h-5 sm:w-6 sm:h-6" />;
       default:
-        return <Target className="w-4 h-4 sm:w-5 sm:h-5" />;
+        return <Target className="w-5 h-5 sm:w-6 sm:h-6" />;
     }
   };
 
   return (
-    <div className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-2 sm:left-4 z-20 pointer-events-auto max-w-[calc(100vw-6.5rem)] sm:max-w-xs">
+    <div className="fixed bottom-6 left-4 z-30 flex items-end gap-2 pb-[env(safe-area-inset-bottom,1rem)] max-w-[calc(100vw-7.5rem)] sm:max-w-xs pointer-events-auto">
       <div
-        className={`bg-hud-dark/95 border backdrop-blur-md px-2.5 py-2 sm:px-3 sm:py-2.5 rounded-xl shadow-2xl flex items-center gap-2 sm:gap-3 transition-all ${
+        className={`bg-hud-dark/95 border backdrop-blur-md px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl shadow-2xl flex items-center gap-2.5 sm:gap-3 transition-all w-full ${
           isInRange
             ? 'border-hud-red shadow-hud-red/40 bg-red-950/40 ring-1 ring-hud-red'
             : 'border-hud-border/80'
@@ -42,7 +42,7 @@ export const WeaponWheel: React.FC<WeaponWheelProps> = ({
       >
         {/* ICONO DEL ARMA CON PULSO SI DISPARA */}
         <div
-          className={`w-9 h-9 sm:w-11 sm:h-11 rounded-lg border flex items-center justify-center shrink-0 transition-all ${
+          className={`w-10 h-10 sm:w-11 sm:h-11 rounded-lg border flex items-center justify-center shrink-0 transition-all ${
             isFiring
               ? 'bg-red-500/30 border-red-400 text-red-300 scale-105 animate-ping-slow'
               : isInRange
@@ -56,16 +56,16 @@ export const WeaponWheel: React.FC<WeaponWheelProps> = ({
         {/* DETALLES DE NOMBRE Y MUNICIÓN */}
         <div className="flex flex-col min-w-0 overflow-hidden flex-1">
           <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-[11px] sm:text-xs font-mono font-black text-white uppercase tracking-wider truncate">
+            <span className="text-xs sm:text-sm font-mono font-black text-white uppercase tracking-wider truncate">
               {weapon.name}
             </span>
-            <span className="text-[9px] sm:text-[10px] font-mono text-hud-muted shrink-0">
+            <span className="text-[10px] sm:text-xs font-mono text-hud-muted shrink-0">
               ({weapon.rangeMeters}m)
             </span>
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 mt-0.5 min-w-0">
-            <span className="text-[10px] sm:text-xs font-mono font-bold text-hud-amber truncate">
+            <span className="text-[11px] sm:text-xs font-mono font-bold text-hud-amber truncate">
               {weapon.ammo === -1 ? '∞ Munición' : `${weapon.ammo}/${weapon.maxAmmo} Balas`}
             </span>
             {isInRange && (
