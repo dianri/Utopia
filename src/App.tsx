@@ -136,7 +136,14 @@ export const App: React.FC = () => {
   // 1. INICIALIZAR SESIÓN ANÓNIMA, VERIFICAR SESIÓN ACTIVA Y DETECTAR URL PARAM ?room=CODE
   useEffect(() => {
     // Limpieza oportunista de partidas inactivas en segundo plano al cargar el lobby principal
-    (supabase.rpc as any)('cleanup_stale_games').catch(() => {});
+    const runStaleCleanup = async () => {
+      try {
+        await (supabase.rpc as any)('cleanup_stale_games');
+      } catch (err) {
+        console.warn('No se pudo ejecutar cleanup_stale_games:', err);
+      }
+    };
+    runStaleCleanup();
 
     ensureAnonymousAuth().then(async (uid) => {
       setCurrentUserId(uid);

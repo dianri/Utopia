@@ -97,7 +97,14 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
 
   useEffect(() => {
     // Purga oportunista de partidas inactivas en segundo plano al montar el explorador
-    (supabase.rpc as any)('cleanup_stale_games').catch(() => {});
+    const runStaleCleanup = async () => {
+      try {
+        await (supabase.rpc as any)('cleanup_stale_games');
+      } catch (err) {
+        console.warn('No se pudo ejecutar cleanup_stale_games en GameExplorer:', err);
+      }
+    };
+    runStaleCleanup();
 
     fetchActiveGames();
 
