@@ -105,11 +105,12 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!code.trim() || !nickname.trim()) return;
+    if (!code.trim()) return;
+    const finalNick = nickname.trim() || existingNickname || 'Cazador';
 
     onConfirm({
       code: code.trim().toUpperCase(),
-      nickname: nickname.trim(),
+      nickname: finalNick,
       role,
     });
   };
@@ -119,9 +120,9 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
       <div className="bg-hud-dark border border-hud-border/80 w-full max-w-lg rounded-2xl shadow-2xl p-5 sm:p-6 flex flex-col gap-5 my-auto">
         <div className="flex items-center justify-between border-b border-hud-border pb-3">
           <div className="flex items-center gap-2">
-            <span className="text-xl">🎯</span>
+            <span className="text-xl">{isExistingMember ? '🔄' : '🎯'}</span>
             <h2 className="text-lg font-mono font-black text-white uppercase tracking-wider">
-              Unirse a Operación
+              {isExistingMember ? 'Reconectar a Operación' : 'Unirse a Operación'}
             </h2>
           </div>
           <button
@@ -133,6 +134,21 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {/* AVISO DE JUGADOR REGISTRADO PREVIAMENTE */}
+          {isExistingMember && (
+            <div className="bg-emerald-500/10 border border-emerald-500/40 p-3 rounded-xl flex items-center justify-between text-xs font-mono text-emerald-300">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                <span>
+                  Registro encontrado como: <strong className="text-white">{existingNickname}</strong>
+                </span>
+              </div>
+              <span className="text-[10px] uppercase font-bold tracking-wider bg-emerald-500/20 px-2 py-0.5 rounded text-emerald-200">
+                Reconexión Activa
+              </span>
+            </div>
+          )}
+
           {/* CÓDIGO DE SALA Y APODO */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
@@ -152,13 +168,13 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
 
             <div>
               <label className="block text-xs font-mono text-hud-muted mb-1">
-                Tu Apodo de Combate
+                {isExistingMember ? 'Apodo Registrado' : 'Tu Apodo de Combate'}
               </label>
               <input
                 type="text"
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
-                required
+                required={!isExistingMember}
                 maxLength={16}
                 className="w-full bg-hud-panel border border-hud-border rounded-lg px-3 py-2 text-sm font-mono text-white font-bold focus:outline-none focus:border-hud-cyan"
                 placeholder="Ej. Sombra_01"
@@ -169,7 +185,7 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
           {/* ELECCIÓN DE CLASE */}
           <div>
             <label className="block text-xs font-mono text-hud-muted mb-2">
-              Selecciona tu Clase de Combate
+              {isExistingMember ? 'Clase Asignada (Confirmar)' : 'Selecciona tu Clase de Combate'}
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {roleOptions.map((r) => (
@@ -199,11 +215,11 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
           {/* BOTÓN ENTRAR */}
           <button
             type="submit"
-            disabled={code.length < 4 || !nickname.trim()}
+            disabled={code.length < 6 || (!isExistingMember && !nickname.trim())}
             className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 text-black font-mono font-black text-sm uppercase tracking-wider shadow-lg shadow-emerald-500/30 hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
-            <LogIn className="w-4 h-4" />
-            <span>Unirse a la Escuadra</span>
+            {isExistingMember ? <RefreshCw className="w-4 h-4 animate-spin-slow" /> : <LogIn className="w-4 h-4" />}
+            <span>{isExistingMember ? 'Reconectar a la Misión' : 'Unirse a la Escuadra'}</span>
           </button>
         </form>
       </div>
