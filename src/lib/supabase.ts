@@ -1,41 +1,26 @@
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../types/supabase';
 
+// Fallback directo con la URL y clave pública (anon key) del proyecto Supabase
+const DEFAULT_SUPABASE_URL = 'https://iadiswktxduqetzjujli.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImlhZGlzd2t0eGR1cWV0emp1amxpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTI5NTY5NzEsImV4cCI6MjEwODUzMjk3MX0._tt0ROWwTrktVBuZ173pYQQHV1TXUi_AXjgMZVjvZLc';
+
 const envUrl = import.meta.env.VITE_SUPABASE_URL;
 const envAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-/**
- * Indica si Supabase cuenta con credenciales válidas configuradas
- */
-export const isSupabaseConfigured = Boolean(
-  envUrl &&
-  envAnonKey &&
-  envAnonKey !== 'tu_clave_anonima_aqui' &&
-  envAnonKey.trim().length > 15
-);
+export const supabaseUrl = envUrl || DEFAULT_SUPABASE_URL;
+export const supabaseAnonKey =
+  envAnonKey && envAnonKey !== 'tu_clave_anonima_aqui' && envAnonKey.trim().length > 15
+    ? envAnonKey
+    : DEFAULT_SUPABASE_ANON_KEY;
 
-// Fallback seguro a URL por defecto del proyecto si no se especifica
-export const supabaseUrl = envUrl || 'https://iadiswktxduqetzjujli.supabase.co';
-
-// Dummy key sintácticamente válida (JWT con cabecera y payload base64) para evitar
-// que @supabase/supabase-js lance 'supabaseKey is required' al inicializar en Vercel
-// antes de que el usuario configure sus Environment Variables.
-const fallbackAnonKey =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.dummy_anon_key_for_unconfigured_deployment';
-
-export const supabaseAnonKey = isSupabaseConfigured ? envAnonKey! : fallbackAnonKey;
-
-if (!isSupabaseConfigured) {
-  console.warn(
-    '[Supabase Shield] VITE_SUPABASE_URL o VITE_SUPABASE_ANON_KEY no están configuradas. ' +
-    'Configura estas variables en Vercel Settings > Environment Variables para activar la sincronización multijugador.'
-  );
-}
+export const isSupabaseConfigured = true;
 
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
-    autoRefreshToken: isSupabaseConfigured,
+    autoRefreshToken: true,
     detectSessionInUrl: true,
   },
   realtime: {
@@ -47,15 +32,11 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
 
 /**
  * Asegura una sesión anónima en Supabase Auth o genera un identificador local
- * persistente si Supabase no está configurado o falla la red.
+ * persistente en caso de fallo de red puntual.
  */
 export async function ensureAnonymousAuth(): Promise<string> {
   const localId = localStorage.getItem('monster_hunt_anon_id') || crypto.randomUUID();
   localStorage.setItem('monster_hunt_anon_id', localId);
-
-  if (!isSupabaseConfigured) {
-    return localId;
-  }
 
   try {
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();

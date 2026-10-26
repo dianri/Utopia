@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { supabase, ensureAnonymousAuth, isSupabaseConfigured } from './lib/supabase';
+import { supabase, ensureAnonymousAuth } from './lib/supabase';
 import type {
   GameRoom,
   Player,
@@ -42,7 +42,7 @@ import { VictoryModal } from './components/PostGame/VictoryModal';
 import { DefeatModal } from './components/PostGame/DefeatModal';
 import { LeaderboardModal } from './components/PostGame/LeaderboardModal';
 
-import { Play, Users, Trophy, AlertTriangle } from 'lucide-react';
+import { Play, Users, Trophy } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -630,10 +630,6 @@ export const App: React.FC = () => {
 
     setRoom((prev) => (prev ? { ...prev, status: result } : null));
 
-    if (!isSupabaseConfigured) {
-      return;
-    }
-
     // Actualizar en base de datos mediante RPC o update
     try {
       await (supabase.rpc as any)('set_game_status', {
@@ -673,77 +669,6 @@ export const App: React.FC = () => {
   }) => {
     soundEffects.initOnUserInteraction();
     const userId = currentUserId || (await ensureAnonymousAuth());
-
-    // Si Supabase no está configurado (ej. despliegue en Vercel sin env vars),
-    // permitir crear partida local para probar la interfaz y jugabilidad sin crashear
-    if (!isSupabaseConfigured) {
-      const roomCode = 'DEMO01';
-      const treasureLoc = getRandomPointInCircle(config.center, config.radiusMeters * 0.4);
-      const maxHp = getMaxHpForRole(config.role);
-
-      const demoRoom: GameRoom = {
-        id: crypto.randomUUID(),
-        code: roomCode,
-        name: config.roomName,
-        hostId: userId,
-        status: 'lobby',
-        movementMode: config.movementMode,
-        playAreaRadius: config.radiusMeters,
-        centerLat: config.center.lat,
-        centerLng: config.center.lng,
-        treasureLat: treasureLoc.lat,
-        treasureLng: treasureLoc.lng,
-        createdAt: new Date().toISOString(),
-      };
-
-      const hostPlayer: Player = {
-        id: crypto.randomUUID(),
-        userId,
-        gameId: demoRoom.id,
-        nickname: config.nickname,
-        role: config.role,
-        hp: maxHp,
-        maxHp,
-        isAlive: true,
-        lat: config.center.lat,
-        lng: config.center.lng,
-        damageDealt: 0,
-        revivesDone: 0,
-        cratesOpened: 0,
-        monsterKills: 0,
-        isHost: true,
-        equippedWeapon: DEFAULT_WEAPONS_BY_ROLE[config.role],
-      };
-
-      const generatedCrates: SupplyCrate[] = [];
-      const weaponPool = [
-        WEAPON_REGISTRY.combat_shotgun,
-        WEAPON_REGISTRY.assault_rifle,
-        WEAPON_REGISTRY.pistol_9mm,
-      ];
-
-      for (let i = 0; i < 4; i++) {
-        const dropPoint = getRandomPointInCircle(config.center, config.radiusMeters * 0.7);
-        generatedCrates.push({
-          id: crypto.randomUUID(),
-          lat: dropPoint.lat,
-          lng: dropPoint.lng,
-          opened: false,
-          droppedAt: Date.now(),
-          weaponReward: weaponPool[i % weaponPool.length],
-          healReward: 40,
-          ammoReward: 30,
-        });
-      }
-
-      setRoom(demoRoom);
-      setMyPlayer(hostPlayer);
-      setPlayers([hostPlayer]);
-      setCrates(generatedCrates);
-      setShowCreateModal(false);
-      addLog('Partida iniciada en Modo Demostración Local (Supabase no configurado en Vercel).', 'warning');
-      return;
-    }
 
     // Generar código de sala de 6 letras
     let roomCode = '';
@@ -878,11 +803,6 @@ export const App: React.FC = () => {
     soundEffects.initOnUserInteraction();
     const userId = currentUserId || (await ensureAnonymousAuth());
 
-    if (!isSupabaseConfigured) {
-      alert('Supabase no está configurado en Vercel. Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en Vercel Settings > Environment Variables.');
-      return;
-    }
-
     // Buscar sala por código
     const { data: gameData, error: gameError } = await (supabase
       .from('games') as any)
@@ -962,15 +882,13 @@ export const App: React.FC = () => {
   const handleStartGame = async () => {
     if (!room || !myPlayer?.isHost) return;
 
-    if (isSupabaseConfigured) {
-      try {
-        await (supabase.rpc as any)('set_game_status', {
-          p_game_id: room.id,
-          p_status: 'playing',
-        });
-      } catch {
-        await (supabase.from('games') as any).update({ status: 'playing' }).eq('id', room.id);
-      }
+    try {
+      await (supabase.rpc as any)('set_game_status', {
+        p_game_id: room.id,
+        p_status: 'playing',
+      });
+    } catch {
+      await (supabase.from('games') as any).update({ status: 'playing' }).eq('id', room.id);
     }
 
     setRoom((prev) => (prev ? { ...prev, status: 'playing' } : null));
@@ -1026,16 +944,6 @@ export const App: React.FC = () => {
   // ==========================================
   return (
     <div className="relative w-screen h-screen overflow-hidden bg-hud-dark font-sans select-none">
-      {/* BANNER DE CONFIGURACIÓN PENDIENTE DE SUPABASE EN VERCEL */}
-      {!isSupabaseConfigured && (
-        <div className="absolute top-0 left-0 right-0 z-50 bg-amber-950/95 border-b border-amber-500/80 px-4 py-2 text-center text-xs font-mono text-amber-200 flex items-center justify-center gap-2 backdrop-blur-md shadow-2xl">
-          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 animate-pulse" />
-          <span>
-            <strong>CONFIGURACIÓN PENDIENTE:</strong> Configura <code className="text-white bg-black/50 px-1 py-0.5 rounded font-bold">VITE_SUPABASE_URL</code> y <code className="text-white bg-black/50 px-1 py-0.5 rounded font-bold">VITE_SUPABASE_ANON_KEY</code> en <strong>Vercel Settings &gt; Environment Variables</strong> para activar la conexión en vivo.
-          </span>
-        </div>
-      )}
-
       {/* 1. MAPA TÁCTICO WEBGL A PANTALLA COMPLETA */}
       {room && myPlayer ? (
         <GameMap
@@ -1058,7 +966,7 @@ export const App: React.FC = () => {
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#00f0ff08_1px,transparent_1px),linear-gradient(to_bottom,#00f0ff08_1px,transparent_1px)] bg-[size:3rem_3rem] pointer-events-none" />
 
           {/* CABECERA */}
-          <div className={`relative z-10 flex items-center justify-between ${!isSupabaseConfigured ? 'mt-8 sm:mt-6' : ''}`}>
+          <div className="relative z-10 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-2xl">⚡</span>
               <span className="text-xs font-mono font-black text-hud-cyan tracking-widest uppercase">
