@@ -92,6 +92,7 @@ export const App: React.FC = () => {
   const [joinModalInitialCode, setJoinModalInitialCode] = useState<string>('');
   const [showLeaderboard, setShowLeaderboard] = useState<boolean>(false);
   const [stealthMode, setStealthMode] = useState<boolean>(soundEffects.isStealth());
+  const [cancelledAlertMessage, setCancelledAlertMessage] = useState<string | null>(null);
 
   // REF DE LA IA DEL MONSTRUO (HOST)
   const monsterAIRef = useRef<MonsterAIController | null>(null);
@@ -139,6 +140,22 @@ export const App: React.FC = () => {
       setJoinModalInitialCode(roomCodeParam.toUpperCase());
       setShowJoinModal(true);
     }
+  }, []);
+
+  // Reacción ante cancelación remota de la partida por el anfitrión
+  const handleRemoteGameCancelled = useCallback((reason: string = 'Misión abortada por el anfitrión') => {
+    soundEffects.playAlarm();
+    setCancelledAlertMessage(reason);
+    monsterAIRef.current = null;
+    soundEffects.stopAll();
+
+    setTimeout(() => {
+      setRoom(null);
+      setMyPlayer(null);
+      setPlayers([]);
+      setCrates([]);
+      setCancelledAlertMessage(null);
+    }, 2000);
   }, []);
 
   // ==========================================
@@ -252,6 +269,9 @@ export const App: React.FC = () => {
           }
         }
       },
+      onGameCancelled: (payload) => {
+        handleRemoteGameCancelled(payload?.reason || 'Misión abortada por el anfitrión');
+      },
     }
   );
 
@@ -311,7 +331,9 @@ export const App: React.FC = () => {
           if (payload.new) {
             const updated = payload.new as GameRoom;
             setRoom((prev) => (prev ? { ...prev, status: updated.status } : null));
-            if (updated.status === 'victory' || updated.status === 'defeat') {
+            if (updated.status === 'cancelled') {
+              handleRemoteGameCancelled('Misión abortada por el anfitrión');
+            } else if (updated.status === 'victory' || updated.status === 'defeat') {
               addLog(`Estado de partida: ${updated.status.toUpperCase()}`, 'info');
             }
           }
@@ -710,6 +732,50 @@ export const App: React.FC = () => {
         score: myPlayer.damageDealt + myPlayer.revivesDone * 100,
       });
     }
+  };
+
+  // ==========================================
+  // CANCELAR Y ABANDONAR PARTIDA
+  // ==========================================
+  const handleCancelGame = async () => {
+    if (!room || !myPlayer?.isHost) return;
+
+    soundEffects.playAlarm();
+    try {
+      await (supabase.rpc as any)('set_game_status', {
+        p_game_id: room.id,
+        p_status: 'cancelled',
+      });
+    } catch {
+      await (supabase.from('games') as any).update({ status: 'cancelled' }).eq('id', room.id);
+    }
+
+    realtime.broadcastGameCancelled('Misión abortada por el anfitrión');
+    monsterAIRef.current = null;
+    soundEffects.stopAll();
+
+    setRoom(null);
+    setMyPlayer(null);
+    setPlayers([]);
+    setCrates([]);
+  };
+
+  const handleLeaveGame = async () => {
+    if (!room || !myPlayer) return;
+
+    try {
+      await (supabase.from('players') as any).delete().eq('id', myPlayer.id);
+    } catch (err) {
+      console.warn('Error al desvincular jugador de la tabla players:', err);
+    }
+
+    monsterAIRef.current = null;
+    soundEffects.stopAll();
+
+    setRoom(null);
+    setMyPlayer(null);
+    setPlayers([]);
+    setCrates([]);
   };
 
   // ==========================================
@@ -1282,6 +1348,8 @@ export const App: React.FC = () => {
               setStealthMode(next);
             }}
             distToMonster={distToMonster}
+            onCancelGame={handleCancelGame}
+            onLeaveGame={handleLeaveGame}
           />
 
           <WeaponWheel
@@ -1354,11 +1422,7 @@ export const App: React.FC = () => {
           myPlayerId={myPlayer.id}
           isHost={!!myPlayer.isHost}
           onStartGame={handleStartGame}
-          onLeaveRoom={() => {
-            setRoom(null);
-            setMyPlayer(null);
-            setPlayers([]);
-          }}
+          onLeaveRoom={myPlayer.isHost ? handleCancelGame : handleLeaveGame}
         />
       )}
 
@@ -1406,6 +1470,21 @@ export const App: React.FC = () => {
 
       {showLeaderboard && (
         <LeaderboardModal onClose={() => setShowLeaderboard(false)} />
+      )}
+
+      {/* OVERLAY DE CANCELACIÓN DE PARTIDA */}
+      {cancelledAlertMessage && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-hud-dark border-2 border-red-500 rounded-2xl p-6 max-w-sm w-full text-center flex flex-col items-center gap-3 shadow-2xl shadow-red-500/30 animate-pulse">
+            <span className="text-4xl">⚠️</span>
+            <h2 className="text-base font-mono font-black text-red-400 uppercase tracking-wider">
+              {cancelledAlertMessage}
+            </h2>
+            <p className="text-xs font-mono text-hud-muted">
+              Redirigiendo al lobby táctico principal...
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );

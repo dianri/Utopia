@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { GameRoom, Player, PlayerRole } from '../../types/game';
-import { Copy, Check, Play, LogOut, Users, Shield, HeartPulse, Eye, Crosshair } from 'lucide-react';
+import { Copy, Check, Play, LogOut, Users, Shield, HeartPulse, Eye, Crosshair, AlertTriangle, X } from 'lucide-react';
 
 interface WaitingRoomProps {
   room: GameRoom;
@@ -20,6 +20,7 @@ export const WaitingRoom: React.FC<WaitingRoomProps> = ({
   onLeaveRoom,
 }) => {
   const [copied, setCopied] = useState<boolean>(false);
+  const [showConfirmLeave, setShowConfirmLeave] = useState<boolean>(false);
 
   const shareUrl = `${window.location.origin}/?room=${room.code}`;
 
@@ -54,11 +55,11 @@ export const WaitingRoom: React.FC<WaitingRoomProps> = ({
           </div>
 
           <button
-            onClick={onLeaveRoom}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-hud-panel border border-hud-border rounded-lg text-xs font-mono text-hud-muted hover:text-white"
+            onClick={() => setShowConfirmLeave(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-hud-panel border border-hud-border hover:border-red-500/50 rounded-lg text-xs font-mono text-hud-muted hover:text-red-400 transition-colors"
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Salir</span>
+            <span>{isHost ? 'Cancelar Sala' : 'Salir'}</span>
           </button>
         </div>
 
@@ -181,6 +182,58 @@ export const WaitingRoom: React.FC<WaitingRoomProps> = ({
           </div>
         )}
       </div>
+
+      {/* MODAL DE CONFIRMACIÓN AL SALIR O CANCELAR SALA */}
+      {showConfirmLeave && (
+        <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-hud-dark border border-hud-border/90 w-full max-w-md rounded-2xl shadow-2xl p-5 sm:p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b border-hud-border/70 pb-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className={`w-5 h-5 ${isHost ? 'text-red-400' : 'text-amber-400'}`} />
+                <h3 className="text-sm sm:text-base font-mono font-black text-white uppercase tracking-wider">
+                  {isHost ? 'Cancelar Sala de Espera' : 'Abandonar Sala'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowConfirmLeave(false)}
+                className="text-hud-muted hover:text-white font-mono text-sm"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs font-mono text-slate-300 leading-relaxed">
+              {isHost
+                ? '¿Deseas cerrar y cancelar la sala? Todos los agentes reunidos serán expulsados de vuelta al lobby.'
+                : '¿Deseas salir de la sala de espera? Volverás al lobby principal.'}
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-2 mt-2">
+              <button
+                onClick={() => {
+                  setShowConfirmLeave(false);
+                  onLeaveRoom();
+                }}
+                className={`flex-1 py-2.5 px-3 rounded-xl font-mono font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-lg active:scale-95 ${
+                  isHost
+                    ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/30'
+                    : 'bg-amber-600 hover:bg-amber-500 text-black shadow-amber-600/30'
+                }`}
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>{isHost ? 'Sí, Cancelar Sala' : 'Sí, Abandonar'}</span>
+              </button>
+
+              <button
+                onClick={() => setShowConfirmLeave(false)}
+                className="py-2.5 px-4 rounded-xl bg-hud-panel border border-hud-border hover:border-hud-cyan text-hud-muted hover:text-white font-mono font-bold text-xs uppercase transition-all"
+              >
+                Permanecer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

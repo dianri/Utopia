@@ -268,6 +268,20 @@ class SoundEffectsService {
     }
   }
 
+  public stopAll() {
+    this.stopHeartbeat();
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(0);
+      } catch {}
+    }
+    if (this.ctx && this.ctx.state !== 'closed') {
+      try {
+        this.ctx.suspend().catch(() => {});
+      } catch {}
+    }
+  }
+
   /**
    * Alarma táctica cuando un aliado cae o el monstruo ataca
    */

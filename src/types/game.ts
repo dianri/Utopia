@@ -1,6 +1,6 @@
 export type PlayerRole = 'medic' | 'tank' | 'scout' | 'marksman';
 
-export type GameStatus = 'lobby' | 'playing' | 'victory' | 'defeat';
+export type GameStatus = 'lobby' | 'playing' | 'victory' | 'defeat' | 'cancelled';
 
 export type MovementMode = 'gps' | 'manual';
 
