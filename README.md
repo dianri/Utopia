@@ -11,8 +11,11 @@ En **Las Meriendas: Monster Hunt**, una escuadra de hasta 4 cazadores debe coord
 ### Características Principales
 
 - **Modos de Movimiento Dual:**
-  - **GPS Real:** Geolocalización de alta precisión en vivo (`navigator.geolocation.watchPosition`).
-  - **Tap-to-Move:** Pulsa en cualquier punto del mapa para moverte con paso humano simulado a 1.4 m/s (~5 km/h).
+  - **GPS Real:** Geolocalización de alta precisión en vivo (`navigator.geolocation.watchPosition`). Si el jugador se encuentra fuera del perímetro del juego, un aviso táctico en el HUD muestra la distancia exacta a la que se encuentra del área de operaciones sin teletransportar al jugador.
+  - **Tap-to-Move:** Pulsa en cualquier punto del mapa para moverte con paso humano simulado a 1.4 m/s (~5 km/h). La navegación respeta los límites del círculo de juego reajustando el rumbo al perímetro interior si se pulsa fuera.
+- **Sistema de Spawn y Posicionamiento Dinámico:**
+  - Los jugadores (tanto anfitrión como aliados que se unen) aparecen distribuidos de forma segura y uniforme en una corona circular interior (entre el 20% y el 70% del radio de juego respecto al centro), evitando teletransportes a coordenadas fijas o aparecer encima del tesoro.
+  - Sincronización completa de coordenadas de cámara (`center_lat`, `center_lng`) y tesoro entre todos los clientes conectados a través de Supabase.
 - **Clases de Combate:**
   - **Médico:** Reanimación de aliados caídos en 10s (en lugar de 20s) y radio de curación ampliado a 35m.
   - **Tanque:** +50% de vida base (150 HP) y atracción de agro prioritario del monstruo.

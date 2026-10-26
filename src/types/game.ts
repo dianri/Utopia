@@ -84,6 +84,7 @@ export interface GameRoom {
   hostId: string;
   name?: string;
   status: GameStatus;
+  isPublic: boolean;
   movementMode: MovementMode;
   playAreaRadius: number; // in meters
   centerLat: number;

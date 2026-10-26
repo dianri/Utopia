@@ -23,6 +23,7 @@ export type Database = {
           ended_at: string | null
           host_id: string
           id: string
+          is_public: boolean
           movement_mode: string
           name: string
           play_area_radius: number
@@ -39,6 +40,7 @@ export type Database = {
           ended_at?: string | null
           host_id: string
           id?: string
+          is_public?: boolean
           movement_mode?: string
           name?: string
           play_area_radius?: number
@@ -55,6 +57,7 @@ export type Database = {
           ended_at?: string | null
           host_id?: string
           id?: string
+          is_public?: boolean
           movement_mode?: string
           name?: string
           play_area_radius?: number

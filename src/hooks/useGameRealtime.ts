@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import type { Monster, GhostPing } from '../types/game';
+import type { Monster, GhostPing, SupplyCrate } from '../types/game';
 import { soundEffects } from '../services/soundEffects';
 
 interface RealtimeCallbacks {
@@ -14,6 +14,8 @@ interface RealtimeCallbacks {
   onCrateLooted?: (payload: { crateId: string; playerId: string; playerNickname: string; weaponName: string }) => void;
   onPlayerRevived?: (payload: { revivedPlayerId: string; reviverNickname: string }) => void;
   onChestCountdown?: (payload: { secondsRemaining: number; holdersCount: number }) => void;
+  onRequestStateSync?: () => void;
+  onFullStateSync?: (payload: { monster: Monster; crates: SupplyCrate[]; chestCountdown: number; holdersCount: number }) => void;
   onPresenceSync?: (activeUserIds: string[]) => void;
 }
 
@@ -95,7 +97,17 @@ export function useGameRealtime(
       callbacksRef.current.onChestCountdown?.(payload);
     });
 
-    // 10. PRESENCE (QUIÉN ESTÁ ONLINE)
+    // 10. PETICIÓN DE SINCRONIZACIÓN DE ESTADO (LATE JOIN)
+    channel.on('broadcast', { event: 'request_state_sync' }, () => {
+      callbacksRef.current.onRequestStateSync?.();
+    });
+
+    // 11. RESPUESTA CON ESTADO COMPLETO DEL JUEGO
+    channel.on('broadcast', { event: 'full_state_sync' }, ({ payload }) => {
+      callbacksRef.current.onFullStateSync?.(payload);
+    });
+
+    // 12. PRESENCE (QUIÉN ESTÁ ONLINE)
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
@@ -204,6 +216,27 @@ export function useGameRealtime(
     });
   }, []);
 
+  const broadcastRequestStateSync = useCallback(() => {
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'request_state_sync',
+      payload: {},
+    });
+  }, []);
+
+  const broadcastFullStateSync = useCallback((state: {
+    monster: Monster;
+    crates: SupplyCrate[];
+    chestCountdown: number;
+    holdersCount: number;
+  }) => {
+    channelRef.current?.send({
+      type: 'broadcast',
+      event: 'full_state_sync',
+      payload: state,
+    });
+  }, []);
+
   return {
     isConnected,
     onlineUsers,
@@ -216,5 +249,7 @@ export function useGameRealtime(
     broadcastCrateLooted,
     broadcastPlayerRevived,
     broadcastChestCountdown,
+    broadcastRequestStateSync,
+    broadcastFullStateSync,
   };
 }

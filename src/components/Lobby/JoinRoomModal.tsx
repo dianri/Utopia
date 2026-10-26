@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { PlayerRole } from '../../types/game';
 import { Shield, HeartPulse, Eye, Crosshair, LogIn } from 'lucide-react';
 
@@ -16,6 +16,12 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
   const [code, setCode] = useState<string>(initialCode.toUpperCase());
   const [nickname, setNickname] = useState<string>('');
   const [role, setRole] = useState<PlayerRole>('medic');
+
+  useEffect(() => {
+    if (initialCode) {
+      setCode(initialCode.toUpperCase());
+    }
+  }, [initialCode]);
 
   const roleOptions: { id: PlayerRole; label: string; desc: string; icon: React.ReactNode; color: string }[] = [
     {

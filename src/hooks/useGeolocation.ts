@@ -4,7 +4,8 @@ import { stepTowards } from '../services/geoUtils';
 
 interface UseGeolocationOptions {
   mode: MovementMode;
-  initialCenter: Coordinates;
+  initialPosition: Coordinates | null;
+  positionKey?: string | null;
   onPositionChange: (pos: Coordinates) => void;
   isAlive: boolean;
   isSlowed?: boolean;
@@ -12,12 +13,13 @@ interface UseGeolocationOptions {
 
 export function useGeolocation({
   mode,
-  initialCenter,
+  initialPosition,
+  positionKey,
   onPositionChange,
   isAlive,
   isSlowed = false,
 }: UseGeolocationOptions) {
-  const [currentPosition, setCurrentPosition] = useState<Coordinates>(initialCenter);
+  const [currentPosition, setCurrentPosition] = useState<Coordinates | null>(initialPosition);
   const [targetPosition, setTargetPosition] = useState<Coordinates | null>(null);
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const [isGpsActive, setIsGpsActive] = useState<boolean>(false);
@@ -26,8 +28,29 @@ export function useGeolocation({
   const onPositionChangeRef = useRef(onPositionChange);
   onPositionChangeRef.current = onPositionChange;
 
-  const currentPosRef = useRef(currentPosition);
+  const currentPosRef = useRef<Coordinates | null>(currentPosition);
   currentPosRef.current = currentPosition;
+
+  const lastKeyRef = useRef<string | null | undefined>(positionKey);
+
+  // Sincronizar posición inicial cuando cambia de sala o cuando se recibe posición de spawn válida
+  useEffect(() => {
+    if (initialPosition) {
+      if (lastKeyRef.current !== positionKey || !currentPosRef.current) {
+        lastKeyRef.current = positionKey;
+        setCurrentPosition(initialPosition);
+        currentPosRef.current = initialPosition;
+        setTargetPosition(null);
+      }
+    }
+  }, [initialPosition, positionKey]);
+
+  // Permitir reseteo explícito de posición (por ejemplo al spawnear en una sala)
+  const resetPosition = useCallback((coords: Coordinates) => {
+    setCurrentPosition(coords);
+    currentPosRef.current = coords;
+    setTargetPosition(null);
+  }, []);
 
   // ==========================================
   // MODO GPS REAL (watchPosition)
@@ -75,10 +98,13 @@ export function useGeolocation({
   // ==========================================
   // MODO MANUAL: TAP-TO-MOVE (1.4 m/s)
   // ==========================================
-  const setManualDestination = useCallback((target: Coordinates) => {
-    if (mode !== 'manual' || !isAlive) return;
-    setTargetPosition(target);
-  }, [mode, isAlive]);
+  const setManualDestination = useCallback(
+    (target: Coordinates) => {
+      if (mode !== 'manual' || !isAlive) return;
+      setTargetPosition(target);
+    },
+    [mode, isAlive]
+  );
 
   useEffect(() => {
     if (mode !== 'manual' || !targetPosition || !isAlive) return;
@@ -86,9 +112,11 @@ export function useGeolocation({
     let animFrame: number;
     let lastTime = performance.now();
 
-    const speedMps = isSlowed ? 0.7 : 1.4; // 1.4 m/s paso humano normal, 0.7 m/s si está ralentizado
+    const speedMps = isSlowed ? 0.7 : 1.4; // 1.4 m/s (~5 km/h) paso humano normal, 0.7 m/s si está ralentizado
 
     const loop = (time: number) => {
+      if (!currentPosRef.current) return;
+
       const deltaMs = Math.min(time - lastTime, 100);
       lastTime = time;
 
@@ -120,6 +148,7 @@ export function useGeolocation({
     currentPosition,
     targetPosition,
     setManualDestination,
+    resetPosition,
     gpsAccuracy,
     isGpsActive,
     gpsError,

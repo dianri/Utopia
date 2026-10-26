@@ -98,6 +98,25 @@ export function getRandomPointInCircle(center: Coordinates, maxRadiusMeters: num
 }
 
 /**
+ * Genera una coordenada de spawn aleatoria y segura dentro del área de juego
+ * (entre el 20% y el 70% del radio de juego respecto al centro)
+ * para garantizar que los jugadores no aparezcan pegados al tesoro ni fuera del perímetro.
+ */
+export function getRandomSpawnPointInPlayArea(
+  center: Coordinates,
+  radiusMeters: number,
+  minFraction: number = 0.2,
+  maxFraction: number = 0.7
+): Coordinates {
+  const minR = radiusMeters * minFraction;
+  const maxR = radiusMeters * maxFraction;
+  // Muestreo uniforme en la corona circular [minR, maxR]
+  const randomDistance = Math.sqrt(Math.random() * (maxR * maxR - minR * minR) + minR * minR);
+  const randomAngle = Math.random() * 360;
+  return getDestinationPoint(center, randomDistance, randomAngle);
+}
+
+/**
  * Interpola un desplazamiento en línea recta hacia el objetivo a una velocidad fija (m/s) durante un delta de tiempo (ms)
  */
 export function stepTowards(

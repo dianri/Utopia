@@ -19,7 +19,13 @@ import {
   getReviveDistanceMeters,
   getReviveDurationSeconds,
 } from './services/combatEngine';
-import { getDistanceMeters, getRandomPointInCircle } from './services/geoUtils';
+import {
+  getDistanceMeters,
+  getRandomPointInCircle,
+  getRandomSpawnPointInPlayArea,
+  getBearing,
+  getDestinationPoint,
+} from './services/geoUtils';
 import { soundEffects } from './services/soundEffects';
 import { MonsterAIController } from './services/monsterAI';
 import { useGameRealtime } from './hooks/useGameRealtime';
@@ -37,6 +43,7 @@ import { GhostOverlay } from './components/HUD/GhostOverlay';
 import { CreateRoomModal } from './components/Lobby/CreateRoomModal';
 import { JoinRoomModal } from './components/Lobby/JoinRoomModal';
 import { WaitingRoom } from './components/Lobby/WaitingRoom';
+import { GameExplorer } from './components/Lobby/GameExplorer';
 
 import { VictoryModal } from './components/PostGame/VictoryModal';
 import { DefeatModal } from './components/PostGame/DefeatModal';
@@ -52,8 +59,8 @@ export const App: React.FC = () => {
 
   // MONSTRUO Y ESTADO
   const [monster, setMonster] = useState<Monster>({
-    lat: 40.4168,
-    lng: -3.7038,
+    lat: 0,
+    lng: 0,
     hp: 1200,
     maxHp: 1200,
     state: 'patrol',
@@ -229,12 +236,15 @@ export const App: React.FC = () => {
     [realtime]
   );
 
-  const { setManualDestination } = useGeolocation({
+  const { setManualDestination, resetPosition } = useGeolocation({
     mode: room?.movementMode ?? 'manual',
-    initialCenter: {
-      lat: room?.centerLat ?? 40.4168,
-      lng: room?.centerLng ?? -3.7038,
-    },
+    initialPosition:
+      myPlayer?.lat != null && myPlayer?.lng != null
+        ? { lat: myPlayer.lat, lng: myPlayer.lng }
+        : room
+        ? { lat: room.centerLat, lng: room.centerLng }
+        : null,
+    positionKey: room?.id ?? null,
     onPositionChange: handlePositionChange,
     isAlive: myPlayer?.isAlive ?? true,
     isSlowed: myPlayer?.isSlowed ?? false,
@@ -661,6 +671,7 @@ export const App: React.FC = () => {
   // ==========================================
   const handleCreateRoom = async (config: {
     roomName: string;
+    isPublic: boolean;
     radiusMeters: number;
     movementMode: MovementMode;
     center: Coordinates;
@@ -685,23 +696,47 @@ export const App: React.FC = () => {
     // Ubicación del cofre del tesoro dentro del radio
     const treasureLoc = getRandomPointInCircle(config.center, config.radiusMeters * 0.4);
 
-    // Insertar partida en Supabase
-    const { data: gameData, error: gameError } = await (supabase
-      .from('games') as any)
-      .insert({
-        code: roomCode,
-        name: config.roomName,
-        host_id: userId,
-        status: 'lobby',
-        movement_mode: config.movementMode,
-        play_area_radius: config.radiusMeters,
-        center_lat: config.center.lat,
-        center_lng: config.center.lng,
-        treasure_lat: treasureLoc.lat,
-        treasure_lng: treasureLoc.lng,
-      })
+    // Spawn point seguro del anfitrión dentro del radio de juego (20% a 70% del radio)
+    const hostSpawnPoint = getRandomSpawnPointInPlayArea(
+      config.center,
+      config.radiusMeters,
+      0.2,
+      0.7
+    );
+
+    // Insertar partida en Supabase con tolerancia a columnas opcionales
+    const basePayload = {
+      code: roomCode,
+      name: config.roomName,
+      host_id: userId,
+      status: 'lobby',
+      movement_mode: config.movementMode,
+      play_area_radius: config.radiusMeters,
+      center_lat: config.center.lat,
+      center_lng: config.center.lng,
+      treasure_lat: treasureLoc.lat,
+      treasure_lng: treasureLoc.lng,
+    };
+
+    let gameData: any = null;
+    let gameError: any = null;
+
+    const resWithPublic = await (supabase.from('games') as any)
+      .insert({ ...basePayload, is_public: config.isPublic })
       .select()
       .single();
+
+    if (resWithPublic.error) {
+      // Fallback si la columna is_public no existiera en la tabla remota
+      const resFallback = await (supabase.from('games') as any)
+        .insert(basePayload)
+        .select()
+        .single();
+      gameData = resFallback.data;
+      gameError = resFallback.error;
+    } else {
+      gameData = resWithPublic.data;
+    }
 
     if (gameError || !gameData) {
       console.error('Error al crear sala:', gameError);
@@ -709,7 +744,7 @@ export const App: React.FC = () => {
       return;
     }
 
-    // Insertar jugador Host
+    // Insertar jugador Host en la posición de spawn generada
     const maxHp = getMaxHpForRole(config.role);
     const { data: playerData, error: playerError } = await (supabase
       .from('players') as any)
@@ -721,8 +756,8 @@ export const App: React.FC = () => {
         hp: maxHp,
         max_hp: maxHp,
         is_alive: true,
-        lat: config.center.lat,
-        lng: config.center.lng,
+        lat: hostSpawnPoint.lat,
+        lng: hostSpawnPoint.lng,
       })
       .select()
       .single();
@@ -738,6 +773,7 @@ export const App: React.FC = () => {
       name: gameData.name ?? undefined,
       hostId: gameData.host_id,
       status: gameData.status,
+      isPublic: gameData.is_public ?? config.isPublic ?? true,
       movementMode: gameData.movement_mode,
       playAreaRadius: gameData.play_area_radius,
       centerLat: gameData.center_lat,
@@ -756,8 +792,8 @@ export const App: React.FC = () => {
       hp: maxHp,
       maxHp,
       isAlive: true,
-      lat: config.center.lat,
-      lng: config.center.lng,
+      lat: hostSpawnPoint.lat,
+      lng: hostSpawnPoint.lng,
       damageDealt: 0,
       revivesDone: 0,
       cratesOpened: 0,
@@ -765,6 +801,18 @@ export const App: React.FC = () => {
       isHost: true,
       equippedWeapon: DEFAULT_WEAPONS_BY_ROLE[config.role],
     };
+
+    // Inicializar ubicación del monstruo en el cofre del tesoro
+    setMonster({
+      lat: treasureLoc.lat,
+      lng: treasureLoc.lng,
+      hp: 1200,
+      maxHp: 1200,
+      state: 'patrol',
+      targetPlayerId: null,
+      speedMps: 2.8,
+      isEnraged: false,
+    });
 
     // Generar airdrops iniciales
     const generatedCrates: SupplyCrate[] = [];
@@ -792,6 +840,7 @@ export const App: React.FC = () => {
     setMyPlayer(hostPlayer);
     setPlayers([hostPlayer]);
     setCrates(generatedCrates);
+    resetPosition(hostSpawnPoint);
     setShowCreateModal(false);
   };
 
@@ -817,7 +866,19 @@ export const App: React.FC = () => {
 
     const maxHp = getMaxHpForRole(config.role);
 
-    // Insertar jugador en la sala
+    // Calcular spawn point dinámico dentro del radio de juego de la sala (entre 20% y 70%)
+    const roomCenter: Coordinates = {
+      lat: gameData.center_lat,
+      lng: gameData.center_lng,
+    };
+    const playerSpawnPoint = getRandomSpawnPointInPlayArea(
+      roomCenter,
+      gameData.play_area_radius,
+      0.2,
+      0.7
+    );
+
+    // Insertar jugador en la sala con su posición de spawn dinámica
     const { data: playerData, error: playerError } = await (supabase
       .from('players') as any)
       .insert({
@@ -828,8 +889,8 @@ export const App: React.FC = () => {
         hp: maxHp,
         max_hp: maxHp,
         is_alive: true,
-        lat: gameData.center_lat,
-        lng: gameData.center_lng,
+        lat: playerSpawnPoint.lat,
+        lng: playerSpawnPoint.lng,
       })
       .select()
       .single();
@@ -846,6 +907,7 @@ export const App: React.FC = () => {
       name: gameData.name ?? undefined,
       hostId: gameData.host_id,
       status: gameData.status,
+      isPublic: gameData.is_public ?? true,
       movementMode: gameData.movement_mode,
       playAreaRadius: gameData.play_area_radius,
       centerLat: gameData.center_lat,
@@ -864,8 +926,8 @@ export const App: React.FC = () => {
       hp: maxHp,
       maxHp,
       isAlive: true,
-      lat: gameData.center_lat,
-      lng: gameData.center_lng,
+      lat: playerSpawnPoint.lat,
+      lng: playerSpawnPoint.lng,
       damageDealt: 0,
       revivesDone: 0,
       cratesOpened: 0,
@@ -874,8 +936,21 @@ export const App: React.FC = () => {
       equippedWeapon: DEFAULT_WEAPONS_BY_ROLE[config.role],
     };
 
+    // Sincronizar posición del monstruo en el cofre del tesoro de la sala
+    setMonster({
+      lat: gameData.treasure_lat,
+      lng: gameData.treasure_lng,
+      hp: 1200,
+      maxHp: 1200,
+      state: 'patrol',
+      targetPlayerId: null,
+      speedMps: 2.8,
+      isEnraged: false,
+    });
+
     setRoom(currentRoom);
     setMyPlayer(player);
+    resetPosition(playerSpawnPoint);
     setShowJoinModal(false);
   };
 
@@ -913,7 +988,20 @@ export const App: React.FC = () => {
       soundEffects.playGhostPing();
     } else if (room.movementMode === 'manual' && myPlayer?.isAlive) {
       // MODO MANUAL: MOVERSE AL PUNTO SELECCIONADO
-      setManualDestination(coords);
+      // Si el toque es fuera del perímetro de juego, reajustar hacia el límite interior (95% del radio)
+      const clickDist = getDistanceMeters(coords, { lat: room.centerLat, lng: room.centerLng });
+      if (clickDist > room.playAreaRadius) {
+        addLog('Destino fuera del área de operaciones. Reajustando al límite.', 'warning');
+        const bearing = getBearing({ lat: room.centerLat, lng: room.centerLng }, coords);
+        const clampedTarget = getDestinationPoint(
+          { lat: room.centerLat, lng: room.centerLng },
+          room.playAreaRadius * 0.95,
+          bearing
+        );
+        setManualDestination(clampedTarget);
+      } else {
+        setManualDestination(coords);
+      }
     }
   };
 
@@ -921,8 +1009,8 @@ export const App: React.FC = () => {
     if (!myPlayer) return;
     const ping: GhostPing = {
       id: crypto.randomUUID(),
-      lat: myPlayer.lat ?? room?.centerLat ?? 40.4168,
-      lng: myPlayer.lng ?? room?.centerLng ?? -3.7038,
+      lat: myPlayer.lat ?? room?.centerLat ?? 0,
+      lng: myPlayer.lng ?? room?.centerLng ?? 0,
       timestamp: Date.now(),
       playerNickname: myPlayer.nickname,
       type,
@@ -938,6 +1026,16 @@ export const App: React.FC = () => {
         monster
       )
     : 999;
+
+  const distToCenter =
+    room && myPlayer?.lat != null && myPlayer?.lng != null
+      ? getDistanceMeters(
+          { lat: myPlayer.lat, lng: myPlayer.lng },
+          { lat: room.centerLat, lng: room.centerLng }
+        )
+      : 0;
+  const isOutOfPlayArea = room ? distToCenter > room.playAreaRadius : false;
+  const outOfAreaMeters = room ? Math.round(distToCenter - room.playAreaRadius) : 0;
 
   // ==========================================
   // RENDERIZADO DE LA INTERFAZ
@@ -1085,6 +1183,24 @@ export const App: React.FC = () => {
           <RespawnTimer secondsRemaining={monster.respawnTimeRemaining} />
 
           <CombatLog messages={combatLogs} />
+
+          {/* AVISO TÁCTICO: FUERA DEL ÁREA DE JUEGO */}
+          {isOutOfPlayArea && (
+            <div className="fixed top-20 left-4 right-4 z-40 max-w-md mx-auto bg-red-950/90 border-2 border-red-500 text-red-200 px-4 py-3 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-3 animate-pulse">
+              <span className="text-2xl">⚠️</span>
+              <div className="flex-1 text-xs font-mono">
+                <span className="font-bold text-red-400 block uppercase tracking-wider">
+                  Fuera del Área de Operaciones
+                </span>
+                <span>
+                  Estás a <strong className="text-white">{outOfAreaMeters} metros</strong> del perímetro de juego.
+                  {room.movementMode === 'gps'
+                    ? ' Desplázate físicamente hacia la zona para participar en el combate.'
+                    : ' Toca dentro del círculo de juego para regresar a la zona.'}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* OVERLAY DE MODO FANTASMA CUANDO EL JUGADOR ESTÁ MUERTO */}
           {!myPlayer.isAlive && (

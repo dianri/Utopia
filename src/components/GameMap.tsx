@@ -174,19 +174,55 @@ export const GameMap: React.FC<GameMapProps> = ({
   }, []);
 
   // ==========================================
-  // ACTUALIZACIÓN DE RADIO DE VISIÓN Y ÁREA
+  // ACTUALIZACIÓN DE RADIO DE VISIÓN, ÁREA DE JUEGO Y ZONA DEL TESORO
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isMapLoadedRef.current) return;
 
+    // Actualizar radio de visión del jugador
     const myCoords = { lat: myPlayer.lat ?? center.lat, lng: myPlayer.lng ?? center.lng };
     const visionRadius = getVisionRadius(myPlayer.role, isRadarActive);
     const visionSource = map.getSource('player-vision') as maplibregl.GeoJSONSource;
     if (visionSource) {
       visionSource.setData(createGeoJsonCircle(myCoords, Math.min(visionRadius, playAreaRadius)));
     }
-  }, [myPlayer.lat, myPlayer.lng, myPlayer.role, isRadarActive, playAreaRadius, center]);
+
+    // Actualizar polígono del área de juego
+    const playAreaSource = map.getSource('play-area') as maplibregl.GeoJSONSource;
+    if (playAreaSource) {
+      playAreaSource.setData(createGeoJsonCircle(center, playAreaRadius));
+    }
+
+    // Actualizar zona del tesoro
+    const treasureSource = map.getSource('treasure-zone') as maplibregl.GeoJSONSource;
+    if (treasureSource) {
+      treasureSource.setData(createGeoJsonCircle(treasureLocation, 20));
+    }
+  }, [
+    myPlayer.lat,
+    myPlayer.lng,
+    myPlayer.role,
+    isRadarActive,
+    playAreaRadius,
+    center.lat,
+    center.lng,
+    treasureLocation.lat,
+    treasureLocation.lng,
+  ]);
+
+  // Si cambia el centro del juego y aún no hay jugador posicionado, reenfocar la cámara
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapLoadedRef.current) return;
+    if (!myPlayer.lat || !myPlayer.lng) {
+      map.flyTo({
+        center: [center.lng, center.lat],
+        zoom: 16.5,
+        duration: 800,
+      });
+    }
+  }, [center.lat, center.lng]);
 
   // ==========================================
   // MARCADOR DEL COFRE DEL TESORO

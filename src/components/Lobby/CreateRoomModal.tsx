@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import type { MovementMode, PlayerRole, Coordinates } from '../../types/game';
-import { Shield, HeartPulse, Eye, Crosshair, MapPin, Navigation, Play } from 'lucide-react';
+import { Shield, HeartPulse, Eye, Crosshair, MapPin, Navigation, Play, Globe, Lock } from 'lucide-react';
 
 interface CreateRoomModalProps {
   onConfirm: (config: {
     roomName: string;
+    isPublic: boolean;
     radiusMeters: number;
     movementMode: MovementMode;
     center: Coordinates;
@@ -16,19 +17,19 @@ interface CreateRoomModalProps {
 
 export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onCancel }) => {
   const [roomName, setRoomName] = useState<string>('Las Meriendas Hunt');
+  const [isPublic, setIsPublic] = useState<boolean>(true);
   const [areaKm2, setAreaKm2] = useState<number>(1.0); // 0.5 a 3.0 km²
   const [movementMode, setMovementMode] = useState<MovementMode>('manual');
   const [nickname, setNickname] = useState<string>('');
   const [role, setRole] = useState<PlayerRole>('scout');
   const [center, setCenter] = useState<Coordinates>({
-    lat: 40.4168, // Madrid Centro por defecto (o GPS)
-    lng: -3.7038,
+    lat: 40.3458, // Coordenada configurable (Alcorcón / GPS del dispositivo)
+    lng: -3.8249,
   });
   const [isLoadingGps, setIsLoadingGps] = useState<boolean>(false);
   const [gpsObtained, setGpsObtained] = useState<boolean>(false);
 
-  // Intentar obtener GPS inicial
-  useEffect(() => {
+  const fetchCurrentLocation = () => {
     if (navigator.geolocation) {
       setIsLoadingGps(true);
       navigator.geolocation.getCurrentPosition(
@@ -40,12 +41,18 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
           setGpsObtained(true);
           setIsLoadingGps(false);
         },
-        () => {
+        (err) => {
+          console.warn('GPS no disponible:', err.message);
           setIsLoadingGps(false);
         },
-        { timeout: 6000 }
+        { timeout: 8000, enableHighAccuracy: true }
       );
     }
+  };
+
+  // Intentar obtener GPS inicial del usuario al abrir modal
+  useEffect(() => {
+    fetchCurrentLocation();
   }, []);
 
   // Radio en metros a partir del área en km² (A = pi * r^2  => r = sqrt(A / pi) en km)
@@ -88,6 +95,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
 
     onConfirm({
       roomName,
+      isPublic,
       radiusMeters,
       movementMode,
       center,
@@ -144,6 +152,60 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
                 className="w-full bg-hud-panel border border-hud-border rounded-lg px-3 py-2 text-sm font-mono text-hud-cyan font-bold focus:outline-none focus:border-hud-cyan"
                 placeholder="Ej. Capitán_Fox"
               />
+            </div>
+          </div>
+
+          {/* VISIBILIDAD DE LA SALA (PÚBLICA VS PRIVADA) */}
+          <div className="bg-hud-panel border border-hud-border p-3 rounded-xl flex flex-col gap-2">
+            <div className="flex justify-between items-center text-xs font-mono">
+              <span className="text-hud-muted">Privacidad de la Partida:</span>
+              <span
+                className={`text-[10px] font-mono px-2 py-0.5 rounded font-black tracking-wider uppercase border ${
+                  isPublic
+                    ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'
+                    : 'border-amber-500/50 bg-amber-500/10 text-amber-300'
+                }`}
+              >
+                {isPublic ? '🌐 Pública (En lista)' : '🔒 Privada (Solo código)'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setIsPublic(true)}
+                className={`flex flex-col items-start gap-1 p-2.5 rounded-lg border font-mono text-xs transition-all text-left ${
+                  isPublic
+                    ? 'border-emerald-500 bg-emerald-500/15 text-emerald-300 shadow-md shadow-emerald-500/20'
+                    : 'border-hud-border bg-hud-dark text-hud-muted hover:border-hud-border/80'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 font-black uppercase text-xs">
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Pública</span>
+                </div>
+                <span className="text-[10px] opacity-80 leading-tight">
+                  Visible en el lobby para que cualquiera pueda unirse directamente.
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsPublic(false)}
+                className={`flex flex-col items-start gap-1 p-2.5 rounded-lg border font-mono text-xs transition-all text-left ${
+                  !isPublic
+                    ? 'border-amber-500 bg-amber-500/15 text-amber-300 shadow-md shadow-amber-500/20'
+                    : 'border-hud-border bg-hud-dark text-hud-muted hover:border-hud-border/80'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 font-black uppercase text-xs">
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Privada</span>
+                </div>
+                <span className="text-[10px] opacity-80 leading-tight">
+                  Oculta del lobby; solo accesible con código de 6 letras o enlace.
+                </span>
+              </button>
             </div>
           </div>
 
@@ -206,16 +268,60 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
           </div>
 
           {/* UBICACIÓN CENTRAL */}
-          <div className="flex items-center justify-between bg-hud-panel border border-hud-border px-3 py-2 rounded-xl text-xs font-mono">
-            <div className="flex items-center gap-2 text-hud-muted">
-              <MapPin className="w-4 h-4 text-hud-cyan" />
-              <span>
-                {gpsObtained
-                  ? `GPS detectado: ${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}`
-                  : isLoadingGps
-                  ? 'Buscando satélites GPS...'
-                  : 'Ubicación base cargada'}
-              </span>
+          <div className="flex flex-col gap-2 bg-hud-panel border border-hud-border px-3 py-2.5 rounded-xl text-xs font-mono">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-hud-muted">
+                <MapPin className="w-4 h-4 text-hud-cyan" />
+                <span className="font-bold text-slate-200">
+                  {gpsObtained
+                    ? `GPS fijado: ${center.lat.toFixed(4)}, ${center.lng.toFixed(4)}`
+                    : isLoadingGps
+                    ? 'Buscando satélites GPS...'
+                    : 'Ubicación central de la partida'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={fetchCurrentLocation}
+                disabled={isLoadingGps}
+                className="text-[11px] text-hud-cyan hover:underline flex items-center gap-1 font-bold disabled:opacity-50"
+              >
+                <Navigation className="w-3 h-3" />
+                {isLoadingGps ? 'Buscando...' : 'Detectar mi GPS'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-hud-border/50">
+              <div>
+                <label className="text-[10px] text-hud-muted block">Latitud Centro</label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={center.lat}
+                  onChange={(e) =>
+                    setCenter((prev) => ({
+                      ...prev,
+                      lat: parseFloat(e.target.value) || 0,
+                    }))
+                  }
+                  className="w-full bg-hud-dark border border-hud-border rounded px-2 py-1 text-xs font-mono text-hud-cyan focus:outline-none focus:border-hud-cyan"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] text-hud-muted block">Longitud Centro</label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={center.lng}
+                  onChange={(e) =>
+                    setCenter((prev) => ({
+                      ...prev,
+                      lng: parseFloat(e.target.value) || 0,
+                    }))
+                  }
+                  className="w-full bg-hud-dark border border-hud-border rounded px-2 py-1 text-xs font-mono text-hud-cyan focus:outline-none focus:border-hud-cyan"
+                />
+              </div>
             </div>
           </div>
 

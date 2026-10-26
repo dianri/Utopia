@@ -92,15 +92,21 @@ export const WaitingRoom: React.FC<WaitingRoomProps> = ({
         </div>
 
         {/* PARÁMETROS DE LA MISIÓN */}
-        <div className="grid grid-cols-2 gap-2 text-xs font-mono bg-hud-panel/60 border border-hud-border p-3 rounded-xl">
+        <div className="grid grid-cols-3 gap-2 text-xs font-mono bg-hud-panel/60 border border-hud-border p-3 rounded-xl">
           <div>
-            <span className="text-hud-muted block">Área de Combate:</span>
-            <span className="text-white font-bold">{room.playAreaRadius}m de radio</span>
+            <span className="text-hud-muted block text-[11px]">Área de Combate:</span>
+            <span className="text-white font-bold">{room.playAreaRadius}m radio</span>
           </div>
           <div>
-            <span className="text-hud-muted block">Modo de Control:</span>
+            <span className="text-hud-muted block text-[11px]">Control:</span>
             <span className="text-hud-cyan font-bold">
-              {room.movementMode === 'gps' ? 'GPS Real' : 'Tap-to-Move (1.4 m/s)'}
+              {room.movementMode === 'gps' ? 'GPS Real' : 'Tap-to-Move'}
+            </span>
+          </div>
+          <div>
+            <span className="text-hud-muted block text-[11px]">Visibilidad:</span>
+            <span className={`font-bold ${room.isPublic ? 'text-emerald-400' : 'text-amber-400'}`}>
+              {room.isPublic ? '🌐 Pública' : '🔒 Privada'}
             </span>
           </div>
         </div>
