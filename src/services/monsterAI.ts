@@ -1,5 +1,5 @@
 import type { Monster, Coordinates, Player } from '../types/game';
-import { getDistanceMeters, getDestinationPoint, stepTowards } from './geoUtils';
+import { getDistanceMeters, getDestinationPoint, stepTowards, getBearing } from './geoUtils';
 import { soundEffects } from './soundEffects';
 
 export interface MonsterAIUpdateResult {
@@ -14,10 +14,10 @@ export interface MonsterAIUpdateResult {
 
 export class MonsterAIController {
   private treasureLocation: Coordinates;
-  private patrolAngle: number = 0;
   private patrolRadiusMeters: number = 55;
   private lastAttackTimestamp: number = 0;
   private hadEnraged: boolean = false;
+  private forcedTargetPlayerId: string | null = null;
 
   constructor(treasureLocation: Coordinates) {
     this.treasureLocation = treasureLocation;
@@ -25,6 +25,10 @@ export class MonsterAIController {
 
   public setTreasureLocation(coord: Coordinates) {
     this.treasureLocation = coord;
+  }
+
+  public setAggroTarget(playerId: string) {
+    this.forcedTargetPlayerId = playerId;
   }
 
   /**
@@ -136,7 +140,23 @@ export class MonsterAIController {
       }
     }
 
-    // B. Buscar objetivo vivo en rango de agresión
+    // B. Si un jugador atacó recientemente al monstruo, perseguirlo con máxima prioridad
+    if (!targetPlayer && this.forcedTargetPlayerId) {
+      const attacker = livingPlayers.find((p) => p.id === this.forcedTargetPlayerId);
+      if (attacker && attacker.lat != null && attacker.lng != null) {
+        const dist = getDistanceMeters(monster, { lat: attacker.lat, lng: attacker.lng });
+        if (dist <= aggroRadius * 1.5) {
+          targetPlayer = attacker;
+        } else {
+          // Se alejó demasiado, olvidar objetivo forzado
+          this.forcedTargetPlayerId = null;
+        }
+      } else {
+        this.forcedTargetPlayerId = null;
+      }
+    }
+
+    // C. Buscar objetivo vivo en rango de agresión (prioridad: Tanque > más cercano)
     if (!targetPlayer) {
       let nearestTank: { player: Player; dist: number } | null = null;
       let nearestOther: { player: Player; dist: number } | null = null;
@@ -192,21 +212,30 @@ export class MonsterAIController {
         isEnraged,
       };
     } else {
-      // ESTADO: PATRULLA CIRCULAR ALREDEDOR DEL TESORO
-      this.patrolAngle = (this.patrolAngle + 20) % 360;
+      // ESTADO: PATRULLA CIRCULAR SUAVE ALREDEDOR DEL COFRE
+      const anchorPoint: Coordinates =
+        this.treasureLocation && this.treasureLocation.lat && this.treasureLocation.lng
+          ? this.treasureLocation
+          : { lat: monster.lat, lng: monster.lng };
+
+      // Calculamos el rumbo actual del monstruo respecto al cofre
+      const currentBearing = getBearing(anchorPoint, monster);
+      // Avanzamos suavemente en la circunferencia (+6 grados por tick de 1s para un movimiento continuo a ~3 m/s)
+      const nextAngle = (currentBearing + 6) % 360;
       const patrolTarget = getDestinationPoint(
-        this.treasureLocation,
+        anchorPoint,
         this.patrolRadiusMeters,
-        this.patrolAngle
+        nextAngle
       );
 
-      const { position } = stepTowards(monster, patrolTarget, 2.0, 1000);
+      const patrolSpeed = 2.4;
+      const { position } = stepTowards(monster, patrolTarget, patrolSpeed, 1000);
       result.updatedMonster = {
         ...monster,
         lat: position.lat,
         lng: position.lng,
         state: 'patrol',
-        speedMps: 2.0,
+        speedMps: patrolSpeed,
         targetPlayerId: null,
         isEnraged,
       };

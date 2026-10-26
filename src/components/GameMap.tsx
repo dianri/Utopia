@@ -459,46 +459,33 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   }, [crates]);
 
   // ==========================================
-  // 7. MARCADOR DEL MONSTRUO (Con niebla de guerra y anclaje fluido)
+  // 7. MARCADOR DEL MONSTRUO (Anclaje nativo MapLibre GL y niebla de guerra)
   // ==========================================
+  const myCoords = { lat: myPlayer.lat ?? center.lat, lng: myPlayer.lng ?? center.lng };
+  const distToMonster = getDistanceMeters(myCoords, monster);
+  const visionRadius = getVisionRadius(myPlayer.role, isRadarActive);
+  const isMonsterVisible =
+    (distToMonster <= visionRadius || isRadarActive) &&
+    monster.state !== 'dead' &&
+    monster.hp > 0;
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    const myCoords = { lat: myPlayer.lat ?? center.lat, lng: myPlayer.lng ?? center.lng };
-    const distToMonster = getDistanceMeters(myCoords, monster);
-    const visionRadius = getVisionRadius(myPlayer.role, isRadarActive);
-    const isVisible = distToMonster <= visionRadius || isRadarActive;
-    const isAlive = monster.state !== 'dead' && monster.hp > 0;
-
-    if (!isVisible || !isAlive) {
-      if (monsterMarkerRef.current) {
-        monsterMarkerRef.current.getElement().style.display = 'none';
-      }
-      return;
-    }
-
-    const hpPercent = Math.max(0, Math.min(100, (monster.hp / monster.maxHp) * 100));
-    const isEnraged = monster.isEnraged || monster.state === 'enraged';
-
+    // Crear el elemento DOM del marcador una sola vez
     if (!monsterMarkerRef.current) {
       const el = document.createElement('div');
-      el.className = 'monster-marker flex flex-col items-center select-none pointer-events-none';
-      el.id = 'monster-hud-marker';
+      el.className = 'monster-map-marker select-none pointer-events-none';
       el.innerHTML = `
-        <div class="relative flex items-center justify-center">
-          <div id="monster-glow" class="absolute ${isEnraged ? 'w-16 h-16 bg-red-600/40 animate-ping' : 'w-14 h-14 bg-purple-600/30 animate-pulse'} rounded-full"></div>
-          <div id="monster-avatar" class="w-12 h-12 ${isEnraged ? 'bg-red-700 border-2 border-red-400' : 'bg-purple-800 border-2 border-purple-400'} rounded-full shadow-2xl flex items-center justify-center text-2xl">
-            👹
+        <div class="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+          <div class="w-12 h-12 bg-red-600/30 rounded-full animate-ping absolute"></div>
+          <div class="w-10 h-10 bg-red-950 border-2 border-red-500 rounded-full flex items-center justify-center shadow-lg shadow-red-500/50">
+            <span class="text-xl">👹</span>
           </div>
-        </div>
-        <div class="w-16 mt-1 bg-hud-dark/90 p-0.5 rounded border border-red-500/50">
-          <div class="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
-            <div id="monster-hp-bar" class="h-full ${isEnraged ? 'bg-red-500' : 'bg-purple-500'}" style="width: ${hpPercent}%"></div>
+          <div class="absolute -top-4 w-14 bg-black/80 rounded h-1.5 overflow-hidden border border-red-500/40">
+            <div id="monster-hp-bar" class="bg-red-500 h-full transition-all duration-300" style="width: 100%"></div>
           </div>
-          <span id="monster-status-text" class="block text-center text-[9px] font-black text-red-300 uppercase tracking-tighter">
-            ${isEnraged ? 'Fase 2: Furia' : 'Monstruo'}
-          </span>
         </div>
       `;
 
@@ -509,45 +496,20 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         .setLngLat([monster.lng, monster.lat])
         .addTo(map);
     } else {
-      const markerEl = monsterMarkerRef.current.getElement();
-      markerEl.style.display = '';
+      // Actualizar posición de forma fluida sin recrear el DOM
       monsterMarkerRef.current.setLngLat([monster.lng, monster.lat]);
-
-      const hpBar = markerEl.querySelector('#monster-hp-bar') as HTMLElement | null;
+      const hpBar = document.getElementById('monster-hp-bar');
       if (hpBar) {
-        hpBar.style.width = `${hpPercent}%`;
-        hpBar.className = `h-full ${isEnraged ? 'bg-red-500' : 'bg-purple-500'}`;
-      }
-
-      const glow = markerEl.querySelector('#monster-glow');
-      if (glow) {
-        glow.className = `absolute ${isEnraged ? 'w-16 h-16 bg-red-600/40 animate-ping' : 'w-14 h-14 bg-purple-600/30 animate-pulse'} rounded-full`;
-      }
-
-      const avatar = markerEl.querySelector('#monster-avatar');
-      if (avatar) {
-        avatar.className = `w-12 h-12 ${isEnraged ? 'bg-red-700 border-2 border-red-400' : 'bg-purple-800 border-2 border-purple-400'} rounded-full shadow-2xl flex items-center justify-center text-2xl`;
-      }
-
-      const statusText = markerEl.querySelector('#monster-status-text');
-      if (statusText) {
-        statusText.textContent = isEnraged ? 'Fase 2: Furia' : 'Monstruo';
+        hpBar.style.width = `${Math.max(0, (monster.hp / monster.maxHp) * 100)}%`;
       }
     }
-  }, [
-    monster.lat,
-    monster.lng,
-    monster.hp,
-    monster.maxHp,
-    monster.state,
-    monster.isEnraged,
-    myPlayer.lat,
-    myPlayer.lng,
-    myPlayer.role,
-    isRadarActive,
-    center.lat,
-    center.lng,
-  ]);
+
+    // Visibilidad condicionada a la niebla de guerra
+    const element = monsterMarkerRef.current.getElement();
+    if (element) {
+      element.style.display = isMonsterVisible ? 'block' : 'none';
+    }
+  }, [monster.lat, monster.lng, monster.hp, monster.maxHp, isMonsterVisible]);
 
   // ==========================================
   // 8. MARCADORES DE JUGADORES (Direct DOM update sin lag)
