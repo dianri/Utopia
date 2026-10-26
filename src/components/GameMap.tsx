@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type {
@@ -29,7 +29,7 @@ interface GameMapProps {
   onReviveAttempt?: (targetPlayer: Player) => void;
 }
 
-export const GameMap: React.FC<GameMapProps> = ({
+const GameMapComponent: React.FC<GameMapProps> = ({
   center,
   playAreaRadius,
   treasureLocation,
@@ -46,17 +46,29 @@ export const GameMap: React.FC<GameMapProps> = ({
   const mapRef = useRef<maplibregl.Map | null>(null);
   const isMapLoadedRef = useRef<boolean>(false);
 
-  // Marcadores HTML mantenidos en refs para actualización fluida a 60 FPS
+  // Marcadores HTML persistentes en refs para animación a 60 FPS sin re-renderizar React
   const playerMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const monsterMarkerRef = useRef<maplibregl.Marker | null>(null);
   const chestMarkerRef = useRef<maplibregl.Marker | null>(null);
   const crateMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const pingMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
 
+  // Refs para desacoplar arrastre de cámara (drag) de clic de movimiento (tap-to-move)
+  const isDraggingRef = useRef<boolean>(false);
+  const pointerDownPosRef = useRef<{ x: number; y: number } | null>(null);
+  const dragEndTimeRef = useRef<number>(0);
+  const onMapClickRef = useRef(onMapClick);
+  onMapClickRef.current = onMapClick;
+
   const [followPlayer, setFollowPlayer] = useState<boolean>(true);
+  const followPlayerRef = useRef<boolean>(true);
+  followPlayerRef.current = followPlayer;
+
+  const lastCameraPosRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastVisionPosRef = useRef<{ lat: number; lng: number } | null>(null);
 
   // ==========================================
-  // INICIALIZACIÓN DEL MAPA
+  // 1. INICIALIZACIÓN DEL MAPA WEBGL
   // ==========================================
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -74,7 +86,7 @@ export const GameMap: React.FC<GameMapProps> = ({
     map.on('load', () => {
       isMapLoadedRef.current = true;
 
-      // 1. CAPA DE ÁREA DE JUEGO
+      // 1. Capa estática: Área de juego
       const playAreaGeo = createGeoJsonCircle(center, playAreaRadius);
       map.addSource('play-area', {
         type: 'geojson',
@@ -103,7 +115,7 @@ export const GameMap: React.FC<GameMapProps> = ({
         },
       });
 
-      // 2. CAPA DEL COFRE DEL TESORO (RADIO DE INTERACCIÓN 20m)
+      // 2. Capa estática: Zona del cofre del tesoro (20m)
       const treasureGeo = createGeoJsonCircle(treasureLocation, 20);
       map.addSource('treasure-zone', {
         type: 'geojson',
@@ -131,7 +143,7 @@ export const GameMap: React.FC<GameMapProps> = ({
         },
       });
 
-      // 3. CAPA DE NIEBLA DE GUERRA / RADIO DE VISIÓN DEL JUGADOR
+      // 3. Capa dinámica: Radio de visión del jugador
       const myCoords = { lat: myPlayer.lat ?? center.lat, lng: myPlayer.lng ?? center.lng };
       const visionRadius = getVisionRadius(myPlayer.role, isRadarActive);
       const visionGeo = createGeoJsonCircle(myCoords, Math.min(visionRadius, playAreaRadius));
@@ -154,14 +166,57 @@ export const GameMap: React.FC<GameMapProps> = ({
       });
     });
 
-    // Control de clic para movimiento o pings
-    map.on('click', (e) => {
-      onMapClick({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+    // Control de interacción de puntero y arrastre
+    map.on('mousedown', (e) => {
+      pointerDownPosRef.current = { x: e.point.x, y: e.point.y };
+      isDraggingRef.current = false;
     });
 
-    // Desactivar seguimiento si el usuario arrastra el mapa manualmente
+    map.on('touchstart', (e) => {
+      if (e.points && e.points[0]) {
+        pointerDownPosRef.current = { x: e.points[0].x, y: e.points[0].y };
+      }
+      isDraggingRef.current = false;
+    });
+
     map.on('dragstart', () => {
+      isDraggingRef.current = true;
+      followPlayerRef.current = false;
       setFollowPlayer(false);
+    });
+
+    map.on('drag', () => {
+      isDraggingRef.current = true;
+    });
+
+    map.on('dragend', () => {
+      dragEndTimeRef.current = Date.now();
+      // Período de amortiguación para evitar que el mouseup final dispare un click espurio
+      setTimeout(() => {
+        isDraggingRef.current = false;
+      }, 120);
+    });
+
+    // Control de clic estricto para movimiento o pings
+    map.on('click', (e) => {
+      // 1. Descartar si el mapa estuvo arrastrándose activamente o finalizó hace menos de 150ms
+      if (isDraggingRef.current || Date.now() - dragEndTimeRef.current < 150) {
+        return;
+      }
+
+      // 2. Descartar si hubo desplazamiento físico mayor a 6px entre mousedown y click
+      if (pointerDownPosRef.current) {
+        const dx = e.point.x - pointerDownPosRef.current.x;
+        const dy = e.point.y - pointerDownPosRef.current.y;
+        if (Math.hypot(dx, dy) > 6) {
+          return;
+        }
+      }
+
+      // 3. Descartar si el evento fue prevenido
+      if (e.defaultPrevented) return;
+
+      onMapClickRef.current({ lat: e.lngLat.lat, lng: e.lngLat.lng });
     });
 
     mapRef.current = map;
@@ -189,30 +244,44 @@ export const GameMap: React.FC<GameMapProps> = ({
   }, []);
 
   // ==========================================
-  // ACTUALIZACIÓN DE RADIO DE VISIÓN, ÁREA DE JUEGO Y ZONA DEL TESORO
+  // 2. ACTUALIZACIÓN AISLADA DE CAPAS ESTÁTICAS (Área de Juego y Zona del Tesoro)
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isMapLoadedRef.current) return;
 
-    // Actualizar radio de visión del jugador
-    const myCoords = { lat: myPlayer.lat ?? center.lat, lng: myPlayer.lng ?? center.lng };
-    const visionRadius = getVisionRadius(myPlayer.role, isRadarActive);
-    const visionSource = map.getSource('player-vision') as maplibregl.GeoJSONSource;
-    if (visionSource) {
-      visionSource.setData(createGeoJsonCircle(myCoords, Math.min(visionRadius, playAreaRadius)));
-    }
-
-    // Actualizar polígono del área de juego
     const playAreaSource = map.getSource('play-area') as maplibregl.GeoJSONSource;
     if (playAreaSource) {
       playAreaSource.setData(createGeoJsonCircle(center, playAreaRadius));
     }
 
-    // Actualizar zona del tesoro
     const treasureSource = map.getSource('treasure-zone') as maplibregl.GeoJSONSource;
     if (treasureSource) {
       treasureSource.setData(createGeoJsonCircle(treasureLocation, 20));
+    }
+  }, [center.lat, center.lng, playAreaRadius, treasureLocation.lat, treasureLocation.lng]);
+
+  // ==========================================
+  // 3. ACTUALIZACIÓN EFICIENTE DEL RADIO DE VISIÓN (Throttled por desplazamiento)
+  // ==========================================
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapLoadedRef.current) return;
+
+    const myLat = myPlayer.lat ?? center.lat;
+    const myLng = myPlayer.lng ?? center.lng;
+
+    // Evitar recalcular geometría GeoJSON si la posición apenas varió menos de 0.8 metros
+    if (lastVisionPosRef.current) {
+      const dist = getDistanceMeters(lastVisionPosRef.current, { lat: myLat, lng: myLng });
+      if (dist < 0.8 && !isRadarActive) return;
+    }
+    lastVisionPosRef.current = { lat: myLat, lng: myLng };
+
+    const visionRadius = getVisionRadius(myPlayer.role, isRadarActive);
+    const visionSource = map.getSource('player-vision') as maplibregl.GeoJSONSource;
+    if (visionSource) {
+      visionSource.setData(createGeoJsonCircle({ lat: myLat, lng: myLng }, Math.min(visionRadius, playAreaRadius)));
     }
   }, [
     myPlayer.lat,
@@ -222,11 +291,32 @@ export const GameMap: React.FC<GameMapProps> = ({
     playAreaRadius,
     center.lat,
     center.lng,
-    treasureLocation.lat,
-    treasureLocation.lng,
   ]);
 
-  // Si cambia el centro del juego y aún no hay jugador posicionado, reenfocar la cámara
+  // ==========================================
+  // 4. SEGUIMIENTO DE CÁMARA (Aislado, 60 FPS sin interrumpir arrastre)
+  // ==========================================
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapLoadedRef.current || !followPlayerRef.current) return;
+    if (isDraggingRef.current) return; // Nunca interrumpir el arrastre del usuario
+
+    if (myPlayer.lat != null && myPlayer.lng != null) {
+      if (lastCameraPosRef.current) {
+        const moved = getDistanceMeters(lastCameraPosRef.current, { lat: myPlayer.lat, lng: myPlayer.lng });
+        if (moved < 0.5) return;
+      }
+      lastCameraPosRef.current = { lat: myPlayer.lat, lng: myPlayer.lng };
+
+      map.easeTo({
+        center: [myPlayer.lng, myPlayer.lat],
+        duration: 300,
+        easing: (t) => t,
+      });
+    }
+  }, [myPlayer.lat, myPlayer.lng, followPlayer]);
+
+  // Si cambia el centro del juego y aún no hay jugador posicionado
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isMapLoadedRef.current) return;
@@ -240,7 +330,7 @@ export const GameMap: React.FC<GameMapProps> = ({
   }, [center.lat, center.lng]);
 
   // ==========================================
-  // MARCADOR DEL COFRE DEL TESORO
+  // 5. MARCADOR DEL COFRE DEL TESORO
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
@@ -267,16 +357,15 @@ export const GameMap: React.FC<GameMapProps> = ({
     } else {
       chestMarkerRef.current.setLngLat([treasureLocation.lng, treasureLocation.lat]);
     }
-  }, [treasureLocation]);
+  }, [treasureLocation.lat, treasureLocation.lng]);
 
   // ==========================================
-  // MARCADORES DE CAJAS DE SUMINISTROS (AIRDROPS)
+  // 6. MARCADORES DE CAJAS DE SUMINISTROS (AIRDROPS)
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Eliminar marcadores que ya no existan o estén abiertos
     const currentCrateIds = new Set(crates.map((c) => c.id));
     crateMarkersRef.current.forEach((marker, id) => {
       if (!currentCrateIds.has(id)) {
@@ -320,7 +409,7 @@ export const GameMap: React.FC<GameMapProps> = ({
   }, [crates]);
 
   // ==========================================
-  // MARCADOR DEL MONSTRUO (CON NIEBLA DE GUERRA Y ANCLAJE PRECISO)
+  // 7. MARCADOR DEL MONSTRUO (Con niebla de guerra y anclaje fluido)
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
@@ -332,8 +421,6 @@ export const GameMap: React.FC<GameMapProps> = ({
     const isVisible = distToMonster <= visionRadius || isRadarActive;
     const isAlive = monster.state !== 'dead' && monster.hp > 0;
 
-    // Si el monstruo no debe ser visible o está muerto, ocultar mediante style.display
-    // (no destruimos el marcador para evitar desanclaje o recreaciones continuas)
     if (!isVisible || !isAlive) {
       if (monsterMarkerRef.current) {
         monsterMarkerRef.current.getElement().style.display = 'none';
@@ -344,12 +431,8 @@ export const GameMap: React.FC<GameMapProps> = ({
     const hpPercent = Math.max(0, Math.min(100, (monster.hp / monster.maxHp) * 100));
     const isEnraged = monster.isEnraged || monster.state === 'enraged';
 
-    // 1. Crear el marcador una única vez si no existe aún
     if (!monsterMarkerRef.current) {
       const el = document.createElement('div');
-      // NOTA CRÍTICA: Jamás usar transition-transform en el contenedor del marcador
-      // ya que rompe la sincronización del ciclo de proyección por transform de MapLibre GL
-      // provocando que el monstruo flote o se deslice al arrastrar o hacer zoom.
       el.className = 'monster-marker flex flex-col items-center select-none pointer-events-none';
       el.id = 'monster-hud-marker';
       el.innerHTML = `
@@ -376,7 +459,6 @@ export const GameMap: React.FC<GameMapProps> = ({
         .setLngLat([monster.lng, monster.lat])
         .addTo(map);
     } else {
-      // 2. Si ya existe, asegurar visibilidad, actualizar posición fija y actualizar atributos DOM
       const markerEl = monsterMarkerRef.current.getElement();
       markerEl.style.display = '';
       monsterMarkerRef.current.setLngLat([monster.lng, monster.lat]);
@@ -418,7 +500,7 @@ export const GameMap: React.FC<GameMapProps> = ({
   ]);
 
   // ==========================================
-  // MARCADORES DE JUGADORES (ALIADOS Y PROPIO)
+  // 8. MARCADORES DE JUGADORES (Direct DOM update sin lag)
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
@@ -427,7 +509,6 @@ export const GameMap: React.FC<GameMapProps> = ({
     const allPlayers = players.map((p) => (p.id === myPlayer.id ? myPlayer : p));
     const activePlayerIds = new Set(allPlayers.map((p) => p.id));
 
-    // Eliminar marcadores obsoletos
     playerMarkersRef.current.forEach((marker, id) => {
       if (!activePlayerIds.has(id)) {
         marker.remove();
@@ -435,25 +516,25 @@ export const GameMap: React.FC<GameMapProps> = ({
       }
     });
 
+    const roleIcons: Record<PlayerRole, string> = {
+      medic: '✚',
+      tank: '🛡',
+      scout: '👁',
+      marksman: '🎯',
+    };
+
+    const roleColors: Record<PlayerRole, string> = {
+      medic: 'border-emerald-400 bg-emerald-700',
+      tank: 'border-blue-400 bg-blue-700',
+      scout: 'border-amber-400 bg-amber-700',
+      marksman: 'border-red-400 bg-red-700',
+    };
+
     allPlayers.forEach((p) => {
       const lat = p.lat ?? center.lat;
       const lng = p.lng ?? center.lng;
       const isMe = p.id === myPlayer.id;
       const hpPercent = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
-
-      const roleIcons: Record<PlayerRole, string> = {
-        medic: '✚',
-        tank: '🛡',
-        scout: '👁',
-        marksman: '🎯',
-      };
-
-      const roleColors: Record<PlayerRole, string> = {
-        medic: 'border-emerald-400 bg-emerald-700',
-        tank: 'border-blue-400 bg-blue-700',
-        scout: 'border-amber-400 bg-amber-700',
-        marksman: 'border-red-400 bg-red-700',
-      };
 
       if (!playerMarkersRef.current.has(p.id)) {
         const el = document.createElement('div');
@@ -496,18 +577,10 @@ export const GameMap: React.FC<GameMapProps> = ({
         }
       }
     });
-
-    // Centrar en el jugador propio si el seguimiento está activo
-    if (followPlayer && myPlayer.lat && myPlayer.lng) {
-      map.easeTo({
-        center: [myPlayer.lng, myPlayer.lat],
-        duration: 400,
-      });
-    }
-  }, [players, myPlayer, followPlayer, center]);
+  }, [players, myPlayer, center.lat, center.lng]);
 
   // ==========================================
-  // MARCADORES DE PINGS DE FANTASMA
+  // 9. MARCADORES DE PINGS DE FANTASMA
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
@@ -535,7 +608,6 @@ export const GameMap: React.FC<GameMapProps> = ({
 
         pingMarkersRef.current.set(ping.id, marker);
 
-        // Auto-eliminar a los 8 segundos
         setTimeout(() => {
           marker.remove();
           pingMarkersRef.current.delete(ping.id);
@@ -551,6 +623,7 @@ export const GameMap: React.FC<GameMapProps> = ({
       {/* BOTÓN DE CENTRAR CÁMARA */}
       <button
         onClick={() => {
+          followPlayerRef.current = true;
           setFollowPlayer(true);
           if (mapRef.current && myPlayer.lat && myPlayer.lng) {
             mapRef.current.flyTo({
@@ -589,3 +662,5 @@ export const GameMap: React.FC<GameMapProps> = ({
     </div>
   );
 };
+
+export const GameMap = React.memo<GameMapProps>(GameMapComponent);

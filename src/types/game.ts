@@ -117,4 +117,5 @@ export interface TacticalLogMessage {
   timestamp: number;
   text: string;
   type: 'info' | 'combat' | 'warning' | 'loot' | 'victory' | 'defeat';
+  count?: number;
 }
