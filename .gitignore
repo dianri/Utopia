@@ -12,4 +12,5 @@ Desktop.ini
 
 # Entornos y secretos
 .env
-.env.local
+.env.*
+!.env.example
