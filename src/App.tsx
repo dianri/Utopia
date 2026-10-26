@@ -1682,39 +1682,42 @@ export const App: React.FC = () => {
             isAlive={myPlayer.isAlive}
           />
 
-          <ChestCountdown
-            secondsRemaining={chestCountdown}
-            holdersCount={chestHoldersCount}
-            requiredHolders={Math.min(2, players.filter((p) => p.isAlive).length)}
-            isInChestZone={
-              getDistanceMeters(
-                { lat: myPlayer.lat ?? room.centerLat, lng: myPlayer.lng ?? room.centerLng },
-                { lat: room.treasureLat, lng: room.treasureLng }
-              ) <= 20
-            }
-          />
+          {/* CONTENEDOR FLEXBOX VERTICAL PARA ALERTAS CENTRALES (Evita solapamientos) */}
+          <div className="fixed top-20 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-40 pointer-events-none w-full max-w-sm px-4">
+            {/* AVISO TÁCTICO: FUERA DEL ÁREA DE JUEGO */}
+            {isOutOfPlayArea && (
+              <div className="pointer-events-auto w-full bg-red-950/90 border-2 border-red-500 text-red-200 px-3 py-2 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-2.5 animate-pulse">
+                <span className="text-xl shrink-0">⚠️</span>
+                <div className="flex-1 text-xs font-mono min-w-0">
+                  <span className="font-bold text-red-400 block uppercase tracking-wider truncate">
+                    Fuera de Operaciones
+                  </span>
+                  <span className="text-[11px] leading-tight block text-red-200 truncate">
+                    Estás a <strong className="text-white">{outOfAreaMeters}m</strong> del perímetro.
+                    {room.movementMode === 'gps'
+                      ? ' Acércate a la zona para combatir.'
+                      : ' Toca dentro del círculo para volver.'}
+                  </span>
+                </div>
+              </div>
+            )}
 
-          <RespawnTimer secondsRemaining={monster.respawnTimeRemaining} />
+            <ChestCountdown
+              secondsRemaining={chestCountdown}
+              holdersCount={chestHoldersCount}
+              requiredHolders={Math.min(2, players.filter((p) => p.isAlive).length)}
+              isInChestZone={
+                getDistanceMeters(
+                  { lat: myPlayer.lat ?? room.centerLat, lng: myPlayer.lng ?? room.centerLng },
+                  { lat: room.treasureLat, lng: room.treasureLng }
+                ) <= 20
+              }
+            />
+
+            <RespawnTimer secondsRemaining={monster.respawnTimeRemaining} />
+          </div>
 
           <CombatLog messages={combatLogs} onDismiss={handleDismissLog} />
-
-          {/* AVISO TÁCTICO: FUERA DEL ÁREA DE JUEGO */}
-          {isOutOfPlayArea && (
-            <div className="fixed top-20 left-4 right-4 z-40 max-w-md mx-auto bg-red-950/90 border-2 border-red-500 text-red-200 px-4 py-3 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-3 animate-pulse">
-              <span className="text-2xl">⚠️</span>
-              <div className="flex-1 text-xs font-mono">
-                <span className="font-bold text-red-400 block uppercase tracking-wider">
-                  Fuera del Área de Operaciones
-                </span>
-                <span>
-                  Estás a <strong className="text-white">{outOfAreaMeters} metros</strong> del perímetro de juego.
-                  {room.movementMode === 'gps'
-                    ? ' Desplázate físicamente hacia la zona para participar en el combate.'
-                    : ' Toca dentro del círculo de juego para regresar a la zona.'}
-                </span>
-              </div>
-            </div>
-          )}
 
           {/* OVERLAY DE MODO FANTASMA CUANDO EL JUGADOR ESTÁ MUERTO */}
           {!myPlayer.isAlive && (
