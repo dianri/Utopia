@@ -1,12 +1,23 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import type { Monster, GhostPing, SupplyCrate } from '../types/game';
+import type { Monster, GhostPing, SupplyCrate, PlayerStatus, StructureType } from '../types/game';
 import { soundEffects } from '../services/soundEffects';
 
 interface RealtimeCallbacks {
   onMonsterUpdate?: (monster: Monster) => void;
-  onPlayerMove?: (payload: { playerId?: string; userId?: string; lat: number; lng: number; hp?: number; isAlive?: boolean }) => void;
+  onPlayerMove?: (payload: {
+    playerId?: string;
+    userId?: string;
+    lat: number;
+    lng: number;
+    hp?: number;
+    isAlive?: boolean;
+    status?: PlayerStatus;
+    isCriticallyWounded?: boolean;
+    insideBuildingId?: string | null;
+    insideBuildingType?: StructureType | null;
+  }) => void;
   onPlayerDamaged?: (payload: { playerId: string; damage: number; currentHp: number }) => void;
   onMonsterDamaged?: (payload: { damage: number; fromPlayerId: string; currentHp: number }) => void;
   onGhostPing?: (ping: GhostPing) => void;
@@ -191,7 +202,16 @@ export function useGameRealtime(
   }, []);
 
   const broadcastPlayerMove = useCallback(
-    (lat: number, lng: number, hp?: number, isAlive?: boolean) => {
+    (
+      lat: number,
+      lng: number,
+      hp?: number,
+      isAlive?: boolean,
+      status?: PlayerStatus,
+      isCriticallyWounded?: boolean,
+      insideBuildingId?: string | null,
+      insideBuildingType?: StructureType | null
+    ) => {
       if (!channelRef.current || !isSubscribedRef.current) return;
       const payload = {
         userId: myUserId,
@@ -200,6 +220,10 @@ export function useGameRealtime(
         lng,
         hp,
         isAlive,
+        status,
+        isCriticallyWounded,
+        insideBuildingId,
+        insideBuildingType,
       };
       console.log('[Realtime:Move] Emit:', payload);
       channelRef.current.send({

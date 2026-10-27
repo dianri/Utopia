@@ -5,6 +5,19 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ## [Unreleased]
 ### Added
+- **Sistema de estructuras tácticas en el mapa (`mapStructures.ts` y `GameMap.tsx`):**
+  - Generador determinista de 1 Hospital de Campaña (`🏥`, radio 18m) y 4 Casas / Refugios Tácticos (`🏠`, radio 14m) distribuidos estratégicamente dentro del área operativa y a distancia segura del tesoro.
+  - Capas GeoJSON de área táctica (`structures-zones`) con visualización diferenciada de interacción (verde esmeralda para el hospital, cian para los refugios).
+  - Mecánica de estar a cubierto / interior: ocultamiento visual del avatar del jugador local al ingresar a cualquier estructura (`style.display = 'none'`) y visualización de aliados con transparencia y etiquetas contextuales (`[HOSPITAL]` o `[A CUBIERTO]`).
+  - Banner HUD contextual (`IndoorStatusBanner.tsx`) indicando entrada y cobertura táctica.
+  - Curación progresiva en el Hospital (+10 HP/s) hasta el máximo de vida.
+  - Evasión de monstruo en Casas / Refugios: el monstruo pierde inmediatamente el aggro y desvía su atención hacia el cofre o hacia objetivos exteriores.
+- **Rediseño del ciclo de vida del jugador — Estado "Herido de Muerte" (`critically_wounded`):**
+  - Sustituida la muerte definitiva y el modo fantasma automático cuando la salud llega a 0: el HP se ancla en 1 y el estado pasa a `status: 'critically_wounded'` con `isAlive: true`.
+  - Bloqueo táctico de acciones: armamento bloqueado visualmente en rojo `[BLOQUEADO: HERIDO DE MUERTE]` (`WeaponWheel.tsx`), habilidades de rol inhabilitadas con candado (`RoleSkillButton.tsx`), e impedimento para abrir cajas de suministros o revivir compañeros. La única acción permitida es desplazarse hacia el Hospital de Campaña.
+  - Viñeta roja pulsante en pantalla y alerta crítica con brújula direccional interactiva orientada hacia el Hospital (`CriticallyWoundedOverlay.tsx`).
+  - Recuperación médica: permanecer en el Hospital cura el estado `critically_wounded` al alcanzar >= 20 HP, estabilizando al combatiente y devolviéndolo a la batalla activa.
+  - Condición de derrota revisada: el equipo solo es derrotado si TODOS los miembros están en estado `critically_wounded` o caídos simultáneamente.
 - **Combate táctico continuo en movimiento (`useCombatLoop.ts` y `WeaponWheel.tsx`):** Desacoplado el bucle de disparo/ataque respecto al bucle de desplazamiento (tanto en Tap-to-Move como en modo GPS), eliminando la cancelación de cadencia provocada por los re-renders continuos de posición a 60 FPS; soporte para ataques automáticos ininterrumpidos dentro del rango del arma equipada e incorporación de un gatillo táctico manual e interactivo (`DISPARAR` / `FUEGO!`) en la tarjeta de arma (`WeaponWheel`).
 - **Selector de velocidad de movimiento y diferenciación visual de suministros:** Añadido selector táctico de velocidad de desplazamiento en `CreateRoomModal.tsx` (Lento: 0.8 m/s ~3 km/h, Normal: 1.4 m/s ~5 km/h, Rápido: 2.8 m/s ~10 km/h, Muy Rápido: 4.5 m/s ~16 km/h) con integración en `useGeolocation.ts` y aviso dinámico en HUD del mapa; implementada diferenciación visual de airdrops en `GameMap.tsx` con iconos distintivos y etiquetas por categoría (Botiquín, Munición, Rifle Táctico, Escopeta, Cuchillo/Bate) junto a capas GeoJSON translúcidas del radio de interacción de 40m en el terreno; y añadida migración SQL para la columna `player_speed` en `public.games`.
 - **Sistema de notificaciones HUD tácticas (`CombatLog.tsx`):** Auto-descarte configurable tras 4 segundos, botón de cierre manual (`X`), descarte de avisos spam/duplicados consecutivos con badge contador acumulativo `(x2, x3...)` y límite visual de renderizado a un máximo de 3 mensajes simultáneos.

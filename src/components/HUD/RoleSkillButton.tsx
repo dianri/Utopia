@@ -1,6 +1,6 @@
 import React from 'react';
 import type { PlayerRole } from '../../types/game';
-import { Radio, Shield, HeartPulse, Crosshair } from 'lucide-react';
+import { Radio, Shield, HeartPulse, Crosshair, Lock } from 'lucide-react';
 
 interface RoleSkillButtonProps {
   role: PlayerRole;
@@ -8,6 +8,7 @@ interface RoleSkillButtonProps {
   isActive: boolean;
   onActivate: () => void;
   isAlive: boolean;
+  isCriticallyWounded?: boolean;
 }
 
 export const RoleSkillButton: React.FC<RoleSkillButtonProps> = ({
@@ -16,10 +17,11 @@ export const RoleSkillButton: React.FC<RoleSkillButtonProps> = ({
   isActive,
   onActivate,
   isAlive,
+  isCriticallyWounded = false,
 }) => {
   if (!isAlive) return null;
 
-  const isReady = cooldownRemaining <= 0;
+  const isReady = cooldownRemaining <= 0 && !isCriticallyWounded;
 
   // Parámetros y temática visual según la clase
   const roleConfig = {
@@ -74,14 +76,16 @@ export const RoleSkillButton: React.FC<RoleSkillButtonProps> = ({
       <button
         onClick={onActivate}
         disabled={!isReady}
-        className={`relative w-16 h-16 sm:w-18 sm:h-18 rounded-full border-2 flex flex-col items-center justify-center shadow-2xl transition-all cursor-pointer ${
-          isActive
-            ? `${roleConfig.activeColor} animate-pulse scale-105`
+        className={`relative w-16 h-16 sm:w-18 sm:h-18 rounded-full border-2 flex flex-col items-center justify-center shadow-2xl transition-all ${
+          isCriticallyWounded
+            ? 'bg-red-950/90 border-red-500/80 text-red-400 cursor-not-allowed opacity-80'
+            : isActive
+            ? `${roleConfig.activeColor} animate-pulse scale-105 cursor-pointer`
             : isReady
-            ? `${roleConfig.readyColor} active:scale-95`
+            ? `${roleConfig.readyColor} active:scale-95 cursor-pointer`
             : 'bg-hud-dark/95 border-hud-border/80 text-hud-muted cursor-not-allowed opacity-90'
         }`}
-        title={roleConfig.title}
+        title={isCriticallyWounded ? 'Habilidad bloqueada: Herido de Muerte' : roleConfig.title}
         aria-label={roleConfig.title}
       >
         {/* Anillo SVG de progreso circular para el tiempo de recarga */}
@@ -99,7 +103,7 @@ export const RoleSkillButton: React.FC<RoleSkillButtonProps> = ({
             strokeWidth="3.5"
           />
           {/* Anillo de cuenta atrás activo */}
-          {!isReady && (
+          {!isReady && !isCriticallyWounded && (
             <circle
               cx="32"
               cy="32"
@@ -116,7 +120,14 @@ export const RoleSkillButton: React.FC<RoleSkillButtonProps> = ({
         </svg>
 
         {/* Contenido interior: Icono y etiqueta o temporizador */}
-        {isReady || isActive ? (
+        {isCriticallyWounded ? (
+          <div className="flex flex-col items-center justify-center">
+            <Lock className="w-6 h-6 text-red-400" />
+            <span className="text-[8px] font-mono font-bold text-red-400 uppercase tracking-tight mt-0.5">
+              BLOQ
+            </span>
+          </div>
+        ) : isReady || isActive ? (
           <>
             <IconComponent className={`w-7 h-7 sm:w-8 sm:h-8 ${isActive ? 'animate-bounce' : ''}`} />
             <span className="text-[10px] font-mono font-black uppercase tracking-wider mt-0.5 leading-none">

@@ -61,7 +61,15 @@ export function useCombatLoop({
     const player = myPlayerRef.current;
     const currentMonster = monsterRef.current;
 
-    if (!player || !player.isAlive || currentMonster.hp <= 0 || currentMonster.state === 'dead') {
+    if (
+      !player ||
+      !player.isAlive ||
+      player.isCriticallyWounded ||
+      player.status === 'critically_wounded' ||
+      !!player.insideBuildingId ||
+      currentMonster.hp <= 0 ||
+      currentMonster.state === 'dead'
+    ) {
       setIsFiringWeapon(false);
       return false;
     }
