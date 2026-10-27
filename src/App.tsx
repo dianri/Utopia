@@ -141,6 +141,35 @@ export const App: React.FC = () => {
   const isChestInteractedGloballyRef = useRef<boolean>(isChestInteractedGlobally);
   isChestInteractedGloballyRef.current = isChestInteractedGlobally;
 
+  // Reseteo y aislamiento estricto del progreso del cofre por partida (game.id)
+  useEffect(() => {
+    if (!room?.id) {
+      setChestPhase(1);
+      setChestStep(0);
+      setIsChestLockModalOpen(false);
+      setIsChestInteractedGlobally(false);
+      return;
+    }
+
+    const storageKey = `utopia_chest_progress_${room.id}`;
+    let savedProgress: { phase: number; step: number } | null = null;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) savedProgress = JSON.parse(raw);
+    } catch {
+      // Ignorar error de parsing
+    }
+
+    // Inicializar fase y paso: prioridad a datos de la sala en DB, luego storage local de esa sala, o 1/0 por defecto
+    const initialPhase = room.chestCurrentPhase ?? room.chestPhase ?? savedProgress?.phase ?? 1;
+    const initialStep = room.chestUnlockedSteps ?? room.chestStep ?? savedProgress?.step ?? 0;
+
+    setChestPhase(initialPhase);
+    setChestStep(initialStep);
+    setIsChestLockModalOpen(false);
+    setIsChestInteractedGlobally(false);
+  }, [room?.id]);
+
   // REANIMACIÓN
   const [revivingPlayerId, setRevivingPlayerId] = useState<string | null>(null);
   const [reviveProgress, setReviveProgress] = useState<number>(0);
@@ -483,6 +512,13 @@ export const App: React.FC = () => {
       onChestProgress: ({ phase, step, updatedByNickname }) => {
         setChestPhase(phase);
         setChestStep(step);
+        if (room?.id) {
+          try {
+            localStorage.setItem(`utopia_chest_progress_${room.id}`, JSON.stringify({ phase, step }));
+          } catch {
+            // Ignorar error de storage
+          }
+        }
         if (updatedByNickname) {
           addLog(`¡${updatedByNickname} superó un cerrojo del cofre! (Fase ${phase}, Cerrojo ${step + 1}/2)`, 'loot');
         }
@@ -564,6 +600,16 @@ export const App: React.FC = () => {
           }
           if (typeof payload.chestStep === 'number') {
             setChestStep(payload.chestStep);
+          }
+          if (room?.id && typeof payload.chestPhase === 'number' && typeof payload.chestStep === 'number') {
+            try {
+              localStorage.setItem(
+                `utopia_chest_progress_${room.id}`,
+                JSON.stringify({ phase: payload.chestPhase, step: payload.chestStep })
+              );
+            } catch {
+              // Ignorar error de storage
+            }
           }
         }
       },
@@ -1162,10 +1208,38 @@ export const App: React.FC = () => {
       setChestStep(nextStep);
       chestPhaseRef.current = nextPhase;
       chestStepRef.current = nextStep;
+
+      if (room?.id) {
+        const totalCompleted = (nextPhase - 1) * 2 + nextStep;
+        const progressPct = Math.min(100, Math.round((totalCompleted / 6) * 100));
+
+        // Persistir en localStorage aislado por game.id
+        try {
+          localStorage.setItem(
+            `utopia_chest_progress_${room.id}`,
+            JSON.stringify({ phase: nextPhase, step: nextStep })
+          );
+        } catch {
+          // Ignorar error de storage
+        }
+
+        // Persistir en base de datos si la sala está activa
+        (supabase.from('games') as any)
+          .update({
+            chest_unlocked_steps: totalCompleted,
+            chest_current_phase: nextPhase,
+            chest_progress_pct: progressPct,
+          })
+          .eq('id', room.id)
+          .then(({ error }: any) => {
+            if (error) console.warn('Error al actualizar progreso del cofre en DB:', error);
+          });
+      }
+
       realtimeRef.current.broadcastChestProgress(nextPhase, nextStep, myPlayerRef.current?.nickname);
       addLog(`¡Cerrojo del cofre superado! (Fase ${nextPhase}, Cerrojo ${nextStep + 1}/2)`, 'loot');
     },
-    [addLog]
+    [room?.id, addLog]
   );
 
   const handleChestVictory = useCallback(() => {
@@ -1832,6 +1906,13 @@ export const App: React.FC = () => {
   const handleGameEnd = async (result: 'victory' | 'defeat') => {
     if (!room) return;
 
+    if (room.id) {
+      try {
+        localStorage.removeItem(`utopia_chest_progress_${room.id}`);
+      } catch {
+        // Ignorar
+      }
+    }
     localStorage.removeItem('utopia_active_room');
     setSavedActiveRoomCode(null);
     setRoom((prev) => (prev ? { ...prev, status: result } : null));
@@ -1882,6 +1963,13 @@ export const App: React.FC = () => {
     monsterAIRef.current = null;
     soundEffects.stopAll();
 
+    if (room.id) {
+      try {
+        localStorage.removeItem(`utopia_chest_progress_${room.id}`);
+      } catch {
+        // Ignorar
+      }
+    }
     localStorage.removeItem('utopia_active_room');
     setSavedActiveRoomCode(null);
     setRoom(null);
@@ -1889,6 +1977,10 @@ export const App: React.FC = () => {
     setPlayers([]);
     setCrates([]);
     setDroppedItems([]);
+    setChestPhase(1);
+    setChestStep(0);
+    setIsChestLockModalOpen(false);
+    setIsChestInteractedGlobally(false);
   };
 
   const handleLeaveGame = async () => {
@@ -1903,6 +1995,13 @@ export const App: React.FC = () => {
     monsterAIRef.current = null;
     soundEffects.stopAll();
 
+    if (room.id) {
+      try {
+        localStorage.removeItem(`utopia_chest_progress_${room.id}`);
+      } catch {
+        // Ignorar
+      }
+    }
     localStorage.removeItem('utopia_active_room');
     setSavedActiveRoomCode(null);
     setRoom(null);
@@ -1910,6 +2009,10 @@ export const App: React.FC = () => {
     setPlayers([]);
     setCrates([]);
     setDroppedItems([]);
+    setChestPhase(1);
+    setChestStep(0);
+    setIsChestLockModalOpen(false);
+    setIsChestInteractedGlobally(false);
   };
 
   // ==========================================
@@ -2121,6 +2224,9 @@ export const App: React.FC = () => {
       center_lng: config.center.lng,
       treasure_lat: treasureLoc.lat,
       treasure_lng: treasureLoc.lng,
+      chest_unlocked_steps: 0,
+      chest_current_phase: 1,
+      chest_progress_pct: 0,
     };
 
     let gameData: any = null;
@@ -2198,6 +2304,11 @@ export const App: React.FC = () => {
       centerLng: gameData.center_lng,
       treasureLat: gameData.treasure_lat,
       treasureLng: gameData.treasure_lng,
+      chestPhase: gameData.chest_current_phase ?? 1,
+      chestStep: (gameData.chest_unlocked_steps ?? 0) % 2,
+      chestUnlockedSteps: gameData.chest_unlocked_steps ?? 0,
+      chestCurrentPhase: gameData.chest_current_phase ?? 1,
+      chestProgressPct: gameData.chest_progress_pct ?? 0,
       createdAt: gameData.created_at,
     };
 
@@ -2276,6 +2387,20 @@ export const App: React.FC = () => {
       config.radiusMeters,
       5
     );
+
+    // Resetear explícitamente el progreso del cofre a 0 cerrojos y Fase 1 al crear una sala nueva
+    setChestPhase(1);
+    setChestStep(0);
+    chestPhaseRef.current = 1;
+    chestStepRef.current = 0;
+    setIsChestLockModalOpen(false);
+    setIsChestInteractedGlobally(false);
+
+    try {
+      localStorage.setItem(`utopia_chest_progress_${gameData.id}`, JSON.stringify({ phase: 1, step: 0 }));
+    } catch {
+      // Ignorar error de storage
+    }
 
     setRoom(newRoom);
     setMyPlayer(hostPlayer);
@@ -2418,6 +2543,11 @@ export const App: React.FC = () => {
       centerLng: gameData.center_lng,
       treasureLat: gameData.treasure_lat,
       treasureLng: gameData.treasure_lng,
+      chestPhase: gameData.chest_current_phase ?? 1,
+      chestStep: (gameData.chest_unlocked_steps ?? 0) % 2,
+      chestUnlockedSteps: gameData.chest_unlocked_steps ?? 0,
+      chestCurrentPhase: gameData.chest_current_phase ?? 1,
+      chestProgressPct: gameData.chest_progress_pct ?? 0,
       createdAt: gameData.created_at,
     };
 

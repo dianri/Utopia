@@ -61,6 +61,10 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 - Detección reactiva de membresía previa en `JoinRoomModal.tsx` con modo de reconexión directa.
 
 ### Fixed
+- **Chest lock progress isolated per game instance and reset on new room creation (`App.tsx`, `games` table):**
+  - Añadidas las columnas `chest_unlocked_steps` (default 0), `chest_current_phase` (default 1) y `chest_progress_pct` (default 0) a `public.games` para asegurar inicialización limpia e independiente en base de datos.
+  - Implementado aislamiento estricto por partida mediante `localStorage` con clave indexada por ID (`utopia_chest_progress_${gameId}`) y eliminación de cualquier caché residual al terminar, abandonar o cancelar una sala.
+  - Añadido reseteo de fase y paso en `App.tsx` al cambiar de `game.id` o montar una nueva sala, garantizando que el cofre comience con 0/6 candados desbloqueados y la Fase 1 intacta.
 - **Desbloqueo del cofre con monstruo derrotado y eliminación de apertura pasiva por tiempo:**
   - Habilitada la interacción inmediata con el cofre del tesoro cuando el monstruo está muerto o en período de reaparición (`hp <= 0`, `state === 'dead'`, `isRespawning` o `respawnTimeRemaining > 0`), comprobando la condición de vida activa en `handleOpenChestModal`, `ChestCountdown.tsx` y `ChestLockModal.tsx`.
   - Ocultada la advertencia roja de defensa (`¡MONSTRUO DEFENDIENDO EL COFRE!`) siempre que el monstruo no esté vivo, permitiendo abrir el minijuego táctico sin bloqueos cuando el monstruo muere cerca del cofre.
