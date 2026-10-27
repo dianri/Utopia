@@ -26,7 +26,45 @@ export const PLAYER_SPEED_MPS: Record<PlayerSpeed, number> = {
   very_fast: 4.5, // ~16 km/h (sprint)
 };
 
-export type CrateType = 'medkit' | 'ammo' | 'rifle' | 'shotgun' | 'melee';
+export type CrateType = 'medkit' | 'ammo' | 'rifle' | 'shotgun' | 'melee' | 'rocket_launcher' | 'grenade';
+
+export type WeaponType = 
+  | 'rocket_launcher' // Nivel 7 (Tier más alto)
+  | 'grenade'         // Nivel 6
+  | 'rifle'           // Nivel 5 (Fusil / Metralleta)
+  | 'shotgun'         // Nivel 4
+  | 'pistol'          // Nivel 3
+  | 'axe'             // Nivel 2 (Melé fuerte)
+  | 'knife';          // Nivel 1 (Melé básico / infinito)
+
+export type ItemCategory = 'weapon' | 'key_item';
+
+export interface InventoryItem {
+  id: string;             // UUID único de la instancia
+  type: WeaponType | string;
+  name: string;
+  category: ItemCategory;
+  tier: number;           // 1 (menor fuerza) a 7 (mayor fuerza)
+  damage: number;         // Daño por impacto
+  cadenceMs: number;      // Tiempo entre disparos/golpes
+  ammo: number;           // Munición actual (-1 para infinito como cuchillo)
+  maxAmmo: number;        // Capacidad por unidad
+  durability?: number;    // -1 para infinito
+  isInfinite?: boolean;   // true para cuchillo
+  rangeMeters?: number;   // Alcance efectivo en metros
+  iconName?: string;      // Nombre de icono
+}
+
+export interface DroppedItem {
+  id: string;
+  item: InventoryItem;
+  lat: number;
+  lng: number;
+  droppedAt: number;
+  droppedBy?: string;
+}
+
+export const MAX_INVENTORY_SLOTS = 4;
 
 export interface Coordinates {
   lat: number;
@@ -50,6 +88,8 @@ export interface Player {
   monsterKills: number;
   isHost?: boolean;
   equippedWeapon?: Weapon;
+  equippedItemId?: string;
+  inventory?: InventoryItem[];
   lastAttackTime?: number;
   isSlowed?: boolean;
   slowedUntil?: number;
@@ -86,6 +126,11 @@ export interface Weapon {
   ammo: number; // -1 for infinite
   maxAmmo: number;
   iconName: string;
+  tier?: number;
+  weaponType?: WeaponType;
+  isInfinite?: boolean;
+  cadenceMs?: number;
+  durability?: number;
 }
 
 export interface SupplyCrate {

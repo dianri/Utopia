@@ -1,68 +1,204 @@
-import type { Weapon, PlayerRole, SupplyCrate, CrateType } from '../types/game';
+import type {
+  Weapon,
+  PlayerRole,
+  SupplyCrate,
+  CrateType,
+  WeaponType,
+  InventoryItem,
+} from '../types/game';
 
-export const WEAPON_REGISTRY: Record<string, Weapon> = {
-  baseball_bat: {
-    id: 'baseball_bat',
-    name: 'Bate Reforzado',
-    type: 'melee',
-    damage: 24,
-    rangeMeters: 15,
-    fireRateMs: 650,
-    ammo: -1,
-    maxAmmo: -1,
-    iconName: 'ShieldAlert',
-  },
-  tactical_knife: {
-    id: 'tactical_knife',
-    name: 'Cuchillo Táctico',
-    type: 'melee',
-    damage: 18,
-    rangeMeters: 12,
-    fireRateMs: 400,
-    ammo: -1,
-    maxAmmo: -1,
-    iconName: 'Crosshair',
-  },
-  pistol_9mm: {
-    id: 'pistol_9mm',
-    name: 'Pistola 9mm',
-    type: 'firearm',
-    damage: 32,
-    rangeMeters: 38,
-    fireRateMs: 500,
-    ammo: 36,
-    maxAmmo: 36,
-    iconName: 'Zap',
-  },
-  combat_shotgun: {
-    id: 'combat_shotgun',
-    name: 'Escopeta de Postas',
-    type: 'firearm',
-    damage: 75,
-    rangeMeters: 26,
-    fireRateMs: 950,
-    ammo: 18,
-    maxAmmo: 18,
+export const WEAPON_TIER_CONFIG: Record<WeaponType, Omit<InventoryItem, 'id'>> = {
+  rocket_launcher: {
+    type: 'rocket_launcher',
+    name: 'Lanzacohetes RPG',
+    category: 'weapon',
+    tier: 7,
+    damage: 250,
+    cadenceMs: 2200,
+    ammo: 3,
+    maxAmmo: 3,
+    durability: -1,
+    isInfinite: false,
+    rangeMeters: 60,
     iconName: 'Target',
   },
-  assault_rifle: {
-    id: 'assault_rifle',
-    name: 'Rifle Táctico',
-    type: 'firearm',
-    damage: 42,
-    rangeMeters: 55,
-    fireRateMs: 320,
+  grenade: {
+    type: 'grenade',
+    name: 'Granadas Tácticas',
+    category: 'weapon',
+    tier: 6,
+    damage: 160,
+    cadenceMs: 1600,
+    ammo: 5,
+    maxAmmo: 5,
+    durability: -1,
+    isInfinite: false,
+    rangeMeters: 35,
+    iconName: 'Flame',
+  },
+  rifle: {
+    type: 'rifle',
+    name: 'Fusil Táctico M4',
+    category: 'weapon',
+    tier: 5,
+    damage: 45,
+    cadenceMs: 280,
     ammo: 90,
     maxAmmo: 90,
+    durability: -1,
+    isInfinite: false,
+    rangeMeters: 55,
     iconName: 'Flame',
+  },
+  shotgun: {
+    type: 'shotgun',
+    name: 'Escopeta de Postas',
+    category: 'weapon',
+    tier: 4,
+    damage: 80,
+    cadenceMs: 900,
+    ammo: 20,
+    maxAmmo: 20,
+    durability: -1,
+    isInfinite: false,
+    rangeMeters: 26,
+    iconName: 'Target',
+  },
+  pistol: {
+    type: 'pistol',
+    name: 'Pistola 9mm',
+    category: 'weapon',
+    tier: 3,
+    damage: 32,
+    cadenceMs: 450,
+    ammo: 45,
+    maxAmmo: 45,
+    durability: -1,
+    isInfinite: false,
+    rangeMeters: 38,
+    iconName: 'Zap',
+  },
+  axe: {
+    type: 'axe',
+    name: 'Hacha Táctica',
+    category: 'weapon',
+    tier: 2,
+    damage: 55,
+    cadenceMs: 650,
+    ammo: 15,
+    maxAmmo: 15,
+    durability: 15,
+    isInfinite: false,
+    rangeMeters: 15,
+    iconName: 'ShieldAlert',
+  },
+  knife: {
+    type: 'knife',
+    name: 'Cuchillo Táctico',
+    category: 'weapon',
+    tier: 1,
+    damage: 22,
+    cadenceMs: 380,
+    ammo: -1,
+    maxAmmo: -1,
+    durability: -1,
+    isInfinite: true,
+    rangeMeters: 12,
+    iconName: 'Crosshair',
   },
 };
 
+/**
+ * Crea una nueva instancia única de un objeto para el inventario
+ */
+export function createInventoryItem(type: WeaponType, customAmmo?: number): InventoryItem {
+  const config = WEAPON_TIER_CONFIG[type];
+  const ammo = customAmmo !== undefined ? customAmmo : config.ammo;
+  return {
+    ...config,
+    id: crypto.randomUUID(),
+    ammo,
+    durability: config.durability !== -1 ? ammo : -1,
+  };
+}
+
+/**
+ * Convierte un InventoryItem al formato Weapon consumido por el bucle de combate
+ */
+export function inventoryItemToWeapon(item: InventoryItem): Weapon {
+  return {
+    id: item.id,
+    name: item.name,
+    type: (item.rangeMeters ?? 15) > 16 ? 'firearm' : 'melee',
+    damage: item.damage,
+    rangeMeters: item.rangeMeters ?? 15,
+    fireRateMs: item.cadenceMs,
+    cadenceMs: item.cadenceMs,
+    ammo: item.ammo,
+    maxAmmo: item.maxAmmo,
+    iconName: item.iconName ?? 'Crosshair',
+    tier: item.tier,
+    weaponType: item.type as WeaponType,
+    isInfinite: item.isInfinite,
+    durability: item.durability,
+  };
+}
+
+/**
+ * Retorna el inventario inicial según el rol del jugador
+ */
+export function getDefaultInventoryForRole(role: PlayerRole): InventoryItem[] {
+  const knife = createInventoryItem('knife');
+  switch (role) {
+    case 'marksman':
+      return [createInventoryItem('rifle'), knife];
+    case 'tank':
+      return [createInventoryItem('axe'), knife];
+    case 'medic':
+      return [createInventoryItem('pistol'), knife];
+    case 'scout':
+    default:
+      return [createInventoryItem('pistol'), knife];
+  }
+}
+
+/**
+ * Obtiene el arma de mayor tier disponible con munición o infinita en el inventario
+ */
+export function getBestWeaponInInventory(inventory: InventoryItem[]): InventoryItem {
+  const usable = inventory
+    .filter((it) => it.category === 'weapon')
+    .filter((it) => it.isInfinite || it.ammo > 0);
+
+  if (usable.length === 0) {
+    return createInventoryItem('knife');
+  }
+
+  // Ordenar de mayor a menor tier
+  usable.sort((a, b) => b.tier - a.tier);
+  return usable[0];
+}
+
+export const WEAPON_REGISTRY: Record<string, Weapon> = {
+  rocket_launcher: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.rocket_launcher, id: 'rocket_launcher' }),
+  grenade: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.grenade, id: 'grenade' }),
+  assault_rifle: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.rifle, id: 'assault_rifle' }),
+  rifle: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.rifle, id: 'rifle' }),
+  combat_shotgun: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.shotgun, id: 'combat_shotgun' }),
+  shotgun: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.shotgun, id: 'shotgun' }),
+  pistol_9mm: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.pistol, id: 'pistol_9mm' }),
+  pistol: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.pistol, id: 'pistol' }),
+  baseball_bat: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.axe, id: 'baseball_bat' }),
+  axe: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.axe, id: 'axe' }),
+  tactical_knife: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.knife, id: 'tactical_knife' }),
+  knife: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.knife, id: 'knife' }),
+};
+
 export const DEFAULT_WEAPONS_BY_ROLE: Record<PlayerRole, Weapon> = {
-  medic: { ...WEAPON_REGISTRY.pistol_9mm },
-  tank: { ...WEAPON_REGISTRY.baseball_bat },
-  scout: { ...WEAPON_REGISTRY.tactical_knife },
-  marksman: { ...WEAPON_REGISTRY.assault_rifle },
+  medic: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.pistol, id: 'default_medic_pistol' }),
+  tank: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.axe, id: 'default_tank_axe' }),
+  scout: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.pistol, id: 'default_scout_pistol' }),
+  marksman: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.rifle, id: 'default_marksman_rifle' }),
 };
 
 /**
@@ -172,11 +308,31 @@ export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
           textColor: 'text-purple-300',
           glowColor: 'bg-purple-500/25',
         };
+      case 'rocket_launcher':
+        return {
+          type: 'rocket_launcher',
+          label: 'Lanzacohetes',
+          icon: '🚀',
+          badgeBg: 'bg-red-950/90',
+          borderColor: 'border-red-400',
+          textColor: 'text-red-300',
+          glowColor: 'bg-red-500/30',
+        };
+      case 'grenade':
+        return {
+          type: 'grenade',
+          label: 'Granadas',
+          icon: '💣',
+          badgeBg: 'bg-orange-950/90',
+          borderColor: 'border-orange-400',
+          textColor: 'text-orange-300',
+          glowColor: 'bg-orange-500/30',
+        };
       case 'melee':
         return {
           type: 'melee',
-          label: 'Cuchillo / Bate',
-          icon: '🗡️',
+          label: 'Cuchillo / Hacha',
+          icon: '🪓',
           badgeBg: 'bg-yellow-950/90',
           borderColor: 'border-yellow-400',
           textColor: 'text-yellow-300',
