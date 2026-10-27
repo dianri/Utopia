@@ -18,6 +18,8 @@ import type {
   WeaponType,
   InventoryItem,
   DroppedItem,
+  Pet,
+  WildPet,
 } from './types/game';
 import { PLAYER_SPEED_MPS, MAX_INVENTORY_SLOTS } from './types/game';
 import {
@@ -41,6 +43,7 @@ import {
   getDestinationPoint,
 } from './services/geoUtils';
 import { generateMapStructures } from './services/mapStructures';
+import { generateWildPets } from './services/mapEntities';
 import { soundEffects } from './services/soundEffects';
 import { MonsterAIController } from './services/monsterAI';
 import { useGameRealtime } from './hooks/useGameRealtime';
@@ -92,6 +95,9 @@ export const App: React.FC = () => {
   });
 
   const [crates, setCrates] = useState<SupplyCrate[]>([]);
+  const [wildPets, setWildPets] = useState<WildPet[]>([]);
+  const wildPetsRef = useRef<WildPet[]>([]);
+  wildPetsRef.current = wildPets;
   const [droppedItems, setDroppedItems] = useState<DroppedItem[]>([]);
   const droppedItemsRef = useRef<DroppedItem[]>([]);
   droppedItemsRef.current = droppedItems;
@@ -353,6 +359,7 @@ export const App: React.FC = () => {
         isCriticallyWounded,
         insideBuildingId,
         insideBuildingType,
+        pets,
       }) => {
         setPlayers((prev) =>
           prev.map((p) => {
@@ -373,6 +380,7 @@ export const App: React.FC = () => {
                 insideBuildingId !== undefined ? insideBuildingId : p.insideBuildingId,
               insideBuildingType:
                 insideBuildingType !== undefined ? insideBuildingType : p.insideBuildingType,
+              pets: pets !== undefined ? pets : p.pets,
             };
           })
         );
@@ -497,6 +505,24 @@ export const App: React.FC = () => {
           addLog(`${picker.nickname} recogió un objeto del terreno.`, 'info');
         }
       },
+      onPetAdopted: ({ wildPetId, playerId, playerNickname, pet }) => {
+        setWildPets((prev) => prev.filter((wp) => wp.id !== wildPetId));
+        if (playerId !== myPlayerRef.current?.id) {
+          addLog(`🐾 ${playerNickname} ha adoptado a ${pet.name} ${pet.icon}!`, 'info');
+          setPlayers((prev) =>
+            prev.map((p) => {
+              if (p.id === playerId) {
+                const existingPets = p.pets || [];
+                return {
+                  ...p,
+                  pets: [...existingPets.filter((ep) => ep.id !== pet.id), pet],
+                };
+              }
+              return p;
+            })
+          );
+        }
+      },
       onRequestStateSync: () => {
         // Si somos el Host, transmitimos el estado actual del juego al jugador recién incorporado
         if (myPlayerRef.current?.isHost) {
@@ -508,6 +534,7 @@ export const App: React.FC = () => {
             chestPhase: chestPhaseRef.current,
             chestStep: chestStepRef.current,
             droppedItems: droppedItemsRef.current,
+            wildPets: wildPetsRef.current,
           });
         }
       },
@@ -522,6 +549,9 @@ export const App: React.FC = () => {
           }
           if (payload.droppedItems) {
             setDroppedItems(payload.droppedItems);
+          }
+          if (payload.wildPets) {
+            setWildPets(payload.wildPets);
           }
           if (typeof payload.chestCountdown === 'number') {
             setChestCountdown(payload.chestCountdown);
@@ -636,7 +666,8 @@ export const App: React.FC = () => {
           myPlayerRef.current.status,
           myPlayerRef.current.isCriticallyWounded,
           insideId,
-          insideType
+          insideType,
+          myPlayerRef.current.pets
         );
       }
     },
@@ -1222,11 +1253,31 @@ export const App: React.FC = () => {
           addLog('¡Atendido en el Hospital de Campaña! Has sido estabilizado y vuelves al combate.', 'info');
         }
 
+        // Recuperación en el Hospital: reactivar y curar al máximo a todas las mascotas
+        const currentPets = prev.pets || [];
+        let anyPetRevived = false;
+        const recoveredPets = currentPets.map((pet) => {
+          if (pet.hp < pet.maxHp || pet.isWounded) {
+            anyPetRevived = true;
+            return {
+              ...pet,
+              hp: pet.maxHp,
+              isWounded: false,
+            };
+          }
+          return pet;
+        });
+
+        if (anyPetRevived) {
+          addLog('¡Tus mascotas han sido atendidas y revitalizadas en el Hospital!', 'info');
+        }
+
         const updated = {
           ...prev,
           hp: newHp,
           isCriticallyWounded: cured ? false : prev.isCriticallyWounded,
           status: updatedStatus,
+          pets: recoveredPets,
         };
 
         if (prev.lat && prev.lng) {
@@ -1238,7 +1289,8 @@ export const App: React.FC = () => {
             updatedStatus,
             updated.isCriticallyWounded,
             prev.insideBuildingId,
-            prev.insideBuildingType
+            prev.insideBuildingType,
+            recoveredPets
           );
         }
 
@@ -1251,11 +1303,17 @@ export const App: React.FC = () => {
             const newHp = Math.min(p.maxHp, p.hp + 10);
             const wasWounded = p.isCriticallyWounded || p.status === 'critically_wounded';
             const cured = wasWounded && newHp >= 20;
+            const updatedPets = (p.pets || []).map((pet) => ({
+              ...pet,
+              hp: pet.maxHp,
+              isWounded: false,
+            }));
             return {
               ...p,
               hp: newHp,
               isCriticallyWounded: cured ? false : p.isCriticallyWounded,
               status: cured ? 'active' : p.status,
+              pets: updatedPets,
             };
           }
           return p;
@@ -1404,6 +1462,251 @@ export const App: React.FC = () => {
       }
     });
   }, [myPlayer?.lat, myPlayer?.lng, myPlayer?.isAlive, crates, room?.centerLat, room?.centerLng, realtime]);
+
+  // ==========================================
+  // ADOPCIÓN AUTOMÁTICA DE MASCOTAS SILVESTRES (<12m)
+  // ==========================================
+  useEffect(() => {
+    if (
+      room?.status !== 'playing' ||
+      !myPlayer?.isAlive ||
+      myPlayer?.isCriticallyWounded ||
+      myPlayer?.status === 'critically_wounded'
+    )
+      return;
+
+    const myCoord: Coordinates = {
+      lat: myPlayer.lat ?? room.centerLat,
+      lng: myPlayer.lng ?? room.centerLng,
+    };
+
+    wildPets.forEach((wp) => {
+      const dist = getDistanceMeters(myCoord, { lat: wp.lat, lng: wp.lng });
+      if (dist <= 12) {
+        // Adoptar mascota
+        setWildPets((prev) => prev.filter((p) => p.id !== wp.id));
+
+        setMyPlayer((prev) => {
+          if (!prev) return null;
+          const currentPets = prev.pets || [];
+          // Si ya la tiene agregada, omitir
+          if (currentPets.some((p) => p.id === wp.pet.id)) return prev;
+
+          const updatedPets = [...currentPets, wp.pet];
+          addLog(`¡Has adoptado a ${wp.pet.name} ${wp.pet.icon}! Te acompañará fielmente en la misión.`, 'loot');
+          soundEffects.playCrateLoot();
+
+          // Sincronizar adopción a la sala
+          realtime.broadcastPetAdopted(wp.id, prev.nickname, wp.pet);
+
+          if (prev.lat && prev.lng) {
+            realtime.broadcastPlayerMove(
+              prev.lat,
+              prev.lng,
+              prev.hp,
+              true,
+              prev.status,
+              prev.isCriticallyWounded,
+              prev.insideBuildingId,
+              prev.insideBuildingType,
+              updatedPets
+            );
+          }
+
+          return {
+            ...prev,
+            pets: updatedPets,
+          };
+        });
+      }
+    });
+  }, [myPlayer?.lat, myPlayer?.lng, myPlayer?.isAlive, wildPets, room?.centerLat, room?.centerLng, realtime, addLog]);
+
+  // ==========================================
+  // RECOGIDA PASIVA AUTOMÁTICA DE SUMINISTROS POR MASCOTAS (FETCH LOOT)
+  // ==========================================
+  useEffect(() => {
+    if (
+      room?.status !== 'playing' ||
+      !myPlayer?.isAlive ||
+      myPlayer?.isCriticallyWounded ||
+      myPlayer?.status === 'critically_wounded'
+    )
+      return;
+
+    const activePets = (myPlayer.pets || []).filter((p) => !p.isWounded && p.hp > 0);
+    if (activePets.length === 0) return;
+
+    const myCoord: Coordinates = {
+      lat: myPlayer.lat ?? room.centerLat,
+      lng: myPlayer.lng ?? room.centerLng,
+    };
+
+    crates.forEach((crate) => {
+      if (crate.opened) return;
+      const dist = getDistanceMeters(myCoord, crate);
+
+      // Comprobar si alguna mascota activa tiene al alcance el suministro según su fetchRadiusMeters
+      const fetchingPet = activePets.find((pet) => dist <= pet.fetchRadiusMeters);
+      if (fetchingPet) {
+        // Marcar caja como abierta
+        setCrates((prev) =>
+          prev.map((c) => (c.id === crate.id ? { ...c, opened: true } : c))
+        );
+
+        setMyPlayer((prev) => {
+          if (!prev) return null;
+
+          let healedPlayerHp = prev.hp;
+          let updatedPets = [...(prev.pets || [])];
+
+          // Gestión de botiquines / curación pasiva por mascota:
+          // Si el jugador tiene vida incompleta (< maxHp), la curación se aplica al jugador
+          // Si el jugador ya tiene vida al 100%, se cura a la mascota con menor porcentaje de salud
+          if (crate.healReward > 0) {
+            if (prev.hp < prev.maxHp) {
+              healedPlayerHp = Math.min(prev.maxHp, prev.hp + crate.healReward);
+              addLogRef.current(
+                `🐾 ${fetchingPet.name} te trajo suministros médicos: +${crate.healReward} HP!`,
+                'loot'
+              );
+            } else {
+              // Buscar mascota con menor porcentaje de salud
+              let lowestPetIndex = -1;
+              let lowestRatio = 1.0;
+              updatedPets.forEach((p, idx) => {
+                const ratio = p.hp / p.maxHp;
+                if (ratio < lowestRatio) {
+                  lowestRatio = ratio;
+                  lowestPetIndex = idx;
+                }
+              });
+
+              if (lowestPetIndex >= 0) {
+                const targetPet = updatedPets[lowestPetIndex];
+                const newPetHp = Math.min(targetPet.maxHp, targetPet.hp + crate.healReward);
+                updatedPets[lowestPetIndex] = {
+                  ...targetPet,
+                  hp: newPetHp,
+                  isWounded: false,
+                };
+                addLogRef.current(
+                  `🐾 ${fetchingPet.name} curó a ${targetPet.name} (+${crate.healReward} HP)!`,
+                  'loot'
+                );
+              } else {
+                addLogRef.current(
+                  `🐾 ${fetchingPet.name} recogió suministros médicos (Squad al 100% HP).`,
+                  'loot'
+                );
+              }
+            }
+          }
+
+          // Armas y munición van a la mochila del jugador siguiendo la lógica existente
+          const rawType = (crate.weaponReward.weaponType || crate.weaponReward.id) as string;
+          const mappedType: WeaponType =
+            rawType === 'assault_rifle'
+              ? 'rifle'
+              : rawType === 'combat_shotgun'
+              ? 'shotgun'
+              : rawType === 'baseball_bat'
+              ? 'axe'
+              : rawType === 'tactical_knife'
+              ? 'knife'
+              : (rawType as WeaponType);
+
+          const hasConfig = mappedType in WEAPON_TIER_CONFIG;
+          const newInventoryItem: InventoryItem = hasConfig
+            ? createInventoryItem(mappedType, crate.weaponReward.ammo > 0 ? crate.weaponReward.ammo : undefined)
+            : {
+                id: crypto.randomUUID(),
+                type: crate.weaponReward.id,
+                name: crate.weaponReward.name,
+                category: 'weapon',
+                tier: crate.weaponReward.tier || 3,
+                damage: crate.weaponReward.damage,
+                cadenceMs: crate.weaponReward.fireRateMs,
+                ammo: crate.weaponReward.ammo,
+                maxAmmo: crate.weaponReward.maxAmmo,
+                durability: -1,
+                isInfinite: crate.weaponReward.ammo === -1,
+                rangeMeters: crate.weaponReward.rangeMeters,
+                iconName: crate.weaponReward.iconName,
+              };
+
+          const currentInv = prev.inventory && prev.inventory.length > 0
+            ? prev.inventory
+            : getDefaultInventoryForRole(prev.role);
+
+          let updatedInv = [...currentInv];
+          let updatedEquippedWeapon = prev.equippedWeapon;
+          let updatedEquippedItemId = prev.equippedItemId;
+
+          if (currentInv.length < MAX_INVENTORY_SLOTS) {
+            updatedInv.push(newInventoryItem);
+            const currentTier = prev.equippedWeapon?.tier ?? 1;
+            if (newInventoryItem.tier > currentTier) {
+              updatedEquippedWeapon = inventoryItemToWeapon(newInventoryItem);
+              updatedEquippedItemId = newInventoryItem.id;
+              addLogRef.current(
+                `🐾 ${fetchingPet.name} trajo ${newInventoryItem.name} (Tier ${newInventoryItem.tier})! Auto-equipada.`,
+                'loot'
+              );
+            } else {
+              addLogRef.current(
+                `🐾 ${fetchingPet.name} guardó ${newInventoryItem.name} (Tier ${newInventoryItem.tier}) en tu mochila!`,
+                'loot'
+              );
+            }
+          }
+
+          return {
+            ...prev,
+            hp: healedPlayerHp,
+            pets: updatedPets,
+            inventory: updatedInv,
+            equippedWeapon: updatedEquippedWeapon,
+            equippedItemId: updatedEquippedItemId,
+            cratesOpened: prev.cratesOpened + 1,
+          };
+        });
+
+        realtime.broadcastCrateLooted(crate.id, myPlayer.nickname, crate.weaponReward.name);
+        soundEffects.playCrateLoot();
+      }
+    });
+  }, [myPlayer?.lat, myPlayer?.lng, myPlayer?.isAlive, myPlayer?.pets, crates, room?.centerLat, room?.centerLng, realtime]);
+
+  // ==========================================
+  // HABILIDAD PASIVA DEL MINI ROBOT MÉDICO (+2 HP CADA 5S FUERA DE COMBATE)
+  // ==========================================
+  useEffect(() => {
+    if (
+      room?.status !== 'playing' ||
+      !myPlayer?.isAlive ||
+      myPlayer?.isCriticallyWounded ||
+      myPlayer?.status === 'critically_wounded' ||
+      isCombatArenaOpen
+    )
+      return;
+
+    const hasActiveMedBot = (myPlayer.pets || []).some((p) => p.type === 'med_bot' && !p.isWounded);
+    if (!hasActiveMedBot) return;
+
+    const interval = setInterval(() => {
+      setMyPlayer((prev) => {
+        if (!prev || prev.hp >= prev.maxHp) return prev;
+        const newHp = Math.min(prev.maxHp, prev.hp + 2);
+        return {
+          ...prev,
+          hp: newHp,
+        };
+      });
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [room?.status, myPlayer?.isAlive, myPlayer?.pets, isCombatArenaOpen]);
 
   // ==========================================
   // HABILIDADES ACTIVAS DE ROL / ACCIONES ESPECIALES
@@ -2012,10 +2315,18 @@ export const App: React.FC = () => {
       });
     }
 
+    // Generar mascotas silvestres en el mapa (4 a 6 mascotas distribuidas en el área de juego)
+    const initialWildPets = generateWildPets(
+      { lat: config.center.lat, lng: config.center.lng },
+      config.radiusMeters,
+      5
+    );
+
     setRoom(newRoom);
     setMyPlayer(hostPlayer);
     setPlayers([hostPlayer]);
     setCrates(generatedCrates);
+    setWildPets(initialWildPets);
     resetPosition(hostSpawnPoint);
     localStorage.setItem('utopia_active_room', gameData.code);
     setSavedActiveRoomCode(gameData.code);
@@ -2271,6 +2582,14 @@ export const App: React.FC = () => {
         });
       }
       setCrates(fallbackCrates);
+
+      // Generar mascotas silvestres de contingencia para la partida en curso
+      const fallbackWildPets = generateWildPets(
+        { lat: gameData.center_lat, lng: gameData.center_lng },
+        gameData.play_area_radius,
+        5
+      );
+      setWildPets(fallbackWildPets);
     }
 
     setRoom(currentRoom);
@@ -2393,6 +2712,7 @@ export const App: React.FC = () => {
           isRadarActive={isRadarActive}
           structures={structures}
           droppedItems={droppedItems}
+          wildPets={wildPets}
           onMapClick={handleMapClick}
           onPickDroppedItem={handlePickDroppedItem}
         />
@@ -2759,6 +3079,12 @@ export const App: React.FC = () => {
           isRoleSkillActive={isRoleSkillActive}
           onAttack={handleArenaAttack}
           onPlayerDamaged={handleArenaPlayerDamaged}
+          onPetDamaged={(updatedPets) => {
+            setMyPlayer((prev) => (prev ? { ...prev, pets: updatedPets } : null));
+            setPlayers((prev) =>
+              prev.map((p) => (p.id === myPlayer.id ? { ...p, pets: updatedPets } : p))
+            );
+          }}
           onFlee={handleArenaFlee}
           onClose={() => setIsCombatArenaOpen(false)}
         />

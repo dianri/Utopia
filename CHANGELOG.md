@@ -5,6 +5,19 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ## [Unreleased]
 ### Added
+- **Multi-pet companion system with automatic loot fetching, unique passive traits, combat assist, and hospital revive (`mapEntities.ts`, `GameMap.tsx`, `CombatArena.tsx`, `App.tsx`, `types/game.ts`):**
+  - **Adopción ilimitada y comitiva en el mapa:** Spawneo de 4 a 6 mascotas silvestres en el mapa (`dog`, `drone`, `electric_mouse`, `rabbit`, `cat`, `med_bot`) con marcadores animados y círculos radiantes. Adopción automática a menos de 12 metros sin límite de cantidad; las mascotas se incorporan a la comitiva del jugador (`player.pets: Pet[]`).
+  - **Perfiles y habilidades pasivas únicas:**
+    - Perro Guardián (`dog` 🐕): 60 HP, 6 DMG (cada 2s), radio de rastreo extendido recogiendo loot a 25 metros.
+    - Dron Táctico (`drone` 🛸): 45 HP, 10 DMG (cada 2.5s), fuego continuo y visión táctica ampliada (+15m niebla de guerra).
+    - Roedor Eléctrico (`electric_mouse` ⚡): 50 HP, 8 DMG (cada 1.8s), descargas eléctricas rápidas.
+    - Conejo Veloz (`rabbit` 🐇): 40 HP, 4 DMG (cada 1.5s), alta cadencia y alcance de suministros lejanos.
+    - Gato Callejero (`cat` 🐈): 45 HP, 7 DMG (cada 2s), sigilo felino que otorga al jugador +10% de evasión frente a los ataques del monstruo.
+    - Mini Robot Médico (`med_bot` 🤖): 50 HP, 3 DMG (cada 3s), nanobots curativos que regeneran pasivamente +2 HP cada 5s fuera de combate.
+  - **Seguimiento visual e interpolación suave en el mapa:** Renderizado cosmético de las mascotas orbitando a 2.5m de cada jugador en `GameMap.tsx`. Si una mascota se desmaya (`isWounded: true`), flota detrás en escala de grises con animación de mareo (`💫`). Sincronización ligera en red mediante el payload de presencia y movimiento de Supabase Realtime (`pets: Pet[]`) y evento `pet_adopted`.
+  - **Recogida pasiva automática de suministros (Fetch Loot):** Las mascotas activas escanean y consumen cajas de suministros dentro de su `fetchRadiusMeters`. Si el jugador tiene vida incompleta, la curación se aplica inmediatamente a él; si está al 100%, se aplica a la mascota con menor porcentaje de vida. Las armas y munición se transfieren directamente a la mochila del jugador.
+  - **Asistencia en la Arena de Combate (`CombatArena.tsx`):** Tarjetas secundarias con barras de vida de cada mascota activa; ataque automático periódico restando HP al monstruo con números flotantes dedicados; recepción de un 20% de daño de área residual cuando el monstruo ataca, entrando en estado `isWounded: true` al llegar a 0 HP.
+  - **Revitalización en el Hospital de Campaña (`App.tsx`):** Al permanecer en el Hospital, todas las mascotas heridas o desmayadas de la comitiva se reactivan, reviven al 100% de salud (`hp = maxHp`) y eliminan el estado `isWounded`.
 - **Sistema integral de mochila/inventario, jerarquía y desgaste de armamento (`BackpackModal.tsx`, `combatEngine.ts`, `types/game.ts`):**
   - **Jerarquía de armamento de 7 niveles (Tiers):** Lanzacohetes RPG (Tier 7), Granadas Tácticas (Tier 6), Fusil Táctico M4 (Tier 5), Escopeta de Postas (Tier 4), Pistola 9mm (Tier 3), Hacha Táctica (Tier 2 con 15 usos de durabilidad) y Cuchillo de Supervivencia básico (Tier 1 infinito e indestructible).
   - **Desgaste dinámico y fallback automático:** Al agotarse la munición o durabilidad de cualquier arma de Tier 2-7 durante el combate en movimiento o en la arena táctica, el arma se rompe/elimina y el sistema auto-equipa automáticamente el siguiente mejor armamento disponible en la mochila hasta llegar al cuchillo básico.

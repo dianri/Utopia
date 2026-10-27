@@ -8,6 +8,8 @@ import type {
   PlayerStatus,
   StructureType,
   DroppedItem,
+  Pet,
+  WildPet,
 } from '../types/game';
 import { soundEffects } from '../services/soundEffects';
 
@@ -24,6 +26,7 @@ interface RealtimeCallbacks {
     isCriticallyWounded?: boolean;
     insideBuildingId?: string | null;
     insideBuildingType?: StructureType | null;
+    pets?: Pet[];
   }) => void;
   onPlayerDamaged?: (payload: { playerId: string; damage: number; currentHp: number }) => void;
   onMonsterDamaged?: (payload: { damage: number; fromPlayerId: string; currentHp: number }) => void;
@@ -36,6 +39,7 @@ interface RealtimeCallbacks {
   onChestInteracting?: (payload: { isInteracting: boolean; playerId: string }) => void;
   onItemDropped?: (dropped: DroppedItem) => void;
   onItemPicked?: (payload: { droppedItemId: string; playerId: string }) => void;
+  onPetAdopted?: (payload: { wildPetId: string; playerId: string; playerNickname: string; pet: Pet }) => void;
   onRequestStateSync?: () => void;
   onFullStateSync?: (payload: {
     monster: Monster;
@@ -45,6 +49,7 @@ interface RealtimeCallbacks {
     chestPhase?: number;
     chestStep?: number;
     droppedItems?: DroppedItem[];
+    wildPets?: WildPet[];
   }) => void;
   onGameCancelled?: (payload: { reason?: string }) => void;
   onPresenceSync?: (activeUserIds: string[]) => void;
@@ -179,6 +184,11 @@ export function useGameRealtime(
       callbacksRef.current.onItemPicked?.(payload);
     });
 
+    // 9.5. ADOPCIÓN DE MASCOTA SILVESTRE EN EL MAPA
+    channel.on('broadcast', { event: 'pet_adopted' }, ({ payload }) => {
+      callbacksRef.current.onPetAdopted?.(payload);
+    });
+
     // 10. PETICIÓN DE SINCRONIZACIÓN DE ESTADO (LATE JOIN)
     channel.on('broadcast', { event: 'request_state_sync' }, () => {
       callbacksRef.current.onRequestStateSync?.();
@@ -249,7 +259,8 @@ export function useGameRealtime(
       status?: PlayerStatus,
       isCriticallyWounded?: boolean,
       insideBuildingId?: string | null,
-      insideBuildingType?: StructureType | null
+      insideBuildingType?: StructureType | null,
+      pets?: Pet[]
     ) => {
       if (!channelRef.current || !isSubscribedRef.current) return;
       const payload = {
@@ -263,6 +274,7 @@ export function useGameRealtime(
         isCriticallyWounded,
         insideBuildingId,
         insideBuildingType,
+        pets,
       };
       console.log('[Realtime:Move] Emit:', payload);
       channelRef.current.send({
@@ -373,6 +385,15 @@ export function useGameRealtime(
     });
   }, [myPlayerId]);
 
+  const broadcastPetAdopted = useCallback((wildPetId: string, playerNickname: string, pet: Pet) => {
+    if (!channelRef.current || !isSubscribedRef.current || !myPlayerId) return;
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'pet_adopted',
+      payload: { wildPetId, playerId: myPlayerId, playerNickname, pet },
+    });
+  }, [myPlayerId]);
+
   const broadcastRequestStateSync = useCallback(() => {
     if (!channelRef.current || !isSubscribedRef.current) return;
     channelRef.current.send({
@@ -390,6 +411,7 @@ export function useGameRealtime(
     chestPhase?: number;
     chestStep?: number;
     droppedItems?: DroppedItem[];
+    wildPets?: WildPet[];
   }) => {
     if (!channelRef.current || !isSubscribedRef.current) return;
     channelRef.current.send({
@@ -424,6 +446,7 @@ export function useGameRealtime(
     broadcastChestInteracting,
     broadcastItemDropped,
     broadcastItemPicked,
+    broadcastPetAdopted,
     broadcastRequestStateSync,
     broadcastFullStateSync,
     broadcastGameCancelled,

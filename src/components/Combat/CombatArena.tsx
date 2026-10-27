@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import type { Player, Monster, Weapon } from '../../types/game';
+import type { Player, Monster, Weapon, Pet } from '../../types/game';
 import { DEFAULT_WEAPONS_BY_ROLE, getModifiedWeaponStats } from '../../services/combatEngine';
 import { soundEffects } from '../../services/soundEffects';
-import { ShieldAlert, Crosshair, Zap, Flame, Target, Footprints, Shield, Skull, Swords, AlertTriangle } from 'lucide-react';
+import { ShieldAlert, Crosshair, Zap, Flame, Target, Footprints, Shield, Skull, Swords, AlertTriangle, Heart } from 'lucide-react';
 
 interface CombatArenaProps {
   isOpen: boolean;
@@ -11,6 +11,7 @@ interface CombatArenaProps {
   isRoleSkillActive?: boolean;
   onAttack: (damage: number, newHp: number, weapon: Weapon) => void;
   onPlayerDamaged: (damage: number) => void;
+  onPetDamaged?: (updatedPets: Pet[]) => void;
   onFlee: () => void;
   onClose: () => void;
 }
@@ -22,6 +23,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   isRoleSkillActive = false,
   onAttack,
   onPlayerDamaged,
+  onPetDamaged,
   onFlee,
   onClose,
 }) => {
@@ -30,7 +32,13 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   const [screenShake, setScreenShake] = useState<boolean>(false);
   const [cardHitAnim, setCardHitAnim] = useState<boolean>(false);
   const [attackCooldown, setAttackCooldown] = useState<number>(0);
-  const [damageNumbers, setDamageNumbers] = useState<{ id: number; text: string; isCrit: boolean }[]>([]);
+  const [damageNumbers, setDamageNumbers] = useState<{ id: number; text: string; isCrit: boolean; isPet?: boolean }[]>([]);
+
+  const petsRef = useRef<Pet[]>(myPlayer.pets || []);
+  petsRef.current = myPlayer.pets || [];
+
+  const monsterHpRef = useRef<number>(monster.hp);
+  monsterHpRef.current = monster.hp;
 
   const equippedWeapon = myPlayer.equippedWeapon || DEFAULT_WEAPONS_BY_ROLE[myPlayer.role];
   const weaponStats = getModifiedWeaponStats(equippedWeapon, myPlayer.role);
@@ -101,6 +109,44 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   }, [attackCooldown]);
 
   // ==========================================
+  // ATAQUE AUTOMÁTICO DE MASCOTAS ACTIVAS (CADA attackIntervalMs)
+  // ==========================================
+  useEffect(() => {
+    if (!isOpen || monster.hp <= 0 || monster.state === 'dead') return;
+
+    const currentPets = (myPlayer.pets || []).filter((p) => !p.isWounded && p.hp > 0);
+    if (currentPets.length === 0) return;
+
+    const intervals = currentPets.map((pet) => {
+      return setInterval(() => {
+        if (!isOpen || monsterHpRef.current <= 0) return;
+
+        const dmg = pet.damage;
+        const newHp = Math.max(0, monsterHpRef.current - dmg);
+        monsterHpRef.current = newHp;
+
+        // Efecto visual y daño flotante de mascota
+        const numId = Date.now() + Math.random();
+        setDamageNumbers((prev) => [
+          ...prev,
+          { id: numId, text: `${pet.icon} -${dmg}`, isCrit: false, isPet: true },
+        ]);
+        setTimeout(() => {
+          setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));
+        }, 800);
+
+        // Pequeño sonido de impacto asistido
+        soundEffects.playGunshot('melee');
+        onAttack(dmg, newHp, equippedWeapon);
+      }, pet.attackIntervalMs || 2000);
+    });
+
+    return () => {
+      intervals.forEach(clearInterval);
+    };
+  }, [isOpen, myPlayer.pets, monster.hp, monster.state, equippedWeapon, onAttack]);
+
+  // ==========================================
   // BUCLE DE DAÑO DEL MONSTRUO (CADA 2.5 SEGUNDOS)
   // ==========================================
   useEffect(() => {
@@ -108,6 +154,20 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
     const monsterAttackInterval = setInterval(() => {
       if (!isOpen || monster.hp <= 0) return;
+
+      // Habilidad pasiva del Gato Callejero: +10% evasión
+      const hasActiveCat = (myPlayer.pets || []).some((p) => p.type === 'cat' && !p.isWounded);
+      if (hasActiveCat && Math.random() < 0.1) {
+        const numId = Date.now() + Math.random();
+        setDamageNumbers((prev) => [
+          ...prev,
+          { id: numId, text: '🐈 ¡ESQUIVADO!', isCrit: true },
+        ]);
+        setTimeout(() => {
+          setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));
+        }, 1000);
+        return;
+      }
 
       // Ataque del monstruo
       setIsMonsterAttacking(true);
@@ -121,6 +181,27 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
       onPlayerDamaged(monsterDamage);
 
+      // Daño residual del 20% a todas las mascotas activas
+      const petSplashDamage = Math.max(1, Math.round(baseMonsterDmg * 0.2));
+      const currentPets = myPlayer.pets || [];
+      if (currentPets.length > 0 && onPetDamaged) {
+        let anyPetChanged = false;
+        const updatedPets = currentPets.map((pet) => {
+          if (pet.isWounded || pet.hp <= 0) return pet;
+          anyPetChanged = true;
+          const newHp = Math.max(0, pet.hp - petSplashDamage);
+          return {
+            ...pet,
+            hp: newHp,
+            isWounded: newHp <= 0,
+          };
+        });
+
+        if (anyPetChanged) {
+          onPetDamaged(updatedPets);
+        }
+      }
+
       setTimeout(() => {
         setIsMonsterAttacking(false);
         setScreenShake(false);
@@ -130,7 +211,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
     return () => {
       clearInterval(monsterAttackInterval);
     };
-  }, [isOpen, monster.hp, monster.state, monster.isEnraged, isRoleSkillActive, myPlayer.role, onPlayerDamaged]);
+  }, [isOpen, monster.hp, monster.state, monster.isEnraged, isRoleSkillActive, myPlayer.role, myPlayer.pets, onPlayerDamaged, onPetDamaged]);
 
   // Si los HP del jugador caen a 0 o entra en estado crítico, cerrar inmediatamente la arena
   useEffect(() => {
@@ -321,6 +402,52 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
             />
           </div>
         </div>
+
+        {/* Tarjetas secundarias de Mascotas de Apoyo en Combate */}
+        {myPlayer.pets && myPlayer.pets.length > 0 && (
+          <div className="flex flex-col gap-1.5 bg-slate-950/70 p-2 rounded-xl border border-slate-800">
+            <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
+              <span className="flex items-center gap-1 font-bold text-emerald-300">
+                <Heart className="w-3 h-3 text-emerald-400" />
+                MASCOTAS DE COMBATE ({myPlayer.pets.filter((p) => !p.isWounded).length}/{myPlayer.pets.length})
+              </span>
+              <span className="text-[10px] text-slate-500">Ataque Automático</span>
+            </div>
+            <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-thin">
+              {myPlayer.pets.map((pet) => {
+                const petHpPercent = Math.max(0, Math.min(100, Math.round((pet.hp / pet.maxHp) * 100)));
+                return (
+                  <div
+                    key={pet.id}
+                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-mono shrink-0 transition-all ${
+                      pet.isWounded
+                        ? 'bg-slate-900/60 border-slate-800 opacity-50'
+                        : 'bg-emerald-950/40 border-emerald-500/40 shadow-sm'
+                    }`}
+                  >
+                    <span className="text-base">{pet.icon}</span>
+                    <div className="flex flex-col min-w-[55px]">
+                      <div className="flex items-center justify-between text-[10px]">
+                        <span className={`font-bold truncate max-w-[65px] ${pet.isWounded ? 'text-slate-400' : 'text-emerald-200'}`}>
+                          {pet.name}
+                        </span>
+                        {pet.isWounded && <span className="text-[9px]">💫</span>}
+                      </div>
+                      <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden mt-0.5">
+                        <div
+                          className={`h-full ${
+                            pet.isWounded ? 'bg-gray-600' : petHpPercent < 30 ? 'bg-red-500 animate-pulse' : 'bg-emerald-400'
+                          }`}
+                          style={{ width: `${petHpPercent}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Arma equipada y munición */}
         <div className="flex items-center justify-between bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">

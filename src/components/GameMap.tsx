@@ -12,6 +12,7 @@ import type {
   PlayerSpeed,
   MapStructure,
   DroppedItem,
+  WildPet,
 } from '../types/game';
 import { PLAYER_SPEED_MPS } from '../types/game';
 import { createGeoJsonCircle, getDistanceMeters } from '../services/geoUtils';
@@ -32,6 +33,7 @@ interface GameMapProps {
   isRadarActive: boolean;
   structures?: MapStructure[];
   droppedItems?: DroppedItem[];
+  wildPets?: WildPet[];
   onMapClick: (coords: Coordinates) => void;
   onReviveAttempt?: (targetPlayer: Player) => void;
   onPickDroppedItem?: (dropped: DroppedItem) => void;
@@ -51,6 +53,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   isRadarActive,
   structures = [],
   droppedItems = [],
+  wildPets = [],
   onMapClick,
   onPickDroppedItem,
 }) => {
@@ -66,6 +69,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const pingMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const structureMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const droppedItemMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+  const wildPetMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+  const companionPetMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
 
   const onPickDroppedItemRef = useRef(onPickDroppedItem);
   onPickDroppedItemRef.current = onPickDroppedItem;
@@ -162,7 +167,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       // 3. Capa dinámica: Radio de visión del jugador
       const myCoords = { lat: myPlayer.lat ?? center.lat, lng: myPlayer.lng ?? center.lng };
-      const visionRadius = getVisionRadius(myPlayer.role, isRadarActive);
+      const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
+      const visionRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
       const visionGeo = createGeoJsonCircle(myCoords, Math.min(visionRadius, playAreaRadius));
 
       map.addSource('player-vision', {
@@ -355,7 +361,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     }
     lastVisionPosRef.current = { lat: myLat, lng: myLng };
 
-    const visionRadius = getVisionRadius(myPlayer.role, isRadarActive);
+    const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
+    const visionRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
     const visionSource = map.getSource('player-vision') as maplibregl.GeoJSONSource;
     if (visionSource) {
       visionSource.setData(createGeoJsonCircle({ lat: myLat, lng: myLng }, Math.min(visionRadius, playAreaRadius)));
@@ -642,11 +649,56 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   }, [droppedItems]);
 
   // ==========================================
+  // 6.7. MARCADORES DE MASCOTAS SILVESTRES (PETS EN EL MAPA)
+  // ==========================================
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const currentWildPetIds = new Set(wildPets.map((wp) => wp.id));
+
+    // Limpiar mascotas que ya fueron adoptadas o eliminadas
+    wildPetMarkersRef.current.forEach((marker, id) => {
+      if (!currentWildPetIds.has(id)) {
+        marker.remove();
+        wildPetMarkersRef.current.delete(id);
+      }
+    });
+
+    wildPets.forEach((wp) => {
+      if (!wildPetMarkersRef.current.has(wp.id)) {
+        const el = document.createElement('div');
+        el.className = `wild-pet-marker-${wp.id} flex flex-col items-center select-none cursor-pointer animate-bounce`;
+        el.innerHTML = `
+          <div class="relative flex items-center justify-center">
+            <div class="w-10 h-10 rounded-full bg-emerald-400/20 animate-ping absolute"></div>
+            <div class="w-8 h-8 rounded-full bg-emerald-950/90 border-2 border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.7)] flex items-center justify-center text-base">
+              ${wp.pet.icon}
+            </div>
+          </div>
+          <span class="mt-0.5 px-1 py-0.5 text-[8px] font-mono font-bold bg-hud-dark/95 border border-emerald-500/70 text-emerald-300 rounded uppercase tracking-wider whitespace-nowrap shadow-md">
+            ${wp.pet.name}
+          </span>
+        `;
+
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+          .setLngLat([wp.lng, wp.lat])
+          .addTo(map);
+
+        wildPetMarkersRef.current.set(wp.id, marker);
+      } else {
+        wildPetMarkersRef.current.get(wp.id)?.setLngLat([wp.lng, wp.lat]);
+      }
+    });
+  }, [wildPets]);
+
+  // ==========================================
   // 7. MARCADOR DEL MONSTRUO (Anclaje nativo MapLibre GL y niebla de guerra)
   // ==========================================
   const myCoords = { lat: myPlayer.lat ?? center.lat, lng: myPlayer.lng ?? center.lng };
   const distToMonster = getDistanceMeters(myCoords, monster);
-  const visionRadius = getVisionRadius(myPlayer.role, isRadarActive);
+  const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
+  const visionRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
   const isMonsterVisible =
     (distToMonster <= visionRadius || isRadarActive) &&
     monster.state !== 'dead' &&
@@ -809,6 +861,74 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           playerLabel.textContent = statusLabel;
           playerLabel.className = `block text-[10px] font-bold ${isMe ? 'text-cyan-300' : isCriticallyWounded ? 'text-red-400 font-black' : 'text-slate-200'} truncate max-w-[85px]`;
         }
+      }
+    });
+
+    // 8.5. MARCADORES DE MASCOTAS ACOMPAÑANTES (ORBITANDO ALREDEDOR DE SUS DUEÑOS)
+    const activeCompanionPetKeys = new Set<string>();
+
+    allPlayers.forEach((p) => {
+      const pPets = p.pets || [];
+      if (pPets.length === 0) return;
+
+      const pLat = p.lat ?? center.lat;
+      const pLng = p.lng ?? center.lng;
+      const isInside = !!p.insideBuildingId;
+
+      pPets.forEach((pet, index) => {
+        const markerKey = `${p.id}_${pet.id}`;
+        activeCompanionPetKeys.add(markerKey);
+
+        // Dispersión cosmética alrededor del jugador (2 a 3 metros de offset)
+        // 1 metro de latitud ~ 0.000009 grados
+        const angle = (index * (360 / Math.max(1, pPets.length))) * (Math.PI / 180);
+        const offsetMeters = 2.5;
+        const petLat = pLat + (Math.sin(angle) * offsetMeters * 0.000009);
+        const petLng = pLng + (Math.cos(angle) * offsetMeters * 0.000009) / Math.cos((pLat * Math.PI) / 180);
+
+        if (!companionPetMarkersRef.current.has(markerKey)) {
+          const el = document.createElement('div');
+          el.className = `companion-pet-${markerKey} flex flex-col items-center select-none pointer-events-none transition-all duration-300`;
+          if (isInside) {
+            el.style.display = 'none';
+          }
+
+          el.innerHTML = `
+            <div id="pet-avatar-${markerKey}" class="w-6 h-6 rounded-full bg-slate-900/90 border ${
+              pet.isWounded ? 'border-gray-500 grayscale opacity-60' : 'border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+            } flex items-center justify-center text-xs">
+              ${pet.icon}
+            </div>
+            ${pet.isWounded ? '<span class="text-[8px] animate-spin">💫</span>' : ''}
+          `;
+
+          const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+            .setLngLat([petLng, petLat])
+            .addTo(map);
+
+          companionPetMarkersRef.current.set(markerKey, marker);
+        } else {
+          const marker = companionPetMarkersRef.current.get(markerKey);
+          marker?.setLngLat([petLng, petLat]);
+          const el = marker?.getElement();
+          if (el) {
+            el.style.display = isInside ? 'none' : 'flex';
+            const avatar = el.querySelector(`#pet-avatar-${markerKey}`);
+            if (avatar) {
+              avatar.className = `w-6 h-6 rounded-full bg-slate-900/90 border ${
+                pet.isWounded ? 'border-gray-500 grayscale opacity-60' : 'border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+              } flex items-center justify-center text-xs`;
+            }
+          }
+        }
+      });
+    });
+
+    // Limpiar marcadores de mascotas que ya no están
+    companionPetMarkersRef.current.forEach((marker, key) => {
+      if (!activeCompanionPetKeys.has(key)) {
+        marker.remove();
+        companionPetMarkersRef.current.delete(key);
       }
     });
   }, [players, myPlayer, center.lat, center.lng]);

@@ -66,6 +66,35 @@ export interface DroppedItem {
 
 export const MAX_INVENTORY_SLOTS = 4;
 
+export type PetType = 
+  | 'dog'            // Perro Guardián
+  | 'drone'          // Dron Táctico
+  | 'electric_mouse' // Roedor Eléctrico (Pikachu)
+  | 'rabbit'         // Conejo Veloz
+  | 'cat'            // Gato Callejero
+  | 'med_bot';       // Mini Robot Médico
+
+export interface Pet {
+  id: string;               // UUID de la mascota
+  type: PetType;
+  name: string;
+  icon: string;             // Emoji / SVG del compañero
+  hp: number;
+  maxHp: number;
+  damage: number;           // Daño pasivo continuo
+  attackIntervalMs: number; // Cadencia de ataque automático
+  fetchRadiusMeters: number;// Radio de recogida de loot
+  isWounded: boolean;       // Estado desmayada / fuera de combate
+}
+
+export interface WildPet {
+  id: string;
+  pet: Pet;
+  lat: number;
+  lng: number;
+  spawnedAt: number;
+}
+
 export interface Coordinates {
   lat: number;
   lng: number;
@@ -99,6 +128,7 @@ export interface Player {
   insideBuildingType?: StructureType | null;
   inCombat?: boolean;
   fleeImmunityUntil?: number;
+  pets?: Pet[];
 }
 
 export type MonsterState = 'patrol' | 'chase' | 'enraged' | 'dead' | 'defend_chest';
