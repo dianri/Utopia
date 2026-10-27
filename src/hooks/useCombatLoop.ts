@@ -126,21 +126,12 @@ export function useCombatLoop({
     return false;
   }, []);
 
-  // Bucle de combate a 200ms: independiente del ciclo de movimiento del jugador
+  // BUCLE AUTOMÁTICO EN EL MAPA DESACTIVADO
+  // El combate se centraliza exclusivamente en las acciones manuales de la Arena de Combate.
+  // No se ejecutan intervalos ni ataques pasivos en segundo plano mientras se navega el mapa.
   useEffect(() => {
-    if (!isPlaying) {
-      setIsFiringWeapon(false);
-      return;
-    }
-
-    const interval = window.setInterval(() => {
-      performAttack(false);
-    }, 200);
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [isPlaying, performAttack]);
+    setIsFiringWeapon(false);
+  }, [isPlaying]);
 
   const manualAttack = useCallback(() => {
     return performAttack(true);
