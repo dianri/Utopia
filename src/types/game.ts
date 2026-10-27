@@ -211,6 +211,9 @@ export interface GameRoom {
   treasureLng: number;
   chestPhase?: number;
   chestStep?: number;
+  chestUnlockedSteps?: number;
+  chestCurrentPhase?: number;
+  chestProgressPct?: number;
   startedAt?: string | null;
   endedAt?: string | null;
   createdAt: string;
