@@ -666,6 +666,17 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     });
 
     wildPets.forEach((wp) => {
+      // Guardia estricta de coordenadas válidas (evitar proyección en 0,0)
+      if (
+        typeof wp.lat !== 'number' ||
+        typeof wp.lng !== 'number' ||
+        isNaN(wp.lat) ||
+        isNaN(wp.lng) ||
+        (wp.lat === 0 && wp.lng === 0)
+      ) {
+        return;
+      }
+
       if (!wildPetMarkersRef.current.has(wp.id)) {
         const el = document.createElement('div');
         el.className = `wild-pet-marker-${wp.id} flex flex-col items-center select-none cursor-pointer animate-bounce`;
@@ -871,8 +882,14 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const pPets = p.pets || [];
       if (pPets.length === 0) return;
 
-      const pLat = p.lat ?? center.lat;
-      const pLng = p.lng ?? center.lng;
+      // Guardia estricta: si el jugador no cuenta con coordenadas geoespaciales válidas, no pintar mascotas
+      const pLat = typeof p.lat === 'number' && !isNaN(p.lat) && p.lat !== 0 ? p.lat : (typeof center.lat === 'number' && !isNaN(center.lat) && center.lat !== 0 ? center.lat : null);
+      const pLng = typeof p.lng === 'number' && !isNaN(p.lng) && p.lng !== 0 ? p.lng : (typeof center.lng === 'number' && !isNaN(center.lng) && center.lng !== 0 ? center.lng : null);
+
+      if (pLat === null || pLng === null) {
+        return;
+      }
+
       const isInside = !!p.insideBuildingId;
 
       pPets.forEach((pet, index) => {
@@ -884,7 +901,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const angle = (index * (360 / Math.max(1, pPets.length))) * (Math.PI / 180);
         const offsetMeters = 2.5;
         const petLat = pLat + (Math.sin(angle) * offsetMeters * 0.000009);
-        const petLng = pLng + (Math.cos(angle) * offsetMeters * 0.000009) / Math.cos((pLat * Math.PI) / 180);
+        const cosLat = Math.cos((pLat * Math.PI) / 180);
+        const petLng = pLng + (Math.cos(angle) * offsetMeters * 0.000009) / (cosLat !== 0 ? cosLat : 1);
+
+        if (isNaN(petLat) || isNaN(petLng) || (petLat === 0 && petLng === 0)) {
+          return;
+        }
 
         if (!companionPetMarkersRef.current.has(markerKey)) {
           const el = document.createElement('div');
