@@ -21,7 +21,7 @@ import type {
   Pet,
   WildPet,
 } from './types/game';
-import { PLAYER_SPEED_MPS, MAX_INVENTORY_SLOTS } from './types/game';
+import { PLAYER_SPEED_MPS, MAX_INVENTORY_SLOTS, isMonsterAlive } from './types/game';
 import {
   DEFAULT_WEAPONS_BY_ROLE,
   WEAPON_REGISTRY,
@@ -778,9 +778,7 @@ export const App: React.FC = () => {
 
       const isContest =
         isChestInteractedGloballyRef.current ||
-        isChestLockModalOpenRef.current ||
-        chestHoldersCountRef.current >=
-        Math.min(2, playersRef.current.filter((p) => p.isAlive).length);
+        isChestLockModalOpenRef.current;
 
       const result = monsterAIRef.current.update(
         monsterRef.current,
@@ -962,7 +960,7 @@ export const App: React.FC = () => {
         return;
       }
 
-      if (currentMonster.hp <= 0 || currentMonster.state === 'dead') {
+      if (!isMonsterAlive(currentMonster)) {
         if (isCombatArenaOpen) setIsCombatArenaOpen(false);
         return;
       }
@@ -1134,13 +1132,14 @@ export const App: React.FC = () => {
     };
     const distToChest = getDistanceMeters(pCoord, treasureCoord);
     const distMonsterToChest = getDistanceMeters(treasureCoord, monsterRef.current);
+    const isMonsterDefending = isMonsterAlive(monsterRef.current) && distMonsterToChest <= 20;
 
     if (distToChest > 20) {
       addLog('Debes acercarte a menos de 20m del cofre para abrirlo.', 'warning');
       return;
     }
 
-    if (distMonsterToChest <= 20) {
+    if (isMonsterDefending) {
       addLog('¡El monstruo está custodiando el cofre! Atráelo lejos o derrótalo.', 'warning');
       return;
     }
@@ -1175,50 +1174,6 @@ export const App: React.FC = () => {
     realtimeRef.current.broadcastChestInteracting(false);
     handleGameEnd('victory');
   }, []);
-
-  // ==========================================
-  // BUCLE DE CAPTURA DEL COFRE (CONDICIÓN DE VICTORIA)
-  // ==========================================
-  useEffect(() => {
-    if (room?.status !== 'playing') return;
-
-    const interval = window.setInterval(async () => {
-      const living = playersRef.current.filter((p) => p.isAlive && p.lat && p.lng);
-      if (living.length === 0) return;
-
-      const treasureCoord: Coordinates = {
-        lat: room.treasureLat,
-        lng: room.treasureLng,
-      };
-
-      const defenders = living.filter((p) => {
-        return getDistanceMeters(treasureCoord, { lat: p.lat!, lng: p.lng! }) <= 20;
-      });
-
-      const requiredHolders = Math.min(2, living.length);
-      setChestHoldersCount(defenders.length);
-
-      if (defenders.length >= requiredHolders) {
-        setChestCountdown((prev) => {
-          const next = prev - 1;
-          realtime.broadcastChestCountdown(next, defenders.length);
-          if (next <= 0) {
-            // ¡VICTORIA!
-            handleGameEnd('victory');
-            return 0;
-          }
-          return next;
-        });
-      } else {
-        // Reiniciar cuenta atrás si abandonan la zona
-        setChestCountdown(30);
-      }
-    }, 1000);
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [room?.status, room?.treasureLat, room?.treasureLng, realtime]);
 
   // ==========================================
   // DETECCIÓN DE DERROTA (TODOS LOS JUGADORES HERIDOS DE MUERTE O MUERTOS)
@@ -2980,12 +2935,14 @@ export const App: React.FC = () => {
                   { lat: room.treasureLat, lng: room.treasureLng }
                 ) <= 20
               }
-              isMonsterInChestZone={
+              isMonsterDefending={
+                isMonsterAlive(monster) &&
                 getDistanceMeters(
                   { lat: room.treasureLat, lng: room.treasureLng },
                   monster
                 ) <= 20
               }
+              isMonsterAlive={isMonsterAlive(monster)}
               isChestInteracted={isChestInteractedGlobally || isChestLockModalOpen}
               onOpenChestModal={handleOpenChestModal}
             />
@@ -3096,6 +3053,7 @@ export const App: React.FC = () => {
           currentPhase={chestPhase}
           currentStep={chestStep}
           distToMonster={distToMonster}
+          isMonsterAlive={isMonsterAlive(monster)}
           onStepSuccess={handleChestStepSuccess}
           onVictory={handleChestVictory}
           onClose={handleCloseChestModal}

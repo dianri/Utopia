@@ -5,7 +5,9 @@ interface ChestCountdownProps {
   currentPhase: number; // 1, 2, 3
   currentStep: number;  // 0, 1
   isInChestZone: boolean;
-  isMonsterInChestZone: boolean;
+  isMonsterInChestZone?: boolean;
+  isMonsterDefending?: boolean;
+  isMonsterAlive?: boolean;
   isChestInteracted: boolean;
   onOpenChestModal: () => void;
   // Fallbacks de compatibilidad
@@ -18,10 +20,16 @@ export const ChestCountdown: React.FC<ChestCountdownProps> = ({
   currentPhase,
   currentStep,
   isInChestZone,
-  isMonsterInChestZone,
+  isMonsterInChestZone = false,
+  isMonsterDefending,
+  isMonsterAlive = true,
   isChestInteracted,
   onOpenChestModal,
 }) => {
+  const isMonsterBlocking =
+    (typeof isMonsterDefending === 'boolean' ? isMonsterDefending : isMonsterInChestZone) &&
+    isMonsterAlive;
+
   const totalCompleted = (currentPhase - 1) * 2 + currentStep;
   const percent = Math.min(100, Math.round((totalCompleted / 6) * 100));
 
@@ -81,7 +89,7 @@ export const ChestCountdown: React.FC<ChestCountdownProps> = ({
 
         {/* ACCIÓN SEGÚN UBICACIÓN DEL JUGADOR Y DEL MONSTRUO */}
         {isInChestZone ? (
-          isMonsterInChestZone ? (
+          isMonsterBlocking ? (
             <div className="flex items-center gap-1.5 text-[10px] font-mono text-red-300 bg-red-950/70 p-1.5 rounded border border-red-500/50 animate-pulse">
               <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
               <span>¡MONSTRUO DEFENDIENDO EL COFRE! Elimínalo o aléjalo para abrir.</span>

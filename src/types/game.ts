@@ -144,7 +144,18 @@ export interface Monster {
   respawnTimeRemaining?: number; // 60s countdown
   isEnraged: boolean;
   lastAttackTime?: number;
+  isRespawning?: boolean;
 }
+
+export const isMonsterAlive = (monster?: Monster | null): boolean => {
+  if (!monster) return false;
+  return (
+    monster.hp > 0 &&
+    monster.state !== 'dead' &&
+    !monster.isRespawning &&
+    !(monster.respawnTimeRemaining && monster.respawnTimeRemaining > 0)
+  );
+};
 
 export interface Weapon {
   id: string;
