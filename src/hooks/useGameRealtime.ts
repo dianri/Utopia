@@ -25,8 +25,17 @@ interface RealtimeCallbacks {
   onCrateLooted?: (payload: { crateId: string; playerId: string; playerNickname: string; weaponName: string }) => void;
   onPlayerRevived?: (payload: { revivedPlayerId: string; reviverNickname: string }) => void;
   onChestCountdown?: (payload: { secondsRemaining: number; holdersCount: number }) => void;
+  onChestProgress?: (payload: { phase: number; step: number; updatedByNickname?: string }) => void;
+  onChestInteracting?: (payload: { isInteracting: boolean; playerId: string }) => void;
   onRequestStateSync?: () => void;
-  onFullStateSync?: (payload: { monster: Monster; crates: SupplyCrate[]; chestCountdown: number; holdersCount: number }) => void;
+  onFullStateSync?: (payload: {
+    monster: Monster;
+    crates: SupplyCrate[];
+    chestCountdown: number;
+    holdersCount: number;
+    chestPhase?: number;
+    chestStep?: number;
+  }) => void;
   onGameCancelled?: (payload: { reason?: string }) => void;
   onPresenceSync?: (activeUserIds: string[]) => void;
 }
@@ -138,6 +147,16 @@ export function useGameRealtime(
     // 9. CUENTA ATRÁS DEL COFRE (VICTORIA)
     channel.on('broadcast', { event: 'chest_countdown' }, ({ payload }) => {
       callbacksRef.current.onChestCountdown?.(payload);
+    });
+
+    // 9.1. PROGRESO COOPERATIVO DE FASES DEL COFRE
+    channel.on('broadcast', { event: 'chest_progress' }, ({ payload }) => {
+      callbacksRef.current.onChestProgress?.(payload);
+    });
+
+    // 9.2. INTERACCIÓN ACTIVA CON EL COFRE (ALERTA DE DEFENSA DEL MONSTRUO)
+    channel.on('broadcast', { event: 'chest_interacting' }, ({ payload }) => {
+      callbacksRef.current.onChestInteracting?.(payload);
     });
 
     // 10. PETICIÓN DE SINCRONIZACIÓN DE ESTADO (LATE JOIN)
@@ -298,6 +317,24 @@ export function useGameRealtime(
     });
   }, []);
 
+  const broadcastChestProgress = useCallback((phase: number, step: number, nickname?: string) => {
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'chest_progress',
+      payload: { phase, step, updatedByNickname: nickname },
+    });
+  }, []);
+
+  const broadcastChestInteracting = useCallback((isInteracting: boolean) => {
+    if (!channelRef.current || !isSubscribedRef.current || !myPlayerId) return;
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'chest_interacting',
+      payload: { isInteracting, playerId: myPlayerId },
+    });
+  }, [myPlayerId]);
+
   const broadcastRequestStateSync = useCallback(() => {
     if (!channelRef.current || !isSubscribedRef.current) return;
     channelRef.current.send({
@@ -312,6 +349,8 @@ export function useGameRealtime(
     crates: SupplyCrate[];
     chestCountdown: number;
     holdersCount: number;
+    chestPhase?: number;
+    chestStep?: number;
   }) => {
     if (!channelRef.current || !isSubscribedRef.current) return;
     channelRef.current.send({
@@ -342,6 +381,8 @@ export function useGameRealtime(
     broadcastCrateLooted,
     broadcastPlayerRevived,
     broadcastChestCountdown,
+    broadcastChestProgress,
+    broadcastChestInteracting,
     broadcastRequestStateSync,
     broadcastFullStateSync,
     broadcastGameCancelled,

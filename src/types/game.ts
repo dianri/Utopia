@@ -57,9 +57,11 @@ export interface Player {
   isCriticallyWounded?: boolean;
   insideBuildingId?: string | null;
   insideBuildingType?: StructureType | null;
+  inCombat?: boolean;
+  fleeImmunityUntil?: number;
 }
 
-export type MonsterState = 'patrol' | 'chase' | 'enraged' | 'dead';
+export type MonsterState = 'patrol' | 'chase' | 'enraged' | 'dead' | 'defend_chest';
 
 export interface Monster {
   lat: number;
@@ -121,11 +123,18 @@ export interface GameRoom {
   centerLng: number;
   treasureLat: number;
   treasureLng: number;
+  chestPhase?: number;
+  chestStep?: number;
   startedAt?: string | null;
   endedAt?: string | null;
   createdAt: string;
   updatedAt?: string;
   updated_at?: string;
+}
+
+export interface ChestProgress {
+  phase: number; // 1 | 2 | 3
+  step: number;  // 0 | 1
 }
 
 export interface MatchStatEntry {

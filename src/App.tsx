@@ -14,6 +14,7 @@ import type {
   Coordinates,
   MapStructure,
   StructureType,
+  Weapon,
 } from './types/game';
 import { PLAYER_SPEED_MPS } from './types/game';
 import {
@@ -58,7 +59,10 @@ import { VictoryModal } from './components/PostGame/VictoryModal';
 import { DefeatModal } from './components/PostGame/DefeatModal';
 import { LeaderboardModal } from './components/PostGame/LeaderboardModal';
 
-import { Play, Users, Trophy } from 'lucide-react';
+import { CombatArena } from './components/Combat/CombatArena';
+import { ChestLockModal } from './components/Chest/ChestLockModal';
+
+import { Play, Users, Trophy, Footprints } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -96,6 +100,27 @@ export const App: React.FC = () => {
   // COFRE Y EXTRACCIÓN (30s)
   const [chestCountdown, setChestCountdown] = useState<number>(30);
   const [chestHoldersCount, setChestHoldersCount] = useState<number>(0);
+
+  // MODO ARENA DE COMBATE TÁCTICO Y HUIDA
+  const [isCombatArenaOpen, setIsCombatArenaOpen] = useState<boolean>(false);
+  const [fleeImmunityUntil, setFleeImmunityUntil] = useState<number>(0);
+  const fleeImmunityUntilRef = useRef<number>(0);
+  fleeImmunityUntilRef.current = fleeImmunityUntil;
+
+  // COFRE MULTI-FASE COOPERATIVO (3 FASES, 2 PASOS C/U = 6 CERROJOS)
+  const [chestPhase, setChestPhase] = useState<number>(1);
+  const [chestStep, setChestStep] = useState<number>(0);
+  const [isChestLockModalOpen, setIsChestLockModalOpen] = useState<boolean>(false);
+  const [isChestInteractedGlobally, setIsChestInteractedGlobally] = useState<boolean>(false);
+
+  const chestPhaseRef = useRef<number>(chestPhase);
+  chestPhaseRef.current = chestPhase;
+  const chestStepRef = useRef<number>(chestStep);
+  chestStepRef.current = chestStep;
+  const isChestLockModalOpenRef = useRef<boolean>(isChestLockModalOpen);
+  isChestLockModalOpenRef.current = isChestLockModalOpen;
+  const isChestInteractedGloballyRef = useRef<boolean>(isChestInteractedGlobally);
+  isChestInteractedGloballyRef.current = isChestInteractedGlobally;
 
   // REANIMACIÓN
   const [revivingPlayerId, setRevivingPlayerId] = useState<string | null>(null);
@@ -434,6 +459,19 @@ export const App: React.FC = () => {
         setChestCountdown(secondsRemaining);
         setChestHoldersCount(holdersCount);
       },
+      onChestProgress: ({ phase, step, updatedByNickname }) => {
+        setChestPhase(phase);
+        setChestStep(step);
+        if (updatedByNickname) {
+          addLog(`¡${updatedByNickname} superó un cerrojo del cofre! (Fase ${phase}, Cerrojo ${step + 1}/2)`, 'loot');
+        }
+      },
+      onChestInteracting: ({ isInteracting }) => {
+        setIsChestInteractedGlobally(isInteracting);
+        if (isInteracting) {
+          addLog('¡Alerta de escuadra! Un compañero está manipulando el cofre. ¡El monstruo defenderá el tesoro!', 'warning');
+        }
+      },
       onRequestStateSync: () => {
         // Si somos el Host, transmitimos el estado actual del juego al jugador recién incorporado
         if (myPlayerRef.current?.isHost) {
@@ -442,6 +480,8 @@ export const App: React.FC = () => {
             crates: cratesRef.current,
             chestCountdown: chestCountdownRef.current,
             holdersCount: chestHoldersCountRef.current,
+            chestPhase: chestPhaseRef.current,
+            chestStep: chestStepRef.current,
           });
         }
       },
@@ -459,6 +499,12 @@ export const App: React.FC = () => {
           }
           if (typeof payload.holdersCount === 'number') {
             setChestHoldersCount(payload.holdersCount);
+          }
+          if (typeof payload.chestPhase === 'number') {
+            setChestPhase(payload.chestPhase);
+          }
+          if (typeof payload.chestStep === 'number') {
+            setChestStep(payload.chestStep);
           }
         }
       },
@@ -581,6 +627,7 @@ export const App: React.FC = () => {
     onPositionChange: handlePositionChange,
     isAlive: myPlayer?.isAlive ?? true,
     isSlowed: myPlayer?.isSlowed ?? false,
+    speedMultiplier: fleeImmunityUntil > Date.now() ? 1.3 : 1,
   });
 
   // ==========================================
@@ -670,6 +717,8 @@ export const App: React.FC = () => {
       if (!monsterAIRef.current) return;
 
       const isContest =
+        isChestInteractedGloballyRef.current ||
+        isChestLockModalOpenRef.current ||
         chestHoldersCountRef.current >=
         Math.min(2, playersRef.current.filter((p) => p.isAlive).length);
 
@@ -764,6 +813,189 @@ export const App: React.FC = () => {
       addLog(text, type);
     },
   });
+
+  // ==========================================
+  // ARENA DE COMBATE TÁCTICO: DETECCIÓN Y ENGANCHE EN TIEMPO REAL (< 20M)
+  // ==========================================
+  useEffect(() => {
+    if (room?.status !== 'playing' || !myPlayer?.isAlive) return;
+
+    const interval = setInterval(() => {
+      const player = myPlayerRef.current;
+      const currentMonster = monsterRef.current;
+
+      if (
+        !player ||
+        !player.isAlive ||
+        player.isCriticallyWounded ||
+        player.status === 'critically_wounded' ||
+        !!player.insideBuildingId
+      ) {
+        if (isCombatArenaOpen) setIsCombatArenaOpen(false);
+        return;
+      }
+
+      if (currentMonster.hp <= 0 || currentMonster.state === 'dead') {
+        if (isCombatArenaOpen) setIsCombatArenaOpen(false);
+        return;
+      }
+
+      const now = Date.now();
+      const inImmunity = fleeImmunityUntilRef.current > now;
+
+      const playerCoord: Coordinates = {
+        lat: player.lat ?? room.centerLat,
+        lng: player.lng ?? room.centerLng,
+      };
+
+      const dist = getDistanceMeters(playerCoord, currentMonster);
+
+      // Si entra a menos de 20m y no está en período de inmunidad de huida
+      if (dist <= 20 && !inImmunity) {
+        if (!isCombatArenaOpen) {
+          setIsCombatArenaOpen(true);
+          // Si estaba manipulando el cofre, interrumpirlo de inmediato
+          if (isChestLockModalOpenRef.current) {
+            setIsChestLockModalOpen(false);
+            isChestLockModalOpenRef.current = false;
+            realtimeRef.current.broadcastChestInteracting(false);
+            addLog('¡El monstruo interrumpió la desencriptación del cofre! Entrando en combate táctico.', 'combat');
+          }
+        }
+      } else if (dist > 25 && !inImmunity) {
+        // Si el monstruo se alejó a más de 25m
+        if (isCombatArenaOpen) {
+          setIsCombatArenaOpen(false);
+        }
+      }
+    }, 300);
+
+    return () => clearInterval(interval);
+  }, [room?.status, room?.centerLat, room?.centerLng, isCombatArenaOpen, addLog]);
+
+  // Manejadores de la Arena de Combate Táctico
+  const handleArenaAttack = useCallback(
+    (damage: number, newHp: number, weapon: Weapon) => {
+      const now = Date.now();
+      realtimeRef.current.broadcastMonsterDamaged(damage, newHp);
+      setMonster((prev) => ({ ...prev, hp: newHp }));
+
+      if (myPlayerRef.current && monsterAIRef.current) {
+        monsterAIRef.current.setAggroTarget(myPlayerRef.current.id);
+      }
+
+      setMyPlayer((prev) => {
+        if (!prev) return null;
+        const updatedWeapon =
+          weapon.ammo > 0 ? { ...weapon, ammo: weapon.ammo - 1 } : weapon;
+
+        return {
+          ...prev,
+          lastAttackTime: now,
+          damageDealt: prev.damageDealt + damage,
+          equippedWeapon: updatedWeapon,
+        };
+      });
+    },
+    []
+  );
+
+  const handleArenaPlayerDamaged = useCallback(
+    (damage: number) => {
+      setMyPlayer((prev) => {
+        if (!prev) return null;
+        const isShielded = isRoleSkillActiveRef.current && prev.role === 'tank';
+        const damageApplied = isShielded ? Math.round(damage * 0.5) : damage;
+        const calculatedHp = prev.hp - damageApplied;
+        const isWounded = calculatedHp <= 0;
+        const newHp = isWounded ? 1 : calculatedHp;
+        const newStatus = isWounded ? 'critically_wounded' : (prev.status || 'active');
+
+        realtimeRef.current.broadcastPlayerHit(prev.id, damageApplied, newHp);
+
+        if (isWounded) {
+          setIsCombatArenaOpen(false);
+          soundEffects.triggerDamageHaptics();
+          soundEffects.playAlarm();
+          addLog('¡ATAQUE CRÍTICO EN LA ARENA! Has quedado Herido de Muerte. ¡Huye al Hospital!', 'combat');
+        } else {
+          addLog(`¡El monstruo te golpeó por ${damageApplied} de daño!`, 'combat');
+        }
+
+        return {
+          ...prev,
+          hp: newHp,
+          isCriticallyWounded: isWounded || prev.isCriticallyWounded,
+          status: newStatus,
+        };
+      });
+    },
+    [addLog]
+  );
+
+  const handleArenaFlee = useCallback(() => {
+    const immunityEnd = Date.now() + 5000;
+    setFleeImmunityUntil(immunityEnd);
+    fleeImmunityUntilRef.current = immunityEnd;
+    setIsCombatArenaOpen(false);
+    soundEffects.vibrate([100, 50, 100]);
+    addLog('¡HUIDA ACTIVA! Aléjate del monstruo (Sprint +30% durante 5 segundos)', 'warning');
+  }, [addLog]);
+
+  // Manejadores del Cofre Cooperativo
+  const handleOpenChestModal = useCallback(() => {
+    if (!room || !myPlayer) return;
+    const pCoord = {
+      lat: myPlayer.lat ?? room.centerLat,
+      lng: myPlayer.lng ?? room.centerLng,
+    };
+    const treasureCoord = {
+      lat: room.treasureLat,
+      lng: room.treasureLng,
+    };
+    const distToChest = getDistanceMeters(pCoord, treasureCoord);
+    const distMonsterToChest = getDistanceMeters(treasureCoord, monsterRef.current);
+
+    if (distToChest > 20) {
+      addLog('Debes acercarte a menos de 20m del cofre para abrirlo.', 'warning');
+      return;
+    }
+
+    if (distMonsterToChest <= 20) {
+      addLog('¡El monstruo está custodiando el cofre! Atráelo lejos o derrótalo.', 'warning');
+      return;
+    }
+
+    setIsChestLockModalOpen(true);
+    isChestLockModalOpenRef.current = true;
+    realtimeRef.current.broadcastChestInteracting(true);
+    addLog('Iniciando desencriptación del cofre táctico. ¡La escuadra debe proteger el perímetro!', 'info');
+  }, [room, myPlayer, addLog]);
+
+  const handleCloseChestModal = useCallback(() => {
+    setIsChestLockModalOpen(false);
+    isChestLockModalOpenRef.current = false;
+    realtimeRef.current.broadcastChestInteracting(false);
+  }, []);
+
+  const handleChestStepSuccess = useCallback(
+    (nextPhase: number, nextStep: number) => {
+      setChestPhase(nextPhase);
+      setChestStep(nextStep);
+      chestPhaseRef.current = nextPhase;
+      chestStepRef.current = nextStep;
+      realtimeRef.current.broadcastChestProgress(nextPhase, nextStep, myPlayerRef.current?.nickname);
+      addLog(`¡Cerrojo del cofre superado! (Fase ${nextPhase}, Cerrojo ${nextStep + 1}/2)`, 'loot');
+    },
+    [addLog]
+  );
+
+  const handleChestVictory = useCallback(() => {
+    setIsChestLockModalOpen(false);
+    isChestLockModalOpenRef.current = false;
+    realtimeRef.current.broadcastChestInteracting(false);
+    handleGameEnd('victory');
+  }, []);
 
   // ==========================================
   // BUCLE DE CAPTURA DEL COFRE (CONDICIÓN DE VICTORIA)
@@ -1965,16 +2197,38 @@ export const App: React.FC = () => {
               </div>
             )}
 
+            {/* AVISO TÁCTICO: HUIDA ACTIVA (5s) */}
+            {fleeImmunityUntil > Date.now() && (
+              <div className="pointer-events-auto w-full bg-amber-950/90 border-2 border-amber-400 text-amber-200 px-3 py-2 rounded-xl shadow-2xl backdrop-blur-md flex items-center justify-between gap-2.5 animate-pulse">
+                <div className="flex items-center gap-2">
+                  <Footprints className="w-5 h-5 text-amber-400 shrink-0" />
+                  <span className="text-xs font-mono font-black uppercase tracking-wider">
+                    ¡HUIDA ACTIVA! Aléjate del monstruo (+30% Sprint)
+                  </span>
+                </div>
+                <span className="font-mono font-black text-sm text-amber-300">
+                  {Math.max(1, Math.ceil((fleeImmunityUntil - Date.now()) / 1000))}s
+                </span>
+              </div>
+            )}
+
             <ChestCountdown
-              secondsRemaining={chestCountdown}
-              holdersCount={chestHoldersCount}
-              requiredHolders={Math.min(2, players.filter((p) => p.isAlive).length)}
+              currentPhase={chestPhase}
+              currentStep={chestStep}
               isInChestZone={
                 getDistanceMeters(
                   { lat: myPlayer.lat ?? room.centerLat, lng: myPlayer.lng ?? room.centerLng },
                   { lat: room.treasureLat, lng: room.treasureLng }
                 ) <= 20
               }
+              isMonsterInChestZone={
+                getDistanceMeters(
+                  { lat: room.treasureLat, lng: room.treasureLng },
+                  monster
+                ) <= 20
+              }
+              isChestInteracted={isChestInteractedGlobally || isChestLockModalOpen}
+              onOpenChestModal={handleOpenChestModal}
             />
 
             <RespawnTimer secondsRemaining={monster.respawnTimeRemaining} />
@@ -2055,6 +2309,32 @@ export const App: React.FC = () => {
 
       {showLeaderboard && (
         <LeaderboardModal onClose={() => setShowLeaderboard(false)} />
+      )}
+
+      {/* 4. MODALES DE COMBATE EN TIEMPO REAL Y COFRE TÁCTICO */}
+      {room && myPlayer && isCombatArenaOpen && (
+        <CombatArena
+          isOpen={isCombatArenaOpen}
+          myPlayer={myPlayer}
+          monster={monster}
+          isRoleSkillActive={isRoleSkillActive}
+          onAttack={handleArenaAttack}
+          onPlayerDamaged={handleArenaPlayerDamaged}
+          onFlee={handleArenaFlee}
+          onClose={() => setIsCombatArenaOpen(false)}
+        />
+      )}
+
+      {room && myPlayer && isChestLockModalOpen && (
+        <ChestLockModal
+          isOpen={isChestLockModalOpen}
+          currentPhase={chestPhase}
+          currentStep={chestStep}
+          distToMonster={distToMonster}
+          onStepSuccess={handleChestStepSuccess}
+          onVictory={handleChestVictory}
+          onClose={handleCloseChestModal}
+        />
       )}
 
       {/* OVERLAY DE CANCELACIÓN DE PARTIDA */}

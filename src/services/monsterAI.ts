@@ -122,26 +122,29 @@ export class MonsterAIController {
 
     const aggroRadius = isEnraged ? 120 : 85;
 
-    // A. Si el cofre está siendo capturado, el monstruo corre desesperado hacia el cofre
+    // A. Si el cofre está siendo pirateado o manipulado, el monstruo entra en SPRINT DE FURIA DEFENSIVA
     if (isChestUnderContest) {
-      // Priorizar a jugadores dentro del radio del tesoro
+      const defendSpeed = isEnraged ? 4.2 : 3.8; // Sprint drástico de furia defensiva (3.5 - 4.0 m/s)
+      const distToChest = getDistanceMeters(monster, this.treasureLocation);
+
+      // Priorizar a jugadores dentro del radio del tesoro (20-30m)
       const defenders = livingPlayers.filter((p) => {
-        return getDistanceMeters(this.treasureLocation, { lat: p.lat!, lng: p.lng! }) <= 35;
+        return getDistanceMeters(this.treasureLocation, { lat: p.lat!, lng: p.lng! }) <= 25;
       });
 
-      if (defenders.length > 0) {
-        // Atacar al defensor más cercano o al tanque defensor
+      if (defenders.length > 0 && distToChest <= 30) {
+        // Al llegar al cofre, atacar inmediatamente a los defensores
         const tankDefender = defenders.find((p) => p.role === 'tank');
         targetPlayer = tankDefender || defenders[0];
       } else {
-        // Moverse directo hacia el cofre
-        const { position } = stepTowards(monster, this.treasureLocation, speedMps * 1.2, 1000);
+        // Moverse directo a máxima velocidad hacia el cofre del tesoro
+        const { position } = stepTowards(monster, this.treasureLocation, defendSpeed, 1000);
         result.updatedMonster = {
           ...monster,
           lat: position.lat,
           lng: position.lng,
-          state: isEnraged ? 'enraged' : 'chase',
-          speedMps: speedMps * 1.2,
+          state: 'defend_chest',
+          speedMps: defendSpeed,
           isEnraged,
           targetPlayerId: null,
         };
@@ -221,7 +224,7 @@ export class MonsterAIController {
         isEnraged,
       };
     } else {
-      // ESTADO: PATRULLA CIRCULAR SUAVE ALREDEDOR DEL COFRE
+      // ESTADO: PATRULLA CIRCULAR LENTA ALREDEDOR DEL COFRE (PASEO: 1.1 M/S)
       const anchorPoint: Coordinates =
         this.treasureLocation && this.treasureLocation.lat && this.treasureLocation.lng
           ? this.treasureLocation
@@ -229,15 +232,15 @@ export class MonsterAIController {
 
       // Calculamos el rumbo actual del monstruo respecto al cofre
       const currentBearing = getBearing(anchorPoint, monster);
-      // Avanzamos suavemente en la circunferencia (+6 grados por tick de 1s para un movimiento continuo a ~3 m/s)
-      const nextAngle = (currentBearing + 6) % 360;
+      // Avanzamos suavemente en la circunferencia (+2 grados por tick de 1s para un paseo continuo a ~1.1 m/s)
+      const nextAngle = (currentBearing + 2) % 360;
       const patrolTarget = getDestinationPoint(
         anchorPoint,
         this.patrolRadiusMeters,
         nextAngle
       );
 
-      const patrolSpeed = 2.4;
+      const patrolSpeed = 1.1; // Paseo lento de patrulla: los jugadores (1.4 m/s) son notablemente más rápidos
       const { position } = stepTowards(monster, patrolTarget, patrolSpeed, 1000);
       result.updatedMonster = {
         ...monster,
