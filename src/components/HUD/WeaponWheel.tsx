@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Weapon } from '../../types/game';
-import { Crosshair, ShieldAlert, Zap, Flame, Target } from 'lucide-react';
+import { Crosshair, ShieldAlert, Zap, Flame, Target, Package } from 'lucide-react';
 
 interface WeaponWheelProps {
   weapon?: Weapon;
@@ -8,6 +8,8 @@ interface WeaponWheelProps {
   isInRange: boolean;
   isFiring: boolean;
   isCriticallyWounded?: boolean;
+  backpackItemCount?: number;
+  onOpenBackpack?: () => void;
   onAttack?: () => void;
 }
 
@@ -16,6 +18,8 @@ export const WeaponWheel: React.FC<WeaponWheelProps> = ({
   isInRange,
   isFiring,
   isCriticallyWounded = false,
+  backpackItemCount,
+  onOpenBackpack,
   onAttack,
 }) => {
   if (!weapon) return null;
@@ -56,7 +60,28 @@ export const WeaponWheel: React.FC<WeaponWheelProps> = ({
   };
 
   return (
-    <div className="fixed bottom-6 left-4 z-30 flex items-end gap-2 pb-[env(safe-area-inset-bottom,1rem)] max-w-[calc(100vw-7.5rem)] sm:max-w-xs pointer-events-auto">
+    <div className="fixed bottom-6 left-4 z-30 flex items-end gap-2 pb-[env(safe-area-inset-bottom,1rem)] max-w-[calc(100vw-7.5rem)] sm:max-w-sm pointer-events-auto">
+      {/* BOTÓN DE MOCHILA / INVENTARIO */}
+      {onOpenBackpack && (
+        <button
+          type="button"
+          onClick={onOpenBackpack}
+          className="w-12 h-12 sm:w-13 sm:h-13 rounded-xl bg-hud-dark/95 border-2 border-hud-border/80 hover:border-hud-cyan text-slate-300 hover:text-hud-cyan shadow-2xl backdrop-blur-md transition-all active:scale-95 flex flex-col items-center justify-center shrink-0 relative cursor-pointer group"
+          title="Abrir Mochila Táctica"
+          aria-label="Abrir Mochila"
+        >
+          <Package className="w-5 h-5 transition-transform group-hover:scale-110" />
+          <span className="text-[8px] font-mono font-bold uppercase tracking-tighter mt-0.5">
+            MOCHILA
+          </span>
+          {backpackItemCount !== undefined && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-hud-cyan text-black font-black font-mono text-[9px] rounded-full shadow flex items-center justify-center">
+              {backpackItemCount}
+            </span>
+          )}
+        </button>
+      )}
+
       <div
         onClick={onAttack}
         role="button"
@@ -88,6 +113,11 @@ export const WeaponWheel: React.FC<WeaponWheelProps> = ({
               <span className="text-xs sm:text-sm font-mono font-black text-white uppercase tracking-wider truncate">
                 {weapon.name}
               </span>
+              {weapon.tier && (
+                <span className="text-[9px] font-mono font-black px-1 rounded bg-black/60 border border-hud-border text-hud-cyan shrink-0">
+                  T{weapon.tier}
+                </span>
+              )}
               <span className="text-[10px] sm:text-xs font-mono text-hud-muted shrink-0">
                 ({weapon.rangeMeters}m)
               </span>

@@ -15,8 +15,11 @@ import type {
   MapStructure,
   StructureType,
   Weapon,
+  WeaponType,
+  InventoryItem,
+  DroppedItem,
 } from './types/game';
-import { PLAYER_SPEED_MPS } from './types/game';
+import { PLAYER_SPEED_MPS, MAX_INVENTORY_SLOTS } from './types/game';
 import {
   DEFAULT_WEAPONS_BY_ROLE,
   WEAPON_REGISTRY,
@@ -24,6 +27,11 @@ import {
   getModifiedWeaponStats,
   getReviveDistanceMeters,
   getReviveDurationSeconds,
+  createInventoryItem,
+  inventoryItemToWeapon,
+  getDefaultInventoryForRole,
+  getBestWeaponInInventory,
+  WEAPON_TIER_CONFIG,
 } from './services/combatEngine';
 import {
   getDistanceMeters,
@@ -49,6 +57,7 @@ import { CombatLog } from './components/HUD/CombatLog';
 import { GhostOverlay } from './components/HUD/GhostOverlay';
 import { CriticallyWoundedOverlay } from './components/HUD/CriticallyWoundedOverlay';
 import { IndoorStatusBanner } from './components/HUD/IndoorStatusBanner';
+import { BackpackModal } from './components/HUD/BackpackModal';
 
 import { CreateRoomModal } from './components/Lobby/CreateRoomModal';
 import { JoinRoomModal } from './components/Lobby/JoinRoomModal';
@@ -83,6 +92,10 @@ export const App: React.FC = () => {
   });
 
   const [crates, setCrates] = useState<SupplyCrate[]>([]);
+  const [droppedItems, setDroppedItems] = useState<DroppedItem[]>([]);
+  const droppedItemsRef = useRef<DroppedItem[]>([]);
+  droppedItemsRef.current = droppedItems;
+  const [isBackpackOpen, setIsBackpackOpen] = useState<boolean>(false);
   const [ghostPings, setGhostPings] = useState<GhostPing[]>([]);
   const [combatLogs, setCombatLogs] = useState<TacticalLogMessage[]>([]);
 
@@ -472,6 +485,18 @@ export const App: React.FC = () => {
           addLog('¡Alerta de escuadra! Un compañero está manipulando el cofre. ¡El monstruo defenderá el tesoro!', 'warning');
         }
       },
+      onItemDropped: (dropped) => {
+        setDroppedItems((prev) => [...prev.filter((d) => d.id !== dropped.id), dropped]);
+        soundEffects.playCrateLoot();
+        addLog(`Objeto en el terreno: ${dropped.item.name} (T${dropped.item.tier}) soltado por ${dropped.droppedBy || 'un aliado'}.`, 'loot');
+      },
+      onItemPicked: ({ droppedItemId, playerId }) => {
+        setDroppedItems((prev) => prev.filter((d) => d.id !== droppedItemId));
+        const picker = playersRef.current.find((p) => p.id === playerId);
+        if (picker && picker.id !== myPlayerRef.current?.id) {
+          addLog(`${picker.nickname} recogió un objeto del terreno.`, 'info');
+        }
+      },
       onRequestStateSync: () => {
         // Si somos el Host, transmitimos el estado actual del juego al jugador recién incorporado
         if (myPlayerRef.current?.isHost) {
@@ -482,6 +507,7 @@ export const App: React.FC = () => {
             holdersCount: chestHoldersCountRef.current,
             chestPhase: chestPhaseRef.current,
             chestStep: chestStepRef.current,
+            droppedItems: droppedItemsRef.current,
           });
         }
       },
@@ -493,6 +519,9 @@ export const App: React.FC = () => {
           }
           if (payload.crates && payload.crates.length > 0) {
             setCrates(payload.crates);
+          }
+          if (payload.droppedItems) {
+            setDroppedItems(payload.droppedItems);
           }
           if (typeof payload.chestCountdown === 'number') {
             setChestCountdown(payload.chestCountdown);
@@ -795,19 +824,86 @@ export const App: React.FC = () => {
 
       setMyPlayer((prev) => {
         if (!prev) return null;
-        const updatedWeapon =
-          weapon.ammo > 0 ? { ...weapon, ammo: weapon.ammo - 1 } : weapon;
+
+        const isInfinite = weapon.isInfinite || weapon.ammo === -1;
+        const currentAmmo = weapon.ammo;
+        const newAmmo = isInfinite ? -1 : Math.max(0, currentAmmo - 1);
+
+        const currentInventory =
+          prev.inventory && prev.inventory.length > 0
+            ? prev.inventory
+            : getDefaultInventoryForRole(prev.role);
+
+        // Desgaste dinámico: si el arma no es infinita y agotó su munición/durabilidad
+        if (!isInfinite && newAmmo <= 0) {
+          const updatedInventory = currentInventory.filter((it) => it.id !== weapon.id);
+          const nextWeaponItem = getBestWeaponInInventory(updatedInventory);
+          const nextWeapon = inventoryItemToWeapon(nextWeaponItem);
+
+          soundEffects.playAlarm();
+          addLogRef.current(
+            `¡${weapon.name} se ha roto/agotado! Equipando automáticamente ${nextWeaponItem.name} (Tier ${nextWeaponItem.tier}).`,
+            'warning'
+          );
+
+          return {
+            ...prev,
+            lastAttackTime: now,
+            damageDealt: prev.damageDealt + damage,
+            inventory: updatedInventory,
+            equippedWeapon: nextWeapon,
+            equippedItemId: nextWeaponItem.id,
+          };
+        }
+
+        // Actualizar munición restante en el inventario
+        const updatedInventory = currentInventory.map((it) =>
+          it.id === weapon.id
+            ? {
+                ...it,
+                ammo: newAmmo,
+                durability:
+                  it.durability !== -1 && it.durability !== undefined
+                    ? newAmmo
+                    : it.durability,
+              }
+            : it
+        );
+
+        const updatedWeapon: Weapon = {
+          ...weapon,
+          ammo: newAmmo,
+          durability:
+            weapon.durability !== -1 && weapon.durability !== undefined
+              ? newAmmo
+              : weapon.durability,
+        };
 
         return {
           ...prev,
           lastAttackTime: now,
           damageDealt: prev.damageDealt + damage,
+          inventory: updatedInventory,
           equippedWeapon: updatedWeapon,
+          equippedItemId: weapon.id,
         };
       });
     },
     onOutOfAmmo: (fallbackWeapon) => {
-      setMyPlayer((prev) => (prev ? { ...prev, equippedWeapon: fallbackWeapon } : null));
+      setMyPlayer((prev) => {
+        if (!prev) return null;
+        const inv =
+          prev.inventory && prev.inventory.length > 0
+            ? prev.inventory
+            : getDefaultInventoryForRole(prev.role);
+        const nextWeaponItem = getBestWeaponInInventory(inv);
+        const nextWeapon = inventoryItemToWeapon(nextWeaponItem);
+        return {
+          ...prev,
+          equippedWeapon: nextWeapon,
+          equippedItemId: nextWeaponItem.id,
+        };
+      });
     },
     onLog: (text, type) => {
       addLog(text, type);
@@ -886,14 +982,66 @@ export const App: React.FC = () => {
 
       setMyPlayer((prev) => {
         if (!prev) return null;
-        const updatedWeapon =
-          weapon.ammo > 0 ? { ...weapon, ammo: weapon.ammo - 1 } : weapon;
+
+        const isInfinite = weapon.isInfinite || weapon.ammo === -1;
+        const currentAmmo = weapon.ammo;
+        const newAmmo = isInfinite ? -1 : Math.max(0, currentAmmo - 1);
+
+        const currentInventory =
+          prev.inventory && prev.inventory.length > 0
+            ? prev.inventory
+            : getDefaultInventoryForRole(prev.role);
+
+        if (!isInfinite && newAmmo <= 0) {
+          const updatedInventory = currentInventory.filter((it) => it.id !== weapon.id);
+          const nextWeaponItem = getBestWeaponInInventory(updatedInventory);
+          const nextWeapon = inventoryItemToWeapon(nextWeaponItem);
+
+          soundEffects.playAlarm();
+          addLogRef.current(
+            `¡${weapon.name} agotada en la arena! Equipando ${nextWeaponItem.name} (Tier ${nextWeaponItem.tier}).`,
+            'warning'
+          );
+
+          return {
+            ...prev,
+            lastAttackTime: now,
+            damageDealt: prev.damageDealt + damage,
+            inventory: updatedInventory,
+            equippedWeapon: nextWeapon,
+            equippedItemId: nextWeaponItem.id,
+          };
+        }
+
+        const updatedInventory = currentInventory.map((it) =>
+          it.id === weapon.id
+            ? {
+                ...it,
+                ammo: newAmmo,
+                durability:
+                  it.durability !== -1 && it.durability !== undefined
+                    ? newAmmo
+                    : it.durability,
+              }
+            : it
+        );
+
+        const updatedWeapon: Weapon = {
+          ...weapon,
+          ammo: newAmmo,
+          durability:
+            weapon.durability !== -1 && weapon.durability !== undefined
+              ? newAmmo
+              : weapon.durability,
+        };
 
         return {
           ...prev,
           lastAttackTime: now,
           damageDealt: prev.damageDealt + damage,
+          inventory: updatedInventory,
           equippedWeapon: updatedWeapon,
+          equippedItemId: weapon.id,
         };
       });
     },
@@ -1144,13 +1292,109 @@ export const App: React.FC = () => {
           prev.map((c) => (c.id === crate.id ? { ...c, opened: true } : c))
         );
 
-        // Equipar arma y curar
+        // 1. RECOLECCIÓN INSTANTÁNEA DE SALUD Y GESTIÓN DE MOCHILA
         setMyPlayer((prev) => {
           if (!prev) return null;
+
+          // Curación instantánea directa sin ocupar slots en la mochila
+          const healedHp = Math.min(prev.maxHp, prev.hp + crate.healReward);
+          if (crate.healReward > 0) {
+            addLogRef.current(`¡Botiquín recogido! +${crate.healReward} HP restaurados al instante.`, 'loot');
+          }
+
+          // Convertir recompensa de arma a InventoryItem
+          const rawType = (crate.weaponReward.weaponType || crate.weaponReward.id) as string;
+          const mappedType: WeaponType =
+            rawType === 'assault_rifle'
+              ? 'rifle'
+              : rawType === 'combat_shotgun'
+              ? 'shotgun'
+              : rawType === 'baseball_bat'
+              ? 'axe'
+              : rawType === 'tactical_knife'
+              ? 'knife'
+              : (rawType as WeaponType);
+
+          const hasConfig = mappedType in WEAPON_TIER_CONFIG;
+          const newInventoryItem: InventoryItem = hasConfig
+            ? createInventoryItem(mappedType, crate.weaponReward.ammo > 0 ? crate.weaponReward.ammo : undefined)
+            : {
+                id: crypto.randomUUID(),
+                type: crate.weaponReward.id,
+                name: crate.weaponReward.name,
+                category: 'weapon',
+                tier: crate.weaponReward.tier || 3,
+                damage: crate.weaponReward.damage,
+                cadenceMs: crate.weaponReward.fireRateMs,
+                ammo: crate.weaponReward.ammo,
+                maxAmmo: crate.weaponReward.maxAmmo,
+                durability: -1,
+                isInfinite: crate.weaponReward.ammo === -1,
+                rangeMeters: crate.weaponReward.rangeMeters,
+                iconName: crate.weaponReward.iconName,
+              };
+
+          const currentInv = prev.inventory && prev.inventory.length > 0
+            ? prev.inventory
+            : getDefaultInventoryForRole(prev.role);
+
+          let updatedInv = [...currentInv];
+          let updatedEquippedWeapon = prev.equippedWeapon;
+          let updatedEquippedItemId = prev.equippedItemId;
+
+          if (currentInv.length < MAX_INVENTORY_SLOTS) {
+            // Espacio disponible en la mochila
+            updatedInv.push(newInventoryItem);
+            const currentTier = prev.equippedWeapon?.tier ?? 1;
+            if (newInventoryItem.tier > currentTier) {
+              updatedEquippedWeapon = inventoryItemToWeapon(newInventoryItem);
+              updatedEquippedItemId = newInventoryItem.id;
+              addLogRef.current(
+                `¡Has obtenido ${newInventoryItem.name} (Tier ${newInventoryItem.tier})! Auto-equipada.`,
+                'loot'
+              );
+            } else {
+              addLogRef.current(
+                `¡${newInventoryItem.name} (Tier ${newInventoryItem.tier}) guardada en la mochila!`,
+                'loot'
+              );
+            }
+          } else {
+            // Mochila llena: intercambio automático con el arma en mano
+            const itemToSwap =
+              currentInv.find((it) => it.id === prev.equippedItemId && !it.isInfinite) ||
+              currentInv.find((it) => !it.isInfinite) ||
+              null;
+
+            if (itemToSwap) {
+              const droppedSwap: DroppedItem = {
+                id: crypto.randomUUID(),
+                item: itemToSwap,
+                lat: myCoord.lat,
+                lng: myCoord.lng,
+                droppedAt: Date.now(),
+                droppedBy: prev.nickname,
+              };
+              setDroppedItems((prevDrop) => [...prevDrop, droppedSwap]);
+              realtimeRef.current.broadcastItemDropped(droppedSwap);
+
+              updatedInv = [...currentInv.filter((it) => it.id !== itemToSwap.id), newInventoryItem];
+              updatedEquippedWeapon = inventoryItemToWeapon(newInventoryItem);
+              updatedEquippedItemId = newInventoryItem.id;
+
+              addLogRef.current(
+                `Mochila llena. Has intercambiado ${itemToSwap.name} por ${newInventoryItem.name} (Tier ${newInventoryItem.tier}).`,
+                'loot'
+              );
+            }
+          }
+
           return {
             ...prev,
-            equippedWeapon: crate.weaponReward,
-            hp: Math.min(prev.maxHp, prev.hp + crate.healReward),
+            hp: healedHp,
+            inventory: updatedInv,
+            equippedWeapon: updatedEquippedWeapon,
+            equippedItemId: updatedEquippedItemId,
             cratesOpened: prev.cratesOpened + 1,
           };
         });
@@ -1386,6 +1630,7 @@ export const App: React.FC = () => {
     setMyPlayer(null);
     setPlayers([]);
     setCrates([]);
+    setDroppedItems([]);
   };
 
   const handleLeaveGame = async () => {
@@ -1406,7 +1651,165 @@ export const App: React.FC = () => {
     setMyPlayer(null);
     setPlayers([]);
     setCrates([]);
+    setDroppedItems([]);
   };
+
+  // ==========================================
+  // GESTIÓN DE MOCHILA / INVENTARIO Y OBJETOS DEL TERRENO
+  // ==========================================
+  const nearbyDroppedItems = useMemo(() => {
+    if (!myPlayer?.lat || !myPlayer?.lng) return [];
+    const myPos = { lat: myPlayer.lat, lng: myPlayer.lng };
+    return droppedItems.filter((d) => {
+      const dist = getDistanceMeters(myPos, { lat: d.lat, lng: d.lng });
+      return dist <= 20;
+    });
+  }, [droppedItems, myPlayer?.lat, myPlayer?.lng]);
+
+  const handleEquipItem = useCallback((item: InventoryItem) => {
+    setMyPlayer((prev) => {
+      if (!prev) return null;
+      const weapon = inventoryItemToWeapon(item);
+      addLog(`Arma equipada: ${item.name} (Tier ${item.tier}).`, 'info');
+      soundEffects.vibrate(30);
+      return {
+        ...prev,
+        equippedWeapon: weapon,
+        equippedItemId: item.id,
+      };
+    });
+  }, [addLog]);
+
+  const handleDropItem = useCallback((itemToDrop: InventoryItem) => {
+    if (itemToDrop.isInfinite) {
+      addLog('El cuchillo básico de supervivencia no se puede descartar.', 'warning');
+      return;
+    }
+
+    if (!myPlayerRef.current) return;
+    const player = myPlayerRef.current;
+    const myPos = {
+      lat: player.lat ?? roomRef.current?.centerLat ?? 0,
+      lng: player.lng ?? roomRef.current?.centerLng ?? 0,
+    };
+
+    const dropped: DroppedItem = {
+      id: crypto.randomUUID(),
+      item: itemToDrop,
+      lat: myPos.lat,
+      lng: myPos.lng,
+      droppedAt: Date.now(),
+      droppedBy: player.nickname,
+    };
+
+    setDroppedItems((prev) => [...prev, dropped]);
+    realtimeRef.current.broadcastItemDropped(dropped);
+
+    setMyPlayer((prev) => {
+      if (!prev) return null;
+      const currentInv = prev.inventory || getDefaultInventoryForRole(prev.role);
+      const updatedInv = currentInv.filter((it) => it.id !== itemToDrop.id);
+
+      let nextWeapon = prev.equippedWeapon;
+      let nextItemId = prev.equippedItemId;
+
+      if (prev.equippedItemId === itemToDrop.id) {
+        const nextBest = getBestWeaponInInventory(updatedInv);
+        nextWeapon = inventoryItemToWeapon(nextBest);
+        nextItemId = nextBest.id;
+      }
+
+      addLog(`Has soltado ${itemToDrop.name} (Tier ${itemToDrop.tier}) en el terreno.`, 'info');
+      soundEffects.playCrateLoot();
+
+      return {
+        ...prev,
+        inventory: updatedInv,
+        equippedWeapon: nextWeapon,
+        equippedItemId: nextItemId,
+      };
+    });
+  }, [addLog]);
+
+  const handlePickDroppedItem = useCallback((dropped: DroppedItem) => {
+    if (!myPlayerRef.current) return;
+    const player = myPlayerRef.current;
+    const myPos = {
+      lat: player.lat ?? roomRef.current?.centerLat ?? 0,
+      lng: player.lng ?? roomRef.current?.centerLng ?? 0,
+    };
+
+    const dist = getDistanceMeters(myPos, { lat: dropped.lat, lng: dropped.lng });
+    if (dist > 20) {
+      addLog(`Demasiado lejos para recoger ${dropped.item.name} (${Math.round(dist)}m). Acércate a <20m.`, 'warning');
+      return;
+    }
+
+    setDroppedItems((prev) => prev.filter((d) => d.id !== dropped.id));
+    realtimeRef.current.broadcastItemPicked(dropped.id);
+
+    setMyPlayer((prev) => {
+      if (!prev) return null;
+      const currentInv = prev.inventory || getDefaultInventoryForRole(prev.role);
+
+      if (currentInv.length < MAX_INVENTORY_SLOTS) {
+        const updatedInv = [...currentInv, dropped.item];
+        const currentTier = prev.equippedWeapon?.tier ?? 1;
+        const shouldAutoEquip = dropped.item.tier > currentTier;
+
+        addLog(
+          `¡Has recogido ${dropped.item.name} (Tier ${dropped.item.tier})! ${
+            shouldAutoEquip ? 'Auto-equipada.' : 'Guardada en la mochila.'
+          }`,
+          'loot'
+        );
+        soundEffects.playCrateLoot();
+
+        return {
+          ...prev,
+          inventory: updatedInv,
+          equippedWeapon: shouldAutoEquip ? inventoryItemToWeapon(dropped.item) : prev.equippedWeapon,
+          equippedItemId: shouldAutoEquip ? dropped.item.id : prev.equippedItemId,
+        };
+      } else {
+        // Mochila llena: intercambiar con arma equipada actual (o la de menor tier no infinita)
+        const itemToSwap =
+          currentInv.find((it) => it.id === prev.equippedItemId && !it.isInfinite) ||
+          currentInv.find((it) => !it.isInfinite) ||
+          null;
+
+        if (itemToSwap) {
+          const droppedSwap: DroppedItem = {
+            id: crypto.randomUUID(),
+            item: itemToSwap,
+            lat: myPos.lat,
+            lng: myPos.lng,
+            droppedAt: Date.now(),
+            droppedBy: prev.nickname,
+          };
+          setDroppedItems((prevDrop) => [...prevDrop, droppedSwap]);
+          realtimeRef.current.broadcastItemDropped(droppedSwap);
+
+          const updatedInv = [...currentInv.filter((it) => it.id !== itemToSwap.id), dropped.item];
+          addLog(
+            `Mochila llena. Has intercambiado ${itemToSwap.name} por ${dropped.item.name} (Tier ${dropped.item.tier}).`,
+            'loot'
+          );
+          soundEffects.playCrateLoot();
+
+          return {
+            ...prev,
+            inventory: updatedInv,
+            equippedWeapon: inventoryItemToWeapon(dropped.item),
+            equippedItemId: dropped.item.id,
+          };
+        } else {
+          addLog('Mochila llena y solo portas armas básicas indestructibles.', 'warning');
+          return prev;
+        }
+      }
+    });
+  }, [addLog]);
 
   // ==========================================
   // ACCIONES DE LOBBY: CREAR Y UNIRSE
@@ -1540,6 +1943,9 @@ export const App: React.FC = () => {
       createdAt: gameData.created_at,
     };
 
+    const hostInventory = getDefaultInventoryForRole(config.role);
+    const hostBestWeapon = getBestWeaponInInventory(hostInventory);
+
     const hostPlayer: Player = {
       id: playerData.id,
       userId,
@@ -1556,7 +1962,9 @@ export const App: React.FC = () => {
       cratesOpened: 0,
       monsterKills: 0,
       isHost: true,
-      equippedWeapon: DEFAULT_WEAPONS_BY_ROLE[config.role],
+      inventory: hostInventory,
+      equippedWeapon: inventoryItemToWeapon(hostBestWeapon),
+      equippedItemId: hostBestWeapon.id,
     };
 
     // Inicializar ubicación del monstruo en el cofre del tesoro
@@ -1579,11 +1987,13 @@ export const App: React.FC = () => {
       heal: number;
       ammo: number;
     }[] = [
-      { type: 'rifle', weapon: WEAPON_REGISTRY.assault_rifle, heal: 25, ammo: 60 },
-      { type: 'shotgun', weapon: WEAPON_REGISTRY.combat_shotgun, heal: 25, ammo: 24 },
-      { type: 'medkit', weapon: WEAPON_REGISTRY.pistol_9mm, heal: 80, ammo: 20 },
-      { type: 'ammo', weapon: WEAPON_REGISTRY.pistol_9mm, heal: 20, ammo: 90 },
-      { type: 'melee', weapon: WEAPON_REGISTRY.baseball_bat, heal: 35, ammo: 15 },
+      { type: 'rocket_launcher', weapon: WEAPON_REGISTRY.rocket_launcher, heal: 25, ammo: 3 },
+      { type: 'rifle', weapon: WEAPON_REGISTRY.rifle, heal: 30, ammo: 60 },
+      { type: 'shotgun', weapon: WEAPON_REGISTRY.shotgun, heal: 30, ammo: 20 },
+      { type: 'grenade', weapon: WEAPON_REGISTRY.grenade, heal: 25, ammo: 5 },
+      { type: 'medkit', weapon: WEAPON_REGISTRY.knife, heal: 100, ammo: 0 },
+      { type: 'ammo', weapon: WEAPON_REGISTRY.pistol, heal: 20, ammo: 90 },
+      { type: 'melee', weapon: WEAPON_REGISTRY.axe, heal: 40, ammo: 15 },
     ];
 
     for (let i = 0; i < 5; i++) {
@@ -1747,6 +2157,8 @@ export const App: React.FC = () => {
 
     const finalRole = (playerData.role as PlayerRole) || config.role || 'medic';
     const finalMaxHp = playerData.max_hp ?? getMaxHpForRole(finalRole);
+    const joinInventory = getDefaultInventoryForRole(finalRole);
+    const joinBestWeapon = getBestWeaponInInventory(joinInventory);
 
     const player: Player = {
       id: playerData.id,
@@ -1764,7 +2176,9 @@ export const App: React.FC = () => {
       cratesOpened: playerData.crates_opened ?? 0,
       monsterKills: playerData.monster_kills ?? 0,
       isHost: gameData.host_id === userId,
-      equippedWeapon: DEFAULT_WEAPONS_BY_ROLE[finalRole],
+      inventory: joinInventory,
+      equippedWeapon: inventoryItemToWeapon(joinBestWeapon),
+      equippedItemId: joinBestWeapon.id,
     };
 
     // Guardar sala activa en localStorage para reconexiones futuras
@@ -1791,24 +2205,31 @@ export const App: React.FC = () => {
 
     if (teammatesData && teammatesData.length > 0) {
       setPlayers(
-        teammatesData.map((d: any) => ({
-          id: d.id,
-          userId: d.user_id,
-          gameId: d.game_id,
-          nickname: d.nickname,
-          role: d.role as PlayerRole,
-          hp: d.hp,
-          maxHp: d.max_hp,
-          isAlive: d.is_alive,
-          lat: d.id === player.id ? spawnCoords.lat : (d.lat ?? gameData.center_lat),
-          lng: d.id === player.id ? spawnCoords.lng : (d.lng ?? gameData.center_lng),
-          damageDealt: d.damage_dealt,
-          revivesDone: d.revives_done,
-          cratesOpened: d.crates_opened,
-          monsterKills: d.monster_kills,
-          isHost: d.user_id === gameData.host_id,
-          equippedWeapon: DEFAULT_WEAPONS_BY_ROLE[d.role as PlayerRole],
-        }))
+        teammatesData.map((d: any) => {
+          const teammateRole = (d.role as PlayerRole) || 'medic';
+          const teammateInv = getDefaultInventoryForRole(teammateRole);
+          const teammateBest = getBestWeaponInInventory(teammateInv);
+          return {
+            id: d.id,
+            userId: d.user_id,
+            gameId: d.game_id,
+            nickname: d.nickname,
+            role: teammateRole,
+            hp: d.hp,
+            maxHp: d.max_hp,
+            isAlive: d.is_alive,
+            lat: d.id === player.id ? spawnCoords.lat : (d.lat ?? gameData.center_lat),
+            lng: d.id === player.id ? spawnCoords.lng : (d.lng ?? gameData.center_lng),
+            damageDealt: d.damage_dealt,
+            revivesDone: d.revives_done,
+            cratesOpened: d.crates_opened,
+            monsterKills: d.monster_kills,
+            isHost: d.user_id === gameData.host_id,
+            inventory: teammateInv,
+            equippedWeapon: inventoryItemToWeapon(teammateBest),
+            equippedItemId: teammateBest.id,
+          };
+        })
       );
     } else {
       setPlayers([player]);
@@ -1823,11 +2244,13 @@ export const App: React.FC = () => {
         heal: number;
         ammo: number;
       }[] = [
-        { type: 'rifle', weapon: WEAPON_REGISTRY.assault_rifle, heal: 25, ammo: 60 },
-        { type: 'shotgun', weapon: WEAPON_REGISTRY.combat_shotgun, heal: 25, ammo: 24 },
-        { type: 'medkit', weapon: WEAPON_REGISTRY.pistol_9mm, heal: 80, ammo: 20 },
-        { type: 'ammo', weapon: WEAPON_REGISTRY.pistol_9mm, heal: 20, ammo: 90 },
-        { type: 'melee', weapon: WEAPON_REGISTRY.baseball_bat, heal: 35, ammo: 15 },
+        { type: 'rocket_launcher', weapon: WEAPON_REGISTRY.rocket_launcher, heal: 25, ammo: 3 },
+        { type: 'rifle', weapon: WEAPON_REGISTRY.rifle, heal: 30, ammo: 60 },
+        { type: 'shotgun', weapon: WEAPON_REGISTRY.shotgun, heal: 30, ammo: 20 },
+        { type: 'grenade', weapon: WEAPON_REGISTRY.grenade, heal: 25, ammo: 5 },
+        { type: 'medkit', weapon: WEAPON_REGISTRY.knife, heal: 100, ammo: 0 },
+        { type: 'ammo', weapon: WEAPON_REGISTRY.pistol, heal: 20, ammo: 90 },
+        { type: 'melee', weapon: WEAPON_REGISTRY.axe, heal: 40, ammo: 15 },
       ];
       for (let i = 0; i < 5; i++) {
         const dropPoint = getRandomPointInCircle(
@@ -1969,7 +2392,9 @@ export const App: React.FC = () => {
           playerSpeed={room.playerSpeed}
           isRadarActive={isRadarActive}
           structures={structures}
+          droppedItems={droppedItems}
           onMapClick={handleMapClick}
+          onPickDroppedItem={handlePickDroppedItem}
         />
       ) : (
         /* PANTALLA DE INICIO / LOBBY PRINCIPAL */
@@ -2149,6 +2574,8 @@ export const App: React.FC = () => {
             }
             isFiring={isFiringWeapon}
             isCriticallyWounded={myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded'}
+            backpackItemCount={myPlayer.inventory?.length ?? 2}
+            onOpenBackpack={() => setIsBackpackOpen(true)}
             onAttack={manualAttack}
           />
 
@@ -2159,6 +2586,18 @@ export const App: React.FC = () => {
             onActivate={handleActivateRoleSkill}
             isAlive={myPlayer.isAlive}
             isCriticallyWounded={myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded'}
+          />
+
+          {/* MODAL DE MOCHILA E INVENTARIO */}
+          <BackpackModal
+            isOpen={isBackpackOpen}
+            onClose={() => setIsBackpackOpen(false)}
+            inventory={myPlayer.inventory || getDefaultInventoryForRole(myPlayer.role)}
+            equippedItemId={myPlayer.equippedItemId || myPlayer.equippedWeapon?.id}
+            onEquipItem={handleEquipItem}
+            onDropItem={handleDropItem}
+            nearbyDroppedItems={nearbyDroppedItems}
+            onPickDroppedItem={handlePickDroppedItem}
           />
 
           {/* BANNER DE ESTADO EN INTERIOR DE ESTRUCTURA (HOSPITAL O REFUGIO) */}

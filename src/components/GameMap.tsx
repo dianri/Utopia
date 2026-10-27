@@ -11,6 +11,7 @@ import type {
   PlayerRole,
   PlayerSpeed,
   MapStructure,
+  DroppedItem,
 } from '../types/game';
 import { PLAYER_SPEED_MPS } from '../types/game';
 import { createGeoJsonCircle, getDistanceMeters } from '../services/geoUtils';
@@ -30,8 +31,10 @@ interface GameMapProps {
   playerSpeed?: PlayerSpeed;
   isRadarActive: boolean;
   structures?: MapStructure[];
+  droppedItems?: DroppedItem[];
   onMapClick: (coords: Coordinates) => void;
   onReviveAttempt?: (targetPlayer: Player) => void;
+  onPickDroppedItem?: (dropped: DroppedItem) => void;
 }
 
 const GameMapComponent: React.FC<GameMapProps> = ({
@@ -47,7 +50,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   playerSpeed = 'normal',
   isRadarActive,
   structures = [],
+  droppedItems = [],
   onMapClick,
+  onPickDroppedItem,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -60,6 +65,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const crateMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const pingMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const structureMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+  const droppedItemMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+
+  const onPickDroppedItemRef = useRef(onPickDroppedItem);
+  onPickDroppedItemRef.current = onPickDroppedItem;
 
   // Refs para desacoplar arrastre de cámara (drag) de clic de movimiento (tap-to-move)
   const isDraggingRef = useRef<boolean>(false);
@@ -302,6 +311,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       pingMarkersRef.current.clear();
       structureMarkersRef.current.forEach((m) => m.remove());
       structureMarkersRef.current.clear();
+      droppedItemMarkersRef.current.forEach((m) => m.remove());
+      droppedItemMarkersRef.current.clear();
 
       map.remove();
       mapRef.current = null;
@@ -562,6 +573,73 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       }
     });
   }, [structures]);
+
+  // ==========================================
+  // 6.6. MARCADORES DE OBJETOS DESCARTADOS EN EL MAPA
+  // ==========================================
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const currentDroppedIds = new Set(droppedItems.map((d) => d.id));
+    droppedItemMarkersRef.current.forEach((marker, id) => {
+      if (!currentDroppedIds.has(id)) {
+        marker.remove();
+        droppedItemMarkersRef.current.delete(id);
+      }
+    });
+
+    const getTierStyle = (tier: number) => {
+      switch (tier) {
+        case 7:
+          return { border: 'border-red-500', bg: 'bg-red-950/90', text: 'text-red-300', aura: 'bg-red-500/30', icon: '🚀' };
+        case 6:
+          return { border: 'border-orange-500', bg: 'bg-orange-950/90', text: 'text-orange-300', aura: 'bg-orange-500/30', icon: '💣' };
+        case 5:
+          return { border: 'border-cyan-400', bg: 'bg-cyan-950/90', text: 'text-cyan-300', aura: 'bg-cyan-500/30', icon: '🎯' };
+        case 4:
+          return { border: 'border-purple-400', bg: 'bg-purple-950/90', text: 'text-purple-300', aura: 'bg-purple-500/30', icon: '💥' };
+        case 3:
+          return { border: 'border-blue-400', bg: 'bg-blue-950/90', text: 'text-blue-300', aura: 'bg-blue-500/30', icon: '⚡' };
+        case 2:
+          return { border: 'border-amber-400', bg: 'bg-amber-950/90', text: 'text-amber-300', aura: 'bg-amber-500/30', icon: '🪓' };
+        default:
+          return { border: 'border-emerald-400', bg: 'bg-emerald-950/90', text: 'text-emerald-300', aura: 'bg-emerald-500/30', icon: '🗡️' };
+      }
+    };
+
+    droppedItems.forEach((dropped) => {
+      if (!droppedItemMarkersRef.current.has(dropped.id)) {
+        const style = getTierStyle(dropped.item.tier);
+        const el = document.createElement('div');
+        el.className = `dropped-item-${dropped.id} flex flex-col items-center select-none cursor-pointer group`;
+        el.innerHTML = `
+          <div class="relative flex items-center justify-center">
+            <div class="absolute w-10 h-10 ${style.aura} rounded-full animate-ping"></div>
+            <div class="w-8 h-8 ${style.bg} border-2 ${style.border} rounded-lg shadow-lg flex items-center justify-center text-sm transition-transform group-hover:scale-110">
+              ${style.icon}
+            </div>
+          </div>
+          <span class="mt-0.5 px-1 py-0.5 text-[8px] font-mono font-bold bg-hud-dark/95 border ${style.border} ${style.text} rounded uppercase tracking-wider whitespace-nowrap shadow-md">
+            ${dropped.item.name} (T${dropped.item.tier})
+          </span>
+        `;
+
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onPickDroppedItemRef.current?.(dropped);
+        });
+
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+          .setLngLat([dropped.lng, dropped.lat])
+          .addTo(map);
+
+        droppedItemMarkersRef.current.set(dropped.id, marker);
+      } else {
+        droppedItemMarkersRef.current.get(dropped.id)?.setLngLat([dropped.lng, dropped.lat]);
+      }
+    });
+  }, [droppedItems]);
 
   // ==========================================
   // 7. MARCADOR DEL MONSTRUO (Anclaje nativo MapLibre GL y niebla de guerra)

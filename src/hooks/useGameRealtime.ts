@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import type { Monster, GhostPing, SupplyCrate, PlayerStatus, StructureType } from '../types/game';
+import type {
+  Monster,
+  GhostPing,
+  SupplyCrate,
+  PlayerStatus,
+  StructureType,
+  DroppedItem,
+} from '../types/game';
 import { soundEffects } from '../services/soundEffects';
 
 interface RealtimeCallbacks {
@@ -27,6 +34,8 @@ interface RealtimeCallbacks {
   onChestCountdown?: (payload: { secondsRemaining: number; holdersCount: number }) => void;
   onChestProgress?: (payload: { phase: number; step: number; updatedByNickname?: string }) => void;
   onChestInteracting?: (payload: { isInteracting: boolean; playerId: string }) => void;
+  onItemDropped?: (dropped: DroppedItem) => void;
+  onItemPicked?: (payload: { droppedItemId: string; playerId: string }) => void;
   onRequestStateSync?: () => void;
   onFullStateSync?: (payload: {
     monster: Monster;
@@ -35,6 +44,7 @@ interface RealtimeCallbacks {
     holdersCount: number;
     chestPhase?: number;
     chestStep?: number;
+    droppedItems?: DroppedItem[];
   }) => void;
   onGameCancelled?: (payload: { reason?: string }) => void;
   onPresenceSync?: (activeUserIds: string[]) => void;
@@ -157,6 +167,16 @@ export function useGameRealtime(
     // 9.2. INTERACCIÓN ACTIVA CON EL COFRE (ALERTA DE DEFENSA DEL MONSTRUO)
     channel.on('broadcast', { event: 'chest_interacting' }, ({ payload }) => {
       callbacksRef.current.onChestInteracting?.(payload);
+    });
+
+    // 9.3. DESCARTE DE OBJETOS EN EL MAPA
+    channel.on('broadcast', { event: 'item_dropped' }, ({ payload }) => {
+      callbacksRef.current.onItemDropped?.(payload.dropped);
+    });
+
+    // 9.4. RECOLECCIÓN DE OBJETOS DESCARTADOS
+    channel.on('broadcast', { event: 'item_picked' }, ({ payload }) => {
+      callbacksRef.current.onItemPicked?.(payload);
     });
 
     // 10. PETICIÓN DE SINCRONIZACIÓN DE ESTADO (LATE JOIN)
@@ -335,6 +355,24 @@ export function useGameRealtime(
     });
   }, [myPlayerId]);
 
+  const broadcastItemDropped = useCallback((dropped: DroppedItem) => {
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'item_dropped',
+      payload: { dropped },
+    });
+  }, []);
+
+  const broadcastItemPicked = useCallback((droppedItemId: string) => {
+    if (!channelRef.current || !isSubscribedRef.current || !myPlayerId) return;
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'item_picked',
+      payload: { droppedItemId, playerId: myPlayerId },
+    });
+  }, [myPlayerId]);
+
   const broadcastRequestStateSync = useCallback(() => {
     if (!channelRef.current || !isSubscribedRef.current) return;
     channelRef.current.send({
@@ -351,6 +389,7 @@ export function useGameRealtime(
     holdersCount: number;
     chestPhase?: number;
     chestStep?: number;
+    droppedItems?: DroppedItem[];
   }) => {
     if (!channelRef.current || !isSubscribedRef.current) return;
     channelRef.current.send({
@@ -383,6 +422,8 @@ export function useGameRealtime(
     broadcastChestCountdown,
     broadcastChestProgress,
     broadcastChestInteracting,
+    broadcastItemDropped,
+    broadcastItemPicked,
     broadcastRequestStateSync,
     broadcastFullStateSync,
     broadcastGameCancelled,
