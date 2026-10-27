@@ -92,9 +92,9 @@ export class MonsterAIController {
       result.justEnraged = true;
       soundEffects.playMonsterRoar();
 
-      // Ralentizar jugadores a menos de 30m durante 5s
+      // Ralentizar jugadores a menos de 30m durante 5s (solo si están al aire libre y activos)
       players.forEach((p) => {
-        if (p.isAlive && p.lat && p.lng) {
+        if (p.isAlive && p.lat && p.lng && !p.insideBuildingId && !p.isCriticallyWounded && p.status !== 'critically_wounded') {
           const dist = getDistanceMeters(monster, { lat: p.lat, lng: p.lng });
           if (dist <= 35) {
             result.slowedPlayerIds.push(p.id);
@@ -108,7 +108,16 @@ export class MonsterAIController {
     }
 
     // 3. SELECCIÓN DE OBJETIVO (PRIORIZANDO TANQUE O JUGADOR MÁS CERCANO)
-    const livingPlayers = players.filter((p) => p.isAlive && p.lat != null && p.lng != null);
+    // Los jugadores dentro de refugios/hospital o heridos de muerte son ignorados por el monstruo
+    const livingPlayers = players.filter(
+      (p) =>
+        p.isAlive &&
+        p.lat != null &&
+        p.lng != null &&
+        !p.insideBuildingId &&
+        !p.isCriticallyWounded &&
+        p.status !== 'critically_wounded'
+    );
     let targetPlayer: Player | null = null;
 
     const aggroRadius = isEnraged ? 120 : 85;

@@ -7,6 +7,7 @@ interface WeaponWheelProps {
   distToMonster: number;
   isInRange: boolean;
   isFiring: boolean;
+  isCriticallyWounded?: boolean;
   onAttack?: () => void;
 }
 
@@ -14,9 +15,30 @@ export const WeaponWheel: React.FC<WeaponWheelProps> = ({
   weapon,
   isInRange,
   isFiring,
+  isCriticallyWounded = false,
   onAttack,
 }) => {
   if (!weapon) return null;
+
+  if (isCriticallyWounded) {
+    return (
+      <div className="fixed bottom-6 left-4 z-30 flex items-end gap-2 pb-[env(safe-area-inset-bottom,1rem)] max-w-[calc(100vw-7.5rem)] sm:max-w-xs pointer-events-auto">
+        <div className="bg-red-950/95 border-2 border-red-500 backdrop-blur-md px-3.5 py-2.5 rounded-xl shadow-2xl shadow-red-900/50 flex items-center gap-3 w-full select-none animate-pulse">
+          <div className="w-10 h-10 rounded-lg border-2 border-red-400 bg-red-900/80 flex items-center justify-center shrink-0 text-red-200">
+            <ShieldAlert className="w-5 h-5 animate-bounce" />
+          </div>
+          <div className="flex flex-col min-w-0">
+            <span className="text-xs font-mono font-black text-red-300 uppercase tracking-wider truncate">
+              [BLOQUEADO: HERIDO]
+            </span>
+            <span className="text-[10px] font-mono text-red-200/80 truncate">
+              Arma inhabilitada. Ve al Hospital.
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const renderWeaponIcon = (iconName: string) => {
     switch (iconName) {

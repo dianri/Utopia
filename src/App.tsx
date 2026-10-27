@@ -12,6 +12,8 @@ import type {
   PlayerRole,
   PlayerSpeed,
   Coordinates,
+  MapStructure,
+  StructureType,
 } from './types/game';
 import { PLAYER_SPEED_MPS } from './types/game';
 import {
@@ -29,6 +31,7 @@ import {
   getBearing,
   getDestinationPoint,
 } from './services/geoUtils';
+import { generateMapStructures } from './services/mapStructures';
 import { soundEffects } from './services/soundEffects';
 import { MonsterAIController } from './services/monsterAI';
 import { useGameRealtime } from './hooks/useGameRealtime';
@@ -43,6 +46,8 @@ import { ChestCountdown } from './components/HUD/ChestCountdown';
 import { RespawnTimer } from './components/HUD/RespawnTimer';
 import { CombatLog } from './components/HUD/CombatLog';
 import { GhostOverlay } from './components/HUD/GhostOverlay';
+import { CriticallyWoundedOverlay } from './components/HUD/CriticallyWoundedOverlay';
+import { IndoorStatusBanner } from './components/HUD/IndoorStatusBanner';
 
 import { CreateRoomModal } from './components/Lobby/CreateRoomModal';
 import { JoinRoomModal } from './components/Lobby/JoinRoomModal';
@@ -132,6 +137,29 @@ export const App: React.FC = () => {
 
   const chestHoldersCountRef = useRef<number>(chestHoldersCount);
   chestHoldersCountRef.current = chestHoldersCount;
+
+  // ESTRUCTURAS TÁCTICAS EN EL MAPA (1 HOSPITAL Y 4 REFUGIOS)
+  const structures = useMemo<MapStructure[]>(() => {
+    if (!room) return [];
+    return generateMapStructures(
+      { lat: room.centerLat, lng: room.centerLng },
+      room.playAreaRadius,
+      { lat: room.treasureLat, lng: room.treasureLng }
+    );
+  }, [room?.centerLat, room?.centerLng, room?.playAreaRadius, room?.treasureLat, room?.treasureLng]);
+
+  const structuresRef = useRef<MapStructure[]>(structures);
+  structuresRef.current = structures;
+
+  const hospitalStructure = useMemo(
+    () => structures.find((s) => s.type === 'hospital') || null,
+    [structures]
+  );
+
+  const currentBuilding = useMemo(
+    () => structures.find((s) => s.id === myPlayer?.insideBuildingId) || null,
+    [structures, myPlayer?.insideBuildingId]
+  );
 
   // Logging táctico con descarte de duplicados y contador acumulativo
   const addLog = useCallback((text: string, type: TacticalLogMessage['type'] = 'info') => {
@@ -276,7 +304,18 @@ export const App: React.FC = () => {
       onMonsterUpdate: (updatedMonster) => {
         setMonster(updatedMonster);
       },
-      onPlayerMove: ({ playerId, userId, lat, lng, hp, isAlive }) => {
+      onPlayerMove: ({
+        playerId,
+        userId,
+        lat,
+        lng,
+        hp,
+        isAlive,
+        status,
+        isCriticallyWounded,
+        insideBuildingId,
+        insideBuildingType,
+      }) => {
         setPlayers((prev) =>
           prev.map((p) => {
             const matches =
@@ -289,27 +328,59 @@ export const App: React.FC = () => {
               lng,
               hp: hp !== undefined ? hp : p.hp,
               isAlive: isAlive !== undefined ? isAlive : p.isAlive,
+              status: status !== undefined ? status : p.status,
+              isCriticallyWounded:
+                isCriticallyWounded !== undefined ? isCriticallyWounded : p.isCriticallyWounded,
+              insideBuildingId:
+                insideBuildingId !== undefined ? insideBuildingId : p.insideBuildingId,
+              insideBuildingType:
+                insideBuildingType !== undefined ? insideBuildingType : p.insideBuildingType,
             };
           })
         );
       },
       onPlayerDamaged: ({ playerId, damage, currentHp }) => {
+        const isWounded = currentHp <= 0 || currentHp === 1;
         setPlayers((prev) =>
           prev.map((p) => {
             if (p.id === playerId) {
-              const alive = currentHp > 0;
-              return { ...p, hp: currentHp, isAlive: alive };
+              const newHp = currentHp <= 0 ? 1 : currentHp;
+              const criticallyWounded = currentHp <= 0 || p.isCriticallyWounded;
+              return {
+                ...p,
+                hp: newHp,
+                isAlive: true,
+                isCriticallyWounded: criticallyWounded,
+                status: criticallyWounded ? 'critically_wounded' : (p.status || 'active'),
+              };
             }
             return p;
           })
         );
         if (myPlayerRef.current?.id === playerId) {
+          const isWoundedLocal = currentHp <= 0;
+          const newHp = isWoundedLocal ? 1 : currentHp;
           setMyPlayer((prev) =>
-            prev ? { ...prev, hp: currentHp, isAlive: currentHp > 0 } : null
+            prev
+              ? {
+                  ...prev,
+                  hp: newHp,
+                  isAlive: true,
+                  isCriticallyWounded: isWoundedLocal || prev.isCriticallyWounded,
+                  status:
+                    isWoundedLocal || prev.isCriticallyWounded
+                      ? 'critically_wounded'
+                      : (prev.status || 'active'),
+                }
+              : null
           );
           soundEffects.triggerDamageHaptics();
           soundEffects.playAlarm();
-          addLog(`¡Has recibido ${damage} de daño!`, 'combat');
+          if (isWoundedLocal) {
+            addLog('¡ATAQUE CRÍTICO! Has quedado Herido de Muerte. ¡Corre al Hospital!', 'warning');
+          } else {
+            addLog(`¡Has recibido ${damage} de daño!`, 'combat');
+          }
         }
       },
       onMonsterDamaged: ({ damage, fromPlayerId, currentHp }) => {
@@ -426,10 +497,54 @@ export const App: React.FC = () => {
     (coords: Coordinates, isFinal?: boolean) => {
       if (!myPlayerRef.current) return;
 
-      setMyPlayer((prev) => (prev ? { ...prev, lat: coords.lat, lng: coords.lng } : null));
+      // Detección de entrada/salida a estructuras (Hospital o Refugios)
+      let insideId: string | null = null;
+      let insideType: StructureType | null = null;
+      for (const s of structuresRef.current) {
+        const d = getDistanceMeters(coords, { lat: s.lat, lng: s.lng });
+        if (d <= s.radius) {
+          insideId = s.id;
+          insideType = s.type;
+          break;
+        }
+      }
+
+      // Notificación táctica si cambia el estado de interior/cobertura
+      if (insideId !== myPlayerRef.current.insideBuildingId) {
+        if (insideId) {
+          const st = structuresRef.current.find((s) => s.id === insideId);
+          if (st?.type === 'hospital') {
+            addLog('Has entrado al Hospital de Campaña (+10 HP/s). A cubierto.', 'info');
+          } else {
+            addLog(`Has entrado a ${st?.name || 'un refugio'}. El monstruo pierde tu rastro.`, 'info');
+          }
+        } else if (myPlayerRef.current.insideBuildingId) {
+          addLog('Has salido a la intemperie. Vuelves a ser visible.', 'info');
+        }
+      }
+
+      setMyPlayer((prev) =>
+        prev
+          ? {
+              ...prev,
+              lat: coords.lat,
+              lng: coords.lng,
+              insideBuildingId: insideId,
+              insideBuildingType: insideType,
+            }
+          : null
+      );
       setPlayers((prev) =>
         prev.map((p) =>
-          p.id === myPlayerRef.current?.id ? { ...p, lat: coords.lat, lng: coords.lng } : p
+          p.id === myPlayerRef.current?.id
+            ? {
+                ...p,
+                lat: coords.lat,
+                lng: coords.lng,
+                insideBuildingId: insideId,
+                insideBuildingType: insideType,
+              }
+            : p
         )
       );
 
@@ -442,11 +557,15 @@ export const App: React.FC = () => {
           coords.lat,
           coords.lng,
           myPlayerRef.current.hp,
-          myPlayerRef.current.isAlive
+          myPlayerRef.current.isAlive,
+          myPlayerRef.current.status,
+          myPlayerRef.current.isCriticallyWounded,
+          insideId,
+          insideType
         );
       }
     },
-    [realtime]
+    [realtime, addLog]
   );
 
   const { setManualDestination, resetPosition } = useGeolocation({
@@ -569,11 +688,27 @@ export const App: React.FC = () => {
         if (victim) {
           const isShielded = isRoleSkillActiveRef.current && victim.id === myPlayerRef.current?.id && myPlayerRef.current?.role === 'tank';
           const damageApplied = isShielded ? Math.round(result.attackDamage * 0.5) : result.attackDamage;
-          const newHp = Math.max(0, victim.hp - damageApplied);
+          const calculatedHp = victim.hp - damageApplied;
+          const isWounded = calculatedHp <= 0;
+          const newHp = isWounded ? 1 : calculatedHp;
+          const newStatus = isWounded ? 'critically_wounded' : (victim.status || 'active');
           realtimeRef.current.broadcastPlayerHit(victim.id, damageApplied, newHp);
           // Si el host es la víctima
           if (victim.id === myPlayerRef.current?.id) {
-            setMyPlayer((prev) => (prev ? { ...prev, hp: newHp, isAlive: newHp > 0 } : null));
+            setMyPlayer((prev) => (prev ? {
+              ...prev,
+              hp: newHp,
+              isAlive: true,
+              isCriticallyWounded: isWounded,
+              status: newStatus,
+            } : null));
+            soundEffects.triggerDamageHaptics();
+            soundEffects.playAlarm();
+            if (isWounded) {
+              addLogRef.current('¡ATAQUE CRÍTICO! Has quedado Herido de Muerte. ¡Corre al Hospital!', 'warning');
+            } else {
+              addLogRef.current(`¡Has recibido ${damageApplied} de daño!`, 'combat');
+            }
           }
         }
       }
@@ -675,22 +810,93 @@ export const App: React.FC = () => {
   }, [room?.status, room?.treasureLat, room?.treasureLng, realtime]);
 
   // ==========================================
-  // DETECCIÓN DE DERROTA (TODOS LOS JUGADORES MUERTOS)
+  // DETECCIÓN DE DERROTA (TODOS LOS JUGADORES HERIDOS DE MUERTE O MUERTOS)
   // ==========================================
   useEffect(() => {
     if (room?.status !== 'playing' || players.length === 0) return;
 
-    const living = players.filter((p) => p.isAlive);
-    if (living.length === 0) {
+    const standingPlayers = players.filter(
+      (p) => p.isAlive && !p.isCriticallyWounded && p.status !== 'critically_wounded'
+    );
+    if (standingPlayers.length === 0) {
       handleGameEnd('defeat');
     }
   }, [players, room?.status]);
 
   // ==========================================
+  // CURACIÓN PROGRESIVA EN EL HOSPITAL (+10 HP/S Y RECUPERACIÓN DE HERIDO DE MUERTE)
+  // ==========================================
+  useEffect(() => {
+    if (room?.status !== 'playing' || !myPlayer) return;
+    if (myPlayer.insideBuildingType !== 'hospital') return;
+
+    const interval = setInterval(() => {
+      setMyPlayer((prev) => {
+        if (!prev || prev.insideBuildingType !== 'hospital') return prev;
+        const newHp = Math.min(prev.maxHp, prev.hp + 10);
+        const wasWounded = prev.isCriticallyWounded || prev.status === 'critically_wounded';
+        const cured = wasWounded && newHp >= 20;
+        const updatedStatus = cured ? 'active' : (prev.status || 'active');
+
+        if (cured) {
+          addLog('¡Atendido en el Hospital de Campaña! Has sido estabilizado y vuelves al combate.', 'info');
+        }
+
+        const updated = {
+          ...prev,
+          hp: newHp,
+          isCriticallyWounded: cured ? false : prev.isCriticallyWounded,
+          status: updatedStatus,
+        };
+
+        if (prev.lat && prev.lng) {
+          realtime.broadcastPlayerMove(
+            prev.lat,
+            prev.lng,
+            newHp,
+            true,
+            updatedStatus,
+            updated.isCriticallyWounded,
+            prev.insideBuildingId,
+            prev.insideBuildingType
+          );
+        }
+
+        return updated;
+      });
+
+      setPlayers((prev) =>
+        prev.map((p) => {
+          if (p.id === myPlayerRef.current?.id) {
+            const newHp = Math.min(p.maxHp, p.hp + 10);
+            const wasWounded = p.isCriticallyWounded || p.status === 'critically_wounded';
+            const cured = wasWounded && newHp >= 20;
+            return {
+              ...p,
+              hp: newHp,
+              isCriticallyWounded: cured ? false : p.isCriticallyWounded,
+              status: cured ? 'active' : p.status,
+            };
+          }
+          return p;
+        })
+      );
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [room?.status, myPlayer?.insideBuildingType, realtime, addLog]);
+
+  // ==========================================
   // SAQUEO DE AIRDROPS (CAJAS DE SUMINISTROS A 40 METROS)
   // ==========================================
   useEffect(() => {
-    if (room?.status !== 'playing' || !myPlayer?.isAlive) return;
+    if (
+      room?.status !== 'playing' ||
+      !myPlayer?.isAlive ||
+      myPlayer?.isCriticallyWounded ||
+      myPlayer?.status === 'critically_wounded'
+    )
+      return;
 
     const myCoord: Coordinates = {
       lat: myPlayer.lat ?? room.centerLat,
@@ -727,7 +933,14 @@ export const App: React.FC = () => {
   // HABILIDADES ACTIVAS DE ROL / ACCIONES ESPECIALES
   // ==========================================
   const handleActivateRoleSkill = useCallback(() => {
-    if (roleSkillCooldown > 0 || !myPlayer || !myPlayer.isAlive) return;
+    if (
+      roleSkillCooldown > 0 ||
+      !myPlayer ||
+      !myPlayer.isAlive ||
+      myPlayer.isCriticallyWounded ||
+      myPlayer.status === 'critically_wounded'
+    )
+      return;
 
     if (myPlayer.role === 'scout') {
       // EXPLORADOR: RADAR TÁCTICO (revela al monstruo 10s, cooldown 60s)
@@ -813,7 +1026,16 @@ export const App: React.FC = () => {
   // REANIMACIÓN DE COMPAÑEROS CAÍDOS
   // ==========================================
   useEffect(() => {
-    if (room?.status !== 'playing' || !myPlayer?.isAlive) return;
+    if (
+      room?.status !== 'playing' ||
+      !myPlayer?.isAlive ||
+      myPlayer?.isCriticallyWounded ||
+      myPlayer?.status === 'critically_wounded'
+    ) {
+      setRevivingPlayerId(null);
+      setReviveProgress(0);
+      return;
+    }
 
     const myCoord: Coordinates = {
       lat: myPlayer.lat ?? room.centerLat,
@@ -821,7 +1043,7 @@ export const App: React.FC = () => {
     };
 
     const fallenTeammate = players.find(
-      (p) => !p.isAlive && p.id !== myPlayer.id && p.lat && p.lng
+      (p) => (!p.isAlive || p.isCriticallyWounded) && p.id !== myPlayer.id && p.lat && p.lng
     );
 
     if (!fallenTeammate) {
@@ -1514,6 +1736,7 @@ export const App: React.FC = () => {
           movementMode={room.movementMode}
           playerSpeed={room.playerSpeed}
           isRadarActive={isRadarActive}
+          structures={structures}
           onMapClick={handleMapClick}
         />
       ) : (
@@ -1693,6 +1916,7 @@ export const App: React.FC = () => {
                 (isRoleSkillActive && myPlayer.role === 'marksman' ? 1.5 : 1))
             }
             isFiring={isFiringWeapon}
+            isCriticallyWounded={myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded'}
             onAttack={manualAttack}
           />
 
@@ -1702,7 +1926,24 @@ export const App: React.FC = () => {
             isActive={isRoleSkillActive || isRadarActive}
             onActivate={handleActivateRoleSkill}
             isAlive={myPlayer.isAlive}
+            isCriticallyWounded={myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded'}
           />
+
+          {/* BANNER DE ESTADO EN INTERIOR DE ESTRUCTURA (HOSPITAL O REFUGIO) */}
+          {currentBuilding && !(myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded') && (
+            <IndoorStatusBanner building={currentBuilding} />
+          )}
+
+          {/* OVERLAY DE ESTADO HERIDO DE MUERTE (VIGNETTE ROJA Y BRÚJULA AL HOSPITAL) */}
+          {(myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded') && (
+            <CriticallyWoundedOverlay
+              playerCoord={{
+                lat: myPlayer.lat ?? room.centerLat,
+                lng: myPlayer.lng ?? room.centerLng,
+              }}
+              hospital={hospitalStructure}
+            />
+          )}
 
           {/* CONTENEDOR FLEXBOX VERTICAL PARA ALERTAS CENTRALES (Evita solapamientos) */}
           <div className="fixed top-20 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-40 pointer-events-none w-full max-w-sm px-4">

@@ -6,6 +6,19 @@ export type MovementMode = 'gps' | 'manual';
 
 export type PlayerSpeed = 'slow' | 'normal' | 'fast' | 'very_fast';
 
+export type StructureType = 'hospital' | 'shelter';
+
+export interface MapStructure {
+  id: string;
+  type: StructureType;
+  name: string;
+  lat: number;
+  lng: number;
+  radius: number; // Radio de interacción en metros
+}
+
+export type PlayerStatus = 'active' | 'critically_wounded' | 'dead';
+
 export const PLAYER_SPEED_MPS: Record<PlayerSpeed, number> = {
   slow: 0.8,      // ~3 km/h (paso relajado / sigilo)
   normal: 1.4,    // ~5 km/h (paso humano estándar)
@@ -40,6 +53,10 @@ export interface Player {
   lastAttackTime?: number;
   isSlowed?: boolean;
   slowedUntil?: number;
+  status?: PlayerStatus;
+  isCriticallyWounded?: boolean;
+  insideBuildingId?: string | null;
+  insideBuildingType?: StructureType | null;
 }
 
 export type MonsterState = 'patrol' | 'chase' | 'enraged' | 'dead';

@@ -10,6 +10,7 @@ import type {
   MovementMode,
   PlayerRole,
   PlayerSpeed,
+  MapStructure,
 } from '../types/game';
 import { PLAYER_SPEED_MPS } from '../types/game';
 import { createGeoJsonCircle, getDistanceMeters } from '../services/geoUtils';
@@ -28,6 +29,7 @@ interface GameMapProps {
   movementMode: MovementMode;
   playerSpeed?: PlayerSpeed;
   isRadarActive: boolean;
+  structures?: MapStructure[];
   onMapClick: (coords: Coordinates) => void;
   onReviveAttempt?: (targetPlayer: Player) => void;
 }
@@ -44,6 +46,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   movementMode,
   playerSpeed = 'normal',
   isRadarActive,
+  structures = [],
   onMapClick,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -56,6 +59,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const chestMarkerRef = useRef<maplibregl.Marker | null>(null);
   const crateMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const pingMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+  const structureMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
 
   // Refs para desacoplar arrastre de cámara (drag) de clic de movimiento (tap-to-move)
   const isDraggingRef = useRef<boolean>(false);
@@ -196,6 +200,34 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           'line-dasharray': [2, 2],
         },
       });
+
+      // 5. Capas tácticas: Zonas de estructuras (Hospital y Refugios)
+      map.addSource('structures-zones', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
+      map.addLayer({
+        id: 'structures-zones-fill',
+        type: 'fill',
+        source: 'structures-zones',
+        paint: {
+          'fill-color': ['match', ['get', 'type'], 'hospital', '#10b981', '#06b6d4'],
+          'fill-opacity': 0.15,
+        },
+      });
+
+      map.addLayer({
+        id: 'structures-zones-outline',
+        type: 'line',
+        source: 'structures-zones',
+        paint: {
+          'line-color': ['match', ['get', 'type'], 'hospital', '#34d399', '#22d3ee'],
+          'line-width': 1.8,
+          'line-opacity': 0.8,
+          'line-dasharray': [3, 2],
+        },
+      });
     });
 
     // Control de interacción de puntero y arrastre
@@ -268,6 +300,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       crateMarkersRef.current.clear();
       pingMarkersRef.current.forEach((m) => m.remove());
       pingMarkersRef.current.clear();
+      structureMarkersRef.current.forEach((m) => m.remove());
+      structureMarkersRef.current.clear();
 
       map.remove();
       mapRef.current = null;
@@ -459,6 +493,77 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   }, [crates]);
 
   // ==========================================
+  // 6.5. MARCADORES Y RADIOS DE ESTRUCTURAS TÁCTICAS (Hospital y Refugios)
+  // ==========================================
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Actualizar zonas de interacción en el mapa
+    if (isMapLoadedRef.current) {
+      const source = map.getSource('structures-zones') as maplibregl.GeoJSONSource;
+      if (source) {
+        const features = structures.map((s) => {
+          const circle = createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius);
+          return {
+            ...circle,
+            properties: {
+              ...circle.properties,
+              type: s.type,
+              id: s.id,
+            },
+          };
+        });
+        source.setData({
+          type: 'FeatureCollection',
+          features,
+        });
+      }
+    }
+
+    const currentStructureIds = new Set(structures.map((s) => s.id));
+    structureMarkersRef.current.forEach((marker, id) => {
+      if (!currentStructureIds.has(id)) {
+        marker.remove();
+        structureMarkersRef.current.delete(id);
+      }
+    });
+
+    structures.forEach((structure) => {
+      const isHospital = structure.type === 'hospital';
+      const badgeBorder = isHospital ? 'border-emerald-400' : 'border-cyan-400';
+      const badgeText = isHospital ? 'text-emerald-300' : 'text-cyan-300';
+      const icon = isHospital ? '🏥' : '🏠';
+      const aura = isHospital ? 'bg-emerald-500/25 animate-ping' : 'bg-cyan-500/20';
+      const label = isHospital ? `HOSPITAL (${structure.radius}m)` : `${structure.name.toUpperCase()} (${structure.radius}m)`;
+
+      if (!structureMarkersRef.current.has(structure.id)) {
+        const el = document.createElement('div');
+        el.className = `structure-marker-${structure.id} flex flex-col items-center select-none pointer-events-none`;
+        el.innerHTML = `
+          <div class="relative flex items-center justify-center">
+            <div class="absolute w-12 h-12 ${aura} rounded-full"></div>
+            <div class="w-10 h-10 ${isHospital ? 'bg-emerald-950/90' : 'bg-cyan-950/90'} border-2 ${badgeBorder} rounded-xl shadow-lg flex items-center justify-center text-xl">
+              ${icon}
+            </div>
+          </div>
+          <span class="mt-1 px-1.5 py-0.5 text-[9px] font-mono font-bold bg-hud-dark/95 border ${badgeBorder} ${badgeText} rounded uppercase tracking-wider whitespace-nowrap shadow-md">
+            ${label}
+          </span>
+        `;
+
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+          .setLngLat([structure.lng, structure.lat])
+          .addTo(map);
+
+        structureMarkersRef.current.set(structure.id, marker);
+      } else {
+        structureMarkersRef.current.get(structure.id)?.setLngLat([structure.lng, structure.lat]);
+      }
+    });
+  }, [structures]);
+
+  // ==========================================
   // 7. MARCADOR DEL MONSTRUO (Anclaje nativo MapLibre GL y niebla de guerra)
   // ==========================================
   const myCoords = { lat: myPlayer.lat ?? center.lat, lng: myPlayer.lng ?? center.lng };
@@ -547,24 +652,49 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const lng = p.lng ?? center.lng;
       const isMe = p.id === myPlayer.id;
       const hpPercent = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
+      const isCriticallyWounded = p.isCriticallyWounded || p.status === 'critically_wounded';
+      const isInside = !!p.insideBuildingId;
+
+      const avatarIconContent = isCriticallyWounded
+        ? '🩸'
+        : p.isAlive
+        ? roleIcons[p.role]
+        : '🪦';
+
+      const avatarClasses = isCriticallyWounded
+        ? 'bg-red-900 border-red-500 animate-pulse'
+        : p.isAlive
+        ? roleColors[p.role]
+        : 'bg-gray-700 border-gray-400';
+
+      const statusLabel = isCriticallyWounded
+        ? `${p.nickname} [HERIDO]`
+        : isInside
+        ? `${p.nickname} [${p.insideBuildingType === 'hospital' ? 'HOSPITAL' : 'A CUBIERTO'}]`
+        : `${p.nickname}${isMe ? ' (Tú)' : ''}`;
 
       if (!playerMarkersRef.current.has(p.id)) {
         const el = document.createElement('div');
-        el.className = `player-marker-${p.id} flex flex-col items-center select-none cursor-pointer`;
+        el.className = `player-marker-${p.id} flex flex-col items-center select-none cursor-pointer transition-opacity duration-300`;
+        if (isMe && isInside) {
+          el.style.display = 'none';
+        } else if (!isMe && isInside) {
+          el.style.opacity = '0.75';
+        }
 
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
             ${isMe ? '<div class="absolute w-12 h-12 bg-cyan-400/20 rounded-full animate-ping"></div>' : ''}
-            <div id="avatar-icon-${p.id}" class="w-9 h-9 rounded-full ${p.isAlive ? roleColors[p.role] : 'bg-gray-700 border-gray-400'} border-2 shadow-lg flex items-center justify-center text-sm font-bold text-white">
-              ${p.isAlive ? roleIcons[p.role] : '🪦'}
+            <div id="avatar-icon-${p.id}" class="w-9 h-9 rounded-full ${avatarClasses} border-2 shadow-lg flex items-center justify-center text-sm font-bold text-white">
+              ${avatarIconContent}
             </div>
           </div>
-          <div class="mt-0.5 px-1.5 py-0.5 bg-hud-dark/95 border ${isMe ? 'border-cyan-400' : 'border-hud-border'} rounded shadow text-center min-w-[50px]">
-            <span class="block text-[10px] font-bold ${isMe ? 'text-cyan-300' : 'text-slate-200'} truncate max-w-[65px]">
-              ${p.nickname}${isMe ? ' (Tú)' : ''}
+          <div class="mt-0.5 px-1.5 py-0.5 bg-hud-dark/95 border ${isMe ? 'border-cyan-400' : isCriticallyWounded ? 'border-red-500' : 'border-hud-border'} rounded shadow text-center min-w-[50px]">
+            <span id="player-label-${p.id}" class="block text-[10px] font-bold ${isMe ? 'text-cyan-300' : isCriticallyWounded ? 'text-red-400 font-black' : 'text-slate-200'} truncate max-w-[85px]">
+              ${statusLabel}
             </span>
             <div class="w-full h-1 bg-gray-800 rounded-full overflow-hidden mt-0.5">
-              <div id="hp-bar-${p.id}" class="h-full ${p.isAlive ? (hpPercent < 30 ? 'bg-red-500' : 'bg-emerald-400') : 'bg-gray-600'}" style="width: ${hpPercent}%"></div>
+              <div id="hp-bar-${p.id}" class="h-full ${isCriticallyWounded ? 'bg-red-500 animate-pulse' : p.isAlive ? (hpPercent < 30 ? 'bg-red-500' : 'bg-emerald-400') : 'bg-gray-600'}" style="width: ${hpPercent}%"></div>
             </div>
           </div>
         `;
@@ -577,15 +707,29 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       } else {
         const marker = playerMarkersRef.current.get(p.id);
         marker?.setLngLat([lng, lat]);
+        const el = marker?.getElement();
+        if (el) {
+          if (isMe && isInside) {
+            el.style.display = 'none';
+          } else {
+            el.style.display = 'flex';
+            el.style.opacity = !isMe && isInside ? '0.75' : '1';
+          }
+        }
         const hpBar = document.getElementById(`hp-bar-${p.id}`);
         if (hpBar) {
           hpBar.style.width = `${hpPercent}%`;
-          hpBar.className = `h-full ${p.isAlive ? (hpPercent < 30 ? 'bg-red-500' : 'bg-emerald-400') : 'bg-gray-600'}`;
+          hpBar.className = `h-full ${isCriticallyWounded ? 'bg-red-500 animate-pulse' : p.isAlive ? (hpPercent < 30 ? 'bg-red-500' : 'bg-emerald-400') : 'bg-gray-600'}`;
         }
         const avatarIcon = document.getElementById(`avatar-icon-${p.id}`);
         if (avatarIcon) {
-          avatarIcon.className = `w-9 h-9 rounded-full ${p.isAlive ? roleColors[p.role] : 'bg-gray-700 border-gray-400'} border-2 shadow-lg flex items-center justify-center text-sm font-bold text-white`;
-          avatarIcon.textContent = p.isAlive ? roleIcons[p.role] : '🪦';
+          avatarIcon.className = `w-9 h-9 rounded-full ${avatarClasses} border-2 shadow-lg flex items-center justify-center text-sm font-bold text-white`;
+          avatarIcon.textContent = avatarIconContent;
+        }
+        const playerLabel = document.getElementById(`player-label-${p.id}`);
+        if (playerLabel) {
+          playerLabel.textContent = statusLabel;
+          playerLabel.className = `block text-[10px] font-bold ${isMe ? 'text-cyan-300' : isCriticallyWounded ? 'text-red-400 font-black' : 'text-slate-200'} truncate max-w-[85px]`;
         }
       }
     });
