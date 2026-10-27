@@ -230,10 +230,11 @@ export function getMaxHpForRole(role: PlayerRole): number {
 /**
  * Retorna el radio de visión de niebla de guerra en metros
  */
-export function getVisionRadius(role: PlayerRole, isRadarActive: boolean): number {
+export function getVisionRadius(role: PlayerRole, isRadarActive: boolean, hasTacticalDrone: boolean = false): number {
   if (isRadarActive) return 9999; // Revelado global
-  if (role === 'scout') return 105; // Explorador visión extendida
-  return 60; // Estándar
+  const droneBonus = hasTacticalDrone ? 15 : 0;
+  if (role === 'scout') return 105 + droneBonus; // Explorador visión extendida
+  return 60 + droneBonus; // Estándar
 }
 
 /**
