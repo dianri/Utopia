@@ -4,6 +4,13 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Unreleased]
+### Changed
+- **Removed passive map-based auto-combat; attacks strictly limited to manual clicks within the combat arena (`useCombatLoop.ts`, `CombatArena.tsx`):**
+  - Desactivado por completo el temporizador y el bucle de daño automático en segundo plano en el mapa táctico (`useCombatLoop.ts`). El mapa táctico ahora solo gestiona navegación, recogida de airdrops, interacción con estructuras y detección de colisión/proximidad para iniciar el combate.
+  - El daño hacia el monstruo se centraliza y ejecuta exclusivamente de forma manual desde el modo combate (`CombatArena.tsx`), al presionar el botón "ATACAR" o al tocar directamente sobre la carta del monstruo.
+  - La cadencia manual respeta estrictamente `cadenceMs` / `fireRateMs` del arma activa con feedback visual de recarga y descuento de munición.
+  - Los ataques de asistencia de mascotas activas (`Pet[]`) se circunscriben de forma exclusiva a la vista activa de la Arena de Combate.
+
 ### Added
 - **Multi-pet companion system with automatic loot fetching, unique passive traits, combat assist, and hospital revive (`mapEntities.ts`, `GameMap.tsx`, `CombatArena.tsx`, `App.tsx`, `types/game.ts`):**
   - **Adopción ilimitada y comitiva en el mapa:** Spawneo de 4 a 6 mascotas silvestres en el mapa (`dog`, `drone`, `electric_mouse`, `rabbit`, `cat`, `med_bot`) con marcadores animados y círculos radiantes. Adopción automática a menos de 12 metros sin límite de cantidad; las mascotas se incorporan a la comitiva del jugador (`player.pets: Pet[]`).

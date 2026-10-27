@@ -57,10 +57,10 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
     if (!isOpen || monster.hp <= 0 || monster.state === 'dead') return;
 
     const now = Date.now();
-    const fireInterval = equippedWeapon.fireRateMs || 400;
+    const fireInterval = equippedWeapon.cadenceMs || equippedWeapon.fireRateMs || 400;
 
     if (now - lastAttackTimeRef.current < fireInterval) {
-      return; // En cooldown de arma
+      return; // En cooldown de arma (respeta cadenceMs)
     }
 
     // Comprobar munición
