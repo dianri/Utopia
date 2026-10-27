@@ -10,6 +10,7 @@ interface UseGeolocationOptions {
   onPositionChange: (pos: Coordinates, isFinal?: boolean) => void;
   isAlive: boolean;
   isSlowed?: boolean;
+  speedMultiplier?: number;
 }
 
 export function useGeolocation({
@@ -20,6 +21,7 @@ export function useGeolocation({
   onPositionChange,
   isAlive,
   isSlowed = false,
+  speedMultiplier = 1,
 }: UseGeolocationOptions) {
   const [currentPosition, setCurrentPosition] = useState<Coordinates | null>(initialPosition);
   const [targetPosition, setTargetPosition] = useState<Coordinates | null>(null);
@@ -115,7 +117,7 @@ export function useGeolocation({
     let animFrame: number;
     let lastTime = performance.now();
 
-    const effectiveBaseSpeed = baseSpeedMps && baseSpeedMps > 0 ? baseSpeedMps : 1.4;
+    const effectiveBaseSpeed = (baseSpeedMps && baseSpeedMps > 0 ? baseSpeedMps : 1.4) * (speedMultiplier || 1);
     const speedMps = isSlowed ? effectiveBaseSpeed * 0.5 : effectiveBaseSpeed;
 
     const loop = (time: number) => {
