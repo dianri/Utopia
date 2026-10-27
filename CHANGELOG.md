@@ -61,6 +61,9 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 - Detección reactiva de membresía previa en `JoinRoomModal.tsx` con modo de reconexión directa.
 
 ### Fixed
+- **Pet marker origin (0,0) top-left screen clamping with coordinate validation (`GameMap.tsx`):**
+  - Implementada guardia estricta de validación para mascotas silvestres y mascotas acompañantes impidiendo el montaje o actualización de marcadores HTML con coordenadas `null`, `undefined`, `NaN` o en el origen `(0, 0)`.
+  - Asegurado el cálculo y dispersión orbital alrededor de las coordenadas válidas del jugador (`cosLat` no nulo) con anclaje nativo `anchor: 'center'` de MapLibre GL.
 - **Chest lock progress isolated per game instance and reset on new room creation (`App.tsx`, `games` table):**
   - Añadidas las columnas `chest_unlocked_steps` (default 0), `chest_current_phase` (default 1) y `chest_progress_pct` (default 0) a `public.games` para asegurar inicialización limpia e independiente en base de datos.
   - Implementado aislamiento estricto por partida mediante `localStorage` con clave indexada por ID (`utopia_chest_progress_${gameId}`) y eliminación de cualquier caché residual al terminar, abandonar o cancelar una sala.
