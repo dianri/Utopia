@@ -10,6 +10,7 @@ interface ChestLockModalProps {
   onStepSuccess: (nextPhase: number, nextStep: number) => void;
   onVictory: () => void;
   distToMonster: number;
+  isMonsterAlive?: boolean;
 }
 
 export const ChestLockModal: React.FC<ChestLockModalProps> = ({
@@ -20,6 +21,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
   onStepSuccess,
   onVictory,
   distToMonster,
+  isMonsterAlive = true,
 }) => {
   // Estado local para mensajes de acierto/fallo
   const [feedback, setFeedback] = useState<'idle' | 'success' | 'fail'>('idle');
@@ -230,7 +232,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
       <div className="w-full max-w-md bg-slate-900 border-2 border-amber-500/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col relative animate-in fade-in zoom-in-95 duration-200">
         
         {/* AVISO DE PROXIMIDAD DEL MONSTRUO */}
-        {distToMonster <= 45 && (
+        {isMonsterAlive && distToMonster <= 45 && (
           <div className="bg-red-950/90 border-b border-red-500 px-3 py-1.5 flex items-center justify-between text-red-200 animate-pulse text-xs font-mono font-black">
             <span className="flex items-center gap-1.5">
               <ShieldAlert className="w-4 h-4 text-red-400" />

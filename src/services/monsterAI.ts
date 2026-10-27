@@ -65,9 +65,10 @@ export class MonsterAIController {
           hp: monster.maxHp,
           state: 'patrol',
           targetPlayerId: null,
-          speedMps: 2.8,
+          speedMps: 1.1,
           respawnTimeRemaining: undefined,
           isEnraged: false,
+          isRespawning: false,
         };
         soundEffects.playMonsterRoar();
       } else {
@@ -76,6 +77,7 @@ export class MonsterAIController {
           state: 'dead',
           hp: 0,
           respawnTimeRemaining: remaining,
+          isRespawning: true,
         };
       }
       return result;
