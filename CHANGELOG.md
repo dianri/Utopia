@@ -11,6 +11,11 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - Documentadas todas las mecánicas incorporadas en los últimos sprints: Arena de Combate táctica interactiva (`CombatArena.tsx`), sistema de mascotas de apoyo con habilidades pasivas y asistencia de combate (`Pet[]`), estructuras tácticas en el mapa (Hospital de Campaña y Casas/Refugios), rediseño del ciclo de vida con estado "Herido de Muerte" (`critically_wounded`) y brújula de emergencia, sistema de mochila de 4 slots con jerarquía de 7 tiers de armamento y desgaste de durabilidad, apertura cooperativa del cofre por fases de minijuegos con sprint de furia del monstruo, y optimizaciones visuales y mobile-first para el HUD.
 
 ### Fixed
+- **Monster continuous attack loop in combat arena without relying on enrage trigger (`CombatArena.tsx`):**
+  - Implementado bucle temporal sostenido de ataque del monstruo mediante `setInterval` activo durante todo el combate (`isOpen === true`, `monster.hp > 0`, `player.status !== 'critically_wounded'`).
+  - Cadencia de ataque continua cada 2.5 segundos (2500ms) durante el combate normal, acelerándose de forma reactiva a 1.8 segundos (1800ms) al entrar en fase de furia (`isEnraged`), con daño potenciado de 24 a 34 DMG.
+  - Mitigación del 50% de daño si la habilidad de escudo del Tanque está activa, 10% de probabilidad de esquiva con Gato Callejero activo, y aplicación del 20% de daño residual a las mascotas compañeras vivas.
+  - Dependencias de `useEffect` blindadas contra re-renders accidentales: se desacoplaron variables numéricas cambiantes (`monster.hp`, `player.hp`, cooldowns y estados de animación) utilizando valores booleanos estables y referencias mutables (`useRef`), impidiendo reinicios indeseados del temporizador.
 - **Aislamiento estricto de fuentes de curación al saquear suministros y objetos del suelo (`lootService.ts`, `App.tsx`, `GameMap.tsx`, `types/game.ts`):**
   - Creado el servicio modular `lootService.ts` (`applyCratePickup`, `applyPetCratePickup`, `applyDroppedItemPickup`, `isHealthLoot`, `isAmmoLoot`, `isWeaponOrKeyLoot`).
   - Corregido el efecto secundario donde recoger armas, munición o llaves restauraba involuntariamente la salud del jugador: la curación (`hp`) queda estrictamente limitada a suministros médicos (`crateType === 'medkit'` o `category === 'health'`).

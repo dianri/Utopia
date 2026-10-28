@@ -69,7 +69,11 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   const monsterHpPercent = Math.max(0, Math.min(100, Math.round((monster.hp / monster.maxHp) * 100)));
   const playerHpPercent = Math.max(0, Math.min(100, Math.round((myPlayer.hp / myPlayer.maxHp) * 100)));
 
-  const isMonsterDead = monster.hp <= 0 || monster.state === 'dead';
+  const isMonsterAlive = monster.hp > 0 && monster.state !== 'dead';
+  const isPlayerCriticallyWounded =
+    myPlayer.status === 'critically_wounded' ||
+    myPlayer.isCriticallyWounded ||
+    myPlayer.hp <= 1;
 
   const lastAttackTimeRef = useRef<number>(0);
 
@@ -135,7 +139,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   // ATAQUE AUTOMÁTICO DE MASCOTAS ACTIVAS (CADA attackIntervalMs)
   // ==========================================
   useEffect(() => {
-    if (!isOpen || isMonsterDead) return;
+    if (!isOpen || !isMonsterAlive) return;
 
     const currentPets = (myPlayerRef.current.pets || []).filter((p) => !p.isWounded && p.hp > 0);
     if (currentPets.length === 0) return;
@@ -167,21 +171,35 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
     return () => {
       intervals.forEach(clearInterval);
     };
-  }, [isOpen, isMonsterDead]);
+  }, [isOpen, isMonsterAlive]);
 
   // ==========================================
-  // BUCLE DE DAÑO DEL MONSTRUO (CADA 2.5 SEGUNDOS ROBUSTO Y CONTINUO)
+  // BUCLE PERIÓDICO CONTINUO DE ATAQUE DEL MONSTRUO (2.5S NORMAL / 1.8S EN FURIA)
   // ==========================================
   useEffect(() => {
-    if (!isOpen || isMonsterDead) return;
+    if (!isOpen || !isMonsterAlive || isPlayerCriticallyWounded) {
+      return;
+    }
 
-    const monsterAttackCadenceMs = 2500;
+    // Cadencia normal: 2.5s. Si está en furia: ataque más rápido (1.8s)
+    const attackCadenceMs = monster.isEnraged ? 1800 : 2500;
+    // Daño normal (24) o potenciado en furia (34)
+    const baseDamage = 24;
+    const currentDamage = monster.isEnraged ? Math.round(baseDamage * 1.4) : baseDamage;
 
-    const monsterAttackInterval = setInterval(() => {
+    const attackInterval = setInterval(() => {
       const curMonster = monsterRef.current;
       const curPlayer = myPlayerRef.current;
 
       if (!isOpen || curMonster.hp <= 0 || curMonster.state === 'dead') {
+        return;
+      }
+
+      if (
+        curPlayer.status === 'critically_wounded' ||
+        curPlayer.isCriticallyWounded ||
+        curPlayer.hp <= 1
+      ) {
         return;
       }
 
@@ -199,21 +217,24 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         return;
       }
 
-      // 1. Disparar feedback visual y sonoro (pantalla roja / sacudida / audio)
+      // 1. Feedback audiovisual continuo (pantalla roja, sonido de zarpazo/rugido y hápticos)
       setIsMonsterAttacking(true);
       setScreenShake(true);
-      soundEffects.playAlarm();
+      if (curMonster.isEnraged) {
+        soundEffects.playMonsterRoar();
+      } else {
+        soundEffects.playAlarm();
+      }
       soundEffects.triggerDamageHaptics();
 
-      // 2. Infligir daño al jugador local
+      // 2. Infligir daño continuo al jugador local (con mitigación de Tanque si la habilidad está activa)
       const isShielded = isRoleSkillActiveRef.current && curPlayer.role === 'tank';
-      const baseMonsterDmg = curMonster.isEnraged ? 35 : 24;
-      const monsterDamage = isShielded ? Math.round(baseMonsterDmg * 0.5) : baseMonsterDmg;
+      const monsterDamage = isShielded ? Math.round(currentDamage * 0.5) : currentDamage;
 
       onPlayerDamagedRef.current(monsterDamage);
 
       // 3. Aplicar el 20% de daño residual a las mascotas activas
-      const petSplashDamage = Math.max(1, Math.round(baseMonsterDmg * 0.2));
+      const petSplashDamage = Math.max(1, Math.round(currentDamage * 0.2));
       const currentPets = curPlayer.pets || [];
       if (currentPets.length > 0 && onPetDamagedRef.current) {
         let anyPetChanged = false;
@@ -237,12 +258,12 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         setIsMonsterAttacking(false);
         setScreenShake(false);
       }, 400);
-    }, monsterAttackCadenceMs);
+    }, attackCadenceMs);
 
     return () => {
-      clearInterval(monsterAttackInterval);
+      clearInterval(attackInterval);
     };
-  }, [isOpen, isMonsterDead]);
+  }, [isOpen, isMonsterAlive, monster.isEnraged, isPlayerCriticallyWounded]);
 
   // Si los HP del jugador caen a 0 o entra en estado crítico, cerrar inmediatamente la arena
   useEffect(() => {
