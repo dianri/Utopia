@@ -34,6 +34,24 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   const [attackCooldown, setAttackCooldown] = useState<number>(0);
   const [damageNumbers, setDamageNumbers] = useState<{ id: number; text: string; isCrit: boolean; isPet?: boolean }[]>([]);
 
+  const monsterRef = useRef<Monster>(monster);
+  monsterRef.current = monster;
+
+  const myPlayerRef = useRef<Player>(myPlayer);
+  myPlayerRef.current = myPlayer;
+
+  const isRoleSkillActiveRef = useRef<boolean>(isRoleSkillActive);
+  isRoleSkillActiveRef.current = isRoleSkillActive;
+
+  const onPlayerDamagedRef = useRef(onPlayerDamaged);
+  onPlayerDamagedRef.current = onPlayerDamaged;
+
+  const onPetDamagedRef = useRef(onPetDamaged);
+  onPetDamagedRef.current = onPetDamaged;
+
+  const onAttackRef = useRef(onAttack);
+  onAttackRef.current = onAttack;
+
   const petsRef = useRef<Pet[]>(myPlayer.pets || []);
   petsRef.current = myPlayer.pets || [];
 
@@ -41,12 +59,17 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   monsterHpRef.current = monster.hp;
 
   const equippedWeapon = myPlayer.equippedWeapon || DEFAULT_WEAPONS_BY_ROLE[myPlayer.role];
+  const equippedWeaponRef = useRef<Weapon>(equippedWeapon);
+  equippedWeaponRef.current = equippedWeapon;
+
   const weaponStats = getModifiedWeaponStats(equippedWeapon, myPlayer.role);
   const isMarksmanBoosted = isRoleSkillActive && myPlayer.role === 'marksman';
   const effectiveDamage = isMarksmanBoosted ? Math.round(weaponStats.damage * 1.25) : weaponStats.damage;
 
   const monsterHpPercent = Math.max(0, Math.min(100, Math.round((monster.hp / monster.maxHp) * 100)));
   const playerHpPercent = Math.max(0, Math.min(100, Math.round((myPlayer.hp / myPlayer.maxHp) * 100)));
+
+  const isMonsterDead = monster.hp <= 0 || monster.state === 'dead';
 
   const lastAttackTimeRef = useRef<number>(0);
 
@@ -112,18 +135,18 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   // ATAQUE AUTOMÁTICO DE MASCOTAS ACTIVAS (CADA attackIntervalMs)
   // ==========================================
   useEffect(() => {
-    if (!isOpen || monster.hp <= 0 || monster.state === 'dead') return;
+    if (!isOpen || isMonsterDead) return;
 
-    const currentPets = (myPlayer.pets || []).filter((p) => !p.isWounded && p.hp > 0);
+    const currentPets = (myPlayerRef.current.pets || []).filter((p) => !p.isWounded && p.hp > 0);
     if (currentPets.length === 0) return;
 
     const intervals = currentPets.map((pet) => {
       return setInterval(() => {
-        if (!isOpen || monsterHpRef.current <= 0) return;
+        const curMonster = monsterRef.current;
+        if (!isOpen || curMonster.hp <= 0 || curMonster.state === 'dead') return;
 
         const dmg = pet.damage;
-        const newHp = Math.max(0, monsterHpRef.current - dmg);
-        monsterHpRef.current = newHp;
+        const newHp = Math.max(0, curMonster.hp - dmg);
 
         // Efecto visual y daño flotante de mascota
         const numId = Date.now() + Math.random();
@@ -137,26 +160,33 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
         // Pequeño sonido de impacto asistido
         soundEffects.playGunshot('melee');
-        onAttack(dmg, newHp, equippedWeapon);
+        onAttackRef.current(dmg, newHp, equippedWeaponRef.current);
       }, pet.attackIntervalMs || 2000);
     });
 
     return () => {
       intervals.forEach(clearInterval);
     };
-  }, [isOpen, myPlayer.pets, monster.hp, monster.state, equippedWeapon, onAttack]);
+  }, [isOpen, isMonsterDead]);
 
   // ==========================================
-  // BUCLE DE DAÑO DEL MONSTRUO (CADA 2.5 SEGUNDOS)
+  // BUCLE DE DAÑO DEL MONSTRUO (CADA 2.5 SEGUNDOS ROBUSTO Y CONTINUO)
   // ==========================================
   useEffect(() => {
-    if (!isOpen || monster.hp <= 0 || monster.state === 'dead') return;
+    if (!isOpen || isMonsterDead) return;
+
+    const monsterAttackCadenceMs = 2500;
 
     const monsterAttackInterval = setInterval(() => {
-      if (!isOpen || monster.hp <= 0) return;
+      const curMonster = monsterRef.current;
+      const curPlayer = myPlayerRef.current;
+
+      if (!isOpen || curMonster.hp <= 0 || curMonster.state === 'dead') {
+        return;
+      }
 
       // Habilidad pasiva del Gato Callejero: +10% evasión
-      const hasActiveCat = (myPlayer.pets || []).some((p) => p.type === 'cat' && !p.isWounded);
+      const hasActiveCat = (curPlayer.pets || []).some((p) => p.type === 'cat' && !p.isWounded);
       if (hasActiveCat && Math.random() < 0.1) {
         const numId = Date.now() + Math.random();
         setDamageNumbers((prev) => [
@@ -169,22 +199,23 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         return;
       }
 
-      // Ataque del monstruo
+      // 1. Disparar feedback visual y sonoro (pantalla roja / sacudida / audio)
       setIsMonsterAttacking(true);
       setScreenShake(true);
       soundEffects.playAlarm();
       soundEffects.triggerDamageHaptics();
 
-      const isShielded = isRoleSkillActive && myPlayer.role === 'tank';
-      const baseMonsterDmg = monster.isEnraged ? 35 : 24;
+      // 2. Infligir daño al jugador local
+      const isShielded = isRoleSkillActiveRef.current && curPlayer.role === 'tank';
+      const baseMonsterDmg = curMonster.isEnraged ? 35 : 24;
       const monsterDamage = isShielded ? Math.round(baseMonsterDmg * 0.5) : baseMonsterDmg;
 
-      onPlayerDamaged(monsterDamage);
+      onPlayerDamagedRef.current(monsterDamage);
 
-      // Daño residual del 20% a todas las mascotas activas
+      // 3. Aplicar el 20% de daño residual a las mascotas activas
       const petSplashDamage = Math.max(1, Math.round(baseMonsterDmg * 0.2));
-      const currentPets = myPlayer.pets || [];
-      if (currentPets.length > 0 && onPetDamaged) {
+      const currentPets = curPlayer.pets || [];
+      if (currentPets.length > 0 && onPetDamagedRef.current) {
         let anyPetChanged = false;
         const updatedPets = currentPets.map((pet) => {
           if (pet.isWounded || pet.hp <= 0) return pet;
@@ -198,7 +229,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         });
 
         if (anyPetChanged) {
-          onPetDamaged(updatedPets);
+          onPetDamagedRef.current(updatedPets);
         }
       }
 
@@ -206,12 +237,12 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         setIsMonsterAttacking(false);
         setScreenShake(false);
       }, 400);
-    }, 2500);
+    }, monsterAttackCadenceMs);
 
     return () => {
       clearInterval(monsterAttackInterval);
     };
-  }, [isOpen, monster.hp, monster.state, monster.isEnraged, isRoleSkillActive, myPlayer.role, myPlayer.pets, onPlayerDamaged, onPetDamaged]);
+  }, [isOpen, isMonsterDead]);
 
   // Si los HP del jugador caen a 0 o entra en estado crítico, cerrar inmediatamente la arena
   useEffect(() => {

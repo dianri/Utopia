@@ -61,6 +61,12 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 - Detección reactiva de membresía previa en `JoinRoomModal.tsx` con modo de reconexión directa.
 
 ### Fixed
+- **Detención de movimiento del jugador e inhabilitación de clics en el mapa al entrar en combate (`useGeolocation.ts`, `GameMap.tsx`, `App.tsx`):**
+  - Implementada cancelación inmediata de cualquier ruta activa de *Tap-to-Move* (`cancelMovement`, reseteo de `targetPosition = null` y fijación de coordenadas estáticas actuales) en el instante en que se activa la vista de combate arena.
+  - Bloqueado el registro de nuevos eventos de toque en el mapa (`inCombat` en `GameMap.tsx` con guardia en `map.on('click')` y `pointer-events-none`) mientras el modal de combate permanezca abierto.
+- **Bucle de ataque continuo del monstruo y mascotas en combate (`CombatArena.tsx`):**
+  - Desacoplado el bucle de ataque periódico del monstruo (cada 2.5s) y de las mascotas acompañantes respecto a las mutaciones volátiles de estado (`monster.hp`, `myPlayer.hp`, `pets`) mediante referencias mutables estables (`useRef`).
+  - Eliminada la cancelación prematura del temporizador `setInterval` producida por cada impacto del jugador a alta cadencia, asegurando que el monstruo contraataque rítmicamente sin quedarse inactivo durante toda la batalla.
 - **Pet marker origin (0,0) top-left screen clamping with coordinate validation (`GameMap.tsx`):**
   - Implementada guardia estricta de validación para mascotas silvestres y mascotas acompañantes impidiendo el montaje o actualización de marcadores HTML con coordenadas `null`, `undefined`, `NaN` o en el origen `(0, 0)`.
   - Asegurado el cálculo y dispersión orbital alrededor de las coordenadas válidas del jugador (`cosLat` no nulo) con anclaje nativo `anchor: 'center'` de MapLibre GL.
