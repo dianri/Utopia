@@ -441,6 +441,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     soundEffects.vibrate(35);
 
     isStyleChangingRef.current = true;
+    lastVisionPosRef.current = null;
     const nextIsSatellite = !isSatelliteView;
     setIsSatelliteView(nextIsSatellite);
 
@@ -609,7 +610,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     if (treasureSource) {
       treasureSource.setData(createGeoJsonCircle(treasureLocation, 20));
     }
-  }, [center.lat, center.lng, playAreaRadius, treasureLocation.lat, treasureLocation.lng]);
+  }, [center.lat, center.lng, playAreaRadius, treasureLocation.lat, treasureLocation.lng, styleVersion]);
 
   // ==========================================
   // 3. ACTUALIZACIÓN EFICIENTE DEL RADIO DE VISIÓN (Throttled por desplazamiento)
@@ -642,6 +643,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     playAreaRadius,
     center.lat,
     center.lng,
+    styleVersion,
   ]);
 
   // ==========================================
@@ -855,7 +857,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (el) el.style.display = isMeWounded ? 'none' : 'block';
       }
     });
-  }, [crates, isMeWounded, mapLoaded]);
+  }, [crates, isMeWounded, mapLoaded, styleVersion]);
 
   // ==========================================
   // 6.5. MARCADORES Y RADIOS DE ESTRUCTURAS TÁCTICAS (Hospital y Refugios)
@@ -933,7 +935,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (el) el.style.display = (isMeWounded && !isHospital) ? 'none' : 'block';
       }
     });
-  }, [structures, isMeWounded, mapLoaded]);
+  }, [structures, isMeWounded, mapLoaded, styleVersion]);
 
   // ==========================================
   // 6.6. MARCADORES DE OBJETOS DESCARTADOS EN EL MAPA
@@ -1143,7 +1145,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       type: 'FeatureCollection',
       features,
     });
-  }, [droppedItems, wildPets, isMeWounded, mapLoaded]);
+  }, [droppedItems, wildPets, isMeWounded, mapLoaded, styleVersion]);
 
   // ==========================================
   // 7. MARCADOR DEL MONSTRUO (Anclaje nativo MapLibre GL y niebla de guerra)
@@ -1597,6 +1599,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     center.lat,
     center.lng,
     isMonsterVisible,
+    styleVersion,
   ]);
 
   return (
@@ -1626,14 +1629,30 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         <Locate className="w-6 h-6" />
       </button>
 
-      {/* BRÚJULA / COMPÁS HUD TÁCTICO */}
-      <div className="absolute top-20 right-4 z-20 pointer-events-none flex flex-col items-center">
-        <div className="w-10 h-10 rounded-full bg-hud-dark/80 border border-hud-cyan/40 backdrop-blur-sm flex items-center justify-center shadow-lg">
-          <Compass className="w-6 h-6 text-hud-cyan animate-pulse" />
+      {/* CONTROLES SUPERIORES DERECHOS: BRÚJULA Y SELECTOR SATÉLITE/TÁCTICO */}
+      <div className="absolute top-20 right-4 z-20 flex flex-col items-center gap-2.5">
+        {/* BRÚJULA / COMPÁS HUD TÁCTICO */}
+        <div className="pointer-events-none flex flex-col items-center">
+          <div className="w-10 h-10 rounded-full bg-hud-dark/80 border border-hud-cyan/40 backdrop-blur-sm flex items-center justify-center shadow-lg">
+            <Compass className="w-6 h-6 text-hud-cyan animate-pulse" />
+          </div>
+          <span className="text-[9px] font-mono font-bold text-hud-cyan tracking-widest mt-0.5">
+            NORTE
+          </span>
         </div>
-        <span className="text-[9px] font-mono font-bold text-hud-cyan tracking-widest mt-0.5">
-          NORTE
-        </span>
+
+        {/* SELECTOR DE VISTA DE MAPA (TÁCTICO VS SATÉLITE) */}
+        <button
+          type="button"
+          onClick={handleToggleSatelliteView}
+          className="pointer-events-auto px-2.5 py-1.5 rounded-xl bg-slate-900/90 border border-cyan-500/50 shadow-lg backdrop-blur-md flex items-center gap-1.5 hover:bg-slate-800/90 active:scale-95 transition-all text-cyan-400"
+          title={isSatelliteView ? 'Cambiar a mapa táctico' : 'Cambiar a vista satélite'}
+        >
+          <span className="text-sm select-none">{isSatelliteView ? '📡' : '🌍'}</span>
+          <span className="font-mono font-bold text-[10px] tracking-wider text-cyan-400 select-none">
+            {isSatelliteView ? 'TÁCTICO' : 'SATÉLITE'}
+          </span>
+        </button>
       </div>
 
       {/* AVISO TAP-TO-MOVE */}
