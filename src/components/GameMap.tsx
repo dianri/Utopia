@@ -95,6 +95,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const lastCameraPosRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastVisionPosRef = useRef<{ lat: number; lng: number } | null>(null);
 
+  // Estado del jugador local: Herido de Muerte (visión de emergencia hospitalaria)
+  const isMeWounded = myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded';
+
   // ==========================================
   // 1. INICIALIZACIÓN DEL MAPA WEBGL
   // ==========================================
@@ -248,6 +251,29 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           'line-width': 1.8,
           'line-opacity': 0.8,
           'line-dasharray': [3, 2],
+        },
+      });
+
+      // 6. Capa táctica: Línea de puntos de guía hacia el Hospital (Estado Herido de Muerte)
+      map.addSource('hospital-guideline', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
+      map.addLayer({
+        id: 'hospital-guideline-line',
+        type: 'line',
+        source: 'hospital-guideline',
+        layout: {
+          visibility: 'none',
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': '#10b981',
+          'line-width': 3.5,
+          'line-opacity': 0.9,
+          'line-dasharray': [1.5, 2.5],
         },
       });
     });
@@ -438,6 +464,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     if (!chestMarkerRef.current) {
       const el = document.createElement('div');
       el.className = 'treasure-marker cursor-pointer flex flex-col items-center select-none';
+      if (isMeWounded) {
+        el.style.display = 'none';
+      }
       el.innerHTML = `
         <div class="relative flex items-center justify-center">
           <div class="absolute w-12 h-12 bg-amber-500/20 rounded-full animate-ping"></div>
@@ -455,8 +484,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         .addTo(map);
     } else {
       chestMarkerRef.current.setLngLat([treasureLocation.lng, treasureLocation.lat]);
+      const el = chestMarkerRef.current.getElement();
+      if (el) el.style.display = isMeWounded ? 'none' : 'flex';
     }
-  }, [treasureLocation.lat, treasureLocation.lng]);
+  }, [treasureLocation.lat, treasureLocation.lng, isMeWounded]);
 
   // ==========================================
   // 6. MARCADORES Y RADIOS DE CAJAS DE SUMINISTROS (AIRDROPS)
@@ -502,6 +533,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!crateMarkersRef.current.has(crate.id)) {
         const el = document.createElement('div');
         el.className = 'crate-marker flex flex-col items-center select-none cursor-pointer';
+        if (isMeWounded) {
+          el.style.display = 'none';
+        }
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
             <div class="absolute w-12 h-12 ${info.glowColor} rounded-full animate-ping"></div>
@@ -520,10 +554,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
         crateMarkersRef.current.set(crate.id, marker);
       } else {
-        crateMarkersRef.current.get(crate.id)?.setLngLat([crate.lng, crate.lat]);
+        const marker = crateMarkersRef.current.get(crate.id);
+        marker?.setLngLat([crate.lng, crate.lat]);
+        const el = marker?.getElement();
+        if (el) el.style.display = isMeWounded ? 'none' : 'flex';
       }
     });
-  }, [crates]);
+  }, [crates, isMeWounded]);
 
   // ==========================================
   // 6.5. MARCADORES Y RADIOS DE ESTRUCTURAS TÁCTICAS (Hospital y Refugios)
@@ -536,7 +573,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     if (isMapLoadedRef.current) {
       const source = map.getSource('structures-zones') as maplibregl.GeoJSONSource;
       if (source) {
-        const features = structures.map((s) => {
+        const visibleStructures = isMeWounded ? structures.filter((s) => s.type === 'hospital') : structures;
+        const features = visibleStructures.map((s) => {
           const circle = createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius);
           return {
             ...circle,
@@ -573,6 +611,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!structureMarkersRef.current.has(structure.id)) {
         const el = document.createElement('div');
         el.className = `structure-marker-${structure.id} flex flex-col items-center select-none pointer-events-none`;
+        if (isMeWounded && !isHospital) {
+          el.style.display = 'none';
+        }
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
             <div class="absolute w-12 h-12 ${aura} rounded-full"></div>
@@ -591,10 +632,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
         structureMarkersRef.current.set(structure.id, marker);
       } else {
-        structureMarkersRef.current.get(structure.id)?.setLngLat([structure.lng, structure.lat]);
+        const marker = structureMarkersRef.current.get(structure.id);
+        marker?.setLngLat([structure.lng, structure.lat]);
+        const el = marker?.getElement();
+        if (el) el.style.display = (isMeWounded && !isHospital) ? 'none' : 'flex';
       }
     });
-  }, [structures]);
+  }, [structures, isMeWounded]);
 
   // ==========================================
   // 6.6. MARCADORES DE OBJETOS DESCARTADOS EN EL MAPA
@@ -641,6 +685,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const style = getTierStyle(dropped.item);
         const el = document.createElement('div');
         el.className = `dropped-item-${dropped.id} flex flex-col items-center select-none cursor-pointer group`;
+        if (isMeWounded) {
+          el.style.display = 'none';
+        }
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
             <div class="absolute w-10 h-10 ${style.aura} rounded-full animate-ping"></div>
@@ -664,10 +711,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
         droppedItemMarkersRef.current.set(dropped.id, marker);
       } else {
-        droppedItemMarkersRef.current.get(dropped.id)?.setLngLat([dropped.lng, dropped.lat]);
+        const marker = droppedItemMarkersRef.current.get(dropped.id);
+        marker?.setLngLat([dropped.lng, dropped.lat]);
+        const el = marker?.getElement();
+        if (el) el.style.display = isMeWounded ? 'none' : 'flex';
       }
     });
-  }, [droppedItems]);
+  }, [droppedItems, isMeWounded]);
 
   // ==========================================
   // 6.7. MARCADORES DE MASCOTAS SILVESTRES (PETS EN EL MAPA)
@@ -704,6 +754,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         // NO añadir clases absolute ni fixed aquí; MapLibre gestiona la posición mediante transform
         el.className = 'pet-marker-container pointer-events-auto select-none';
         el.style.zIndex = '35'; // Visible por encima del canvas
+        if (isMeWounded) {
+          el.style.display = 'none';
+        }
 
         el.innerHTML = `
           <div class="relative flex flex-col items-center justify-center transform -translate-x-1/2 -translate-y-1/2">
@@ -730,10 +783,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
         wildPetMarkersRef.current.set(wp.id, marker);
       } else {
-        wildPetMarkersRef.current.get(wp.id)?.setLngLat([wp.lng, wp.lat]);
+        const marker = wildPetMarkersRef.current.get(wp.id);
+        marker?.setLngLat([wp.lng, wp.lat]);
+        const el = marker?.getElement();
+        if (el) el.style.display = isMeWounded ? 'none' : 'flex';
       }
     });
-  }, [wildPets, mapLoaded, center.lat, center.lng]);
+  }, [wildPets, mapLoaded, center.lat, center.lng, isMeWounded]);
 
   // ==========================================
   // 7. MARCADOR DEL MONSTRUO (Anclaje nativo MapLibre GL y niebla de guerra)
@@ -782,12 +838,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       }
     }
 
-    // Visibilidad condicionada a la niebla de guerra
+    // Visibilidad condicionada a la niebla de guerra y estado de herido de muerte
     const element = monsterMarkerRef.current.getElement();
     if (element) {
-      element.style.display = isMonsterVisible ? 'block' : 'none';
+      element.style.display = (!isMeWounded && isMonsterVisible) ? 'block' : 'none';
     }
-  }, [monster.lat, monster.lng, monster.hp, monster.maxHp, isMonsterVisible]);
+  }, [monster.lat, monster.lng, monster.hp, monster.maxHp, isMonsterVisible, isMeWounded]);
 
   // ==========================================
   // 8. MARCADORES DE JUGADORES (Direct DOM update sin lag)
@@ -852,6 +908,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.className = `player-marker-${p.id} flex flex-col items-center select-none cursor-pointer transition-opacity duration-300`;
         if (isMe && isInside) {
           el.style.display = 'none';
+        } else if (!isMe && isMeWounded) {
+          el.style.display = 'none';
         } else if (!isMe && isInside) {
           el.style.opacity = '0.75';
         }
@@ -883,11 +941,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker?.setLngLat([lng, lat]);
         const el = marker?.getElement();
         if (el) {
-          if (isMe && isInside) {
+          if (isMe) {
+            el.style.display = isInside ? 'none' : 'flex';
+          } else if (isMeWounded) {
             el.style.display = 'none';
           } else {
             el.style.display = 'flex';
-            el.style.opacity = !isMe && isInside ? '0.75' : '1';
+            el.style.opacity = isInside ? '0.75' : '1';
           }
         }
         const hpBar = document.getElementById(`hp-bar-${p.id}`);
@@ -907,7 +967,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }
       }
     });
-  }, [players, myPlayer, mapLoaded, center.lat, center.lng]);
+  }, [players, myPlayer, mapLoaded, center.lat, center.lng, isMeWounded]);
 
   // ==========================================
   // 8.5. MARCADORES DE MASCOTAS ACOMPAÑANTES (ORBITANDO ALREDEDOR DE SUS DUEÑOS)
@@ -954,7 +1014,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           // NO añadir clases absolute ni fixed; MapLibre gestiona la posición mediante transform
           el.className = 'companion-pet-container pointer-events-none select-none';
           el.style.zIndex = '35';
-          if (isInside) {
+          if (isInside || isMeWounded) {
             el.style.display = 'none';
           }
 
@@ -979,7 +1039,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           marker?.setLngLat([petLng, petLat]);
           const el = marker?.getElement();
           if (el) {
-            el.style.display = isInside ? 'none' : 'block';
+            el.style.display = (isInside || isMeWounded) ? 'none' : 'block';
             const avatar = el.querySelector(`#pet-avatar-${markerKey}`);
             if (avatar) {
               avatar.className = `w-6 h-6 rounded-full bg-slate-950/90 border ${
@@ -998,7 +1058,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         companionPetMarkersRef.current.delete(key);
       }
     });
-  }, [players, myPlayer, mapLoaded, center.lat, center.lng]);
+  }, [players, myPlayer, mapLoaded, center.lat, center.lng, isMeWounded]);
 
   // ==========================================
   // 9. MARCADORES DE PINGS DE FANTASMA
@@ -1011,6 +1071,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!pingMarkersRef.current.has(ping.id)) {
         const el = document.createElement('div');
         el.className = 'ping-marker select-none flex flex-col items-center pointer-events-none';
+        if (isMeWounded) {
+          el.style.display = 'none';
+        }
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
             <div class="w-12 h-12 bg-cyan-500/40 rounded-full animate-ping"></div>
@@ -1035,7 +1098,147 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }, 8000);
       }
     });
-  }, [ghostPings]);
+  }, [ghostPings, isMeWounded]);
+
+  // ==========================================
+  // 10. GESTIÓN DEL ESTADO HERIDO DE MUERTE:
+  //     OCULTACIÓN TOTAL DE ELEMENTOS Y GUÍA AL HOSPITAL (LÍNEA DE PUNTOS)
+  // ==========================================
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapLoadedRef.current) return;
+
+    // 1. Visibilidad de capas de área en el mapa
+    const areaLayers = [
+      'treasure-zone-fill',
+      'treasure-zone-outline',
+      'crates-zones-fill',
+      'crates-zones-outline',
+    ];
+    areaLayers.forEach((layerId) => {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, 'visibility', isMeWounded ? 'none' : 'visible');
+      }
+    });
+
+    // 2. Trazado / Ocultación de la línea de puntos hacia el Hospital
+    const hospital = structures.find((s) => s.type === 'hospital');
+    const myLat = myPlayer.lat ?? center.lat;
+    const myLng = myPlayer.lng ?? center.lng;
+
+    const guidelineSource = map.getSource('hospital-guideline') as maplibregl.GeoJSONSource;
+    const hasValidCoords =
+      typeof myLat === 'number' &&
+      typeof myLng === 'number' &&
+      !isNaN(myLat) &&
+      !isNaN(myLng) &&
+      (myLat !== 0 || myLng !== 0) &&
+      !!hospital &&
+      typeof hospital.lat === 'number' &&
+      typeof hospital.lng === 'number' &&
+      !isNaN(hospital.lat) &&
+      !isNaN(hospital.lng);
+
+    if (isMeWounded && hasValidCoords && hospital) {
+      if (guidelineSource) {
+        guidelineSource.setData({
+          type: 'FeatureCollection',
+          features: [
+            {
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'LineString',
+                coordinates: [
+                  [myLng, myLat],
+                  [hospital.lng, hospital.lat],
+                ],
+              },
+            },
+          ],
+        });
+      }
+      if (map.getLayer('hospital-guideline-line')) {
+        map.setLayoutProperty('hospital-guideline-line', 'visibility', 'visible');
+      }
+    } else {
+      if (guidelineSource) {
+        guidelineSource.setData({
+          type: 'FeatureCollection',
+          features: [],
+        });
+      }
+      if (map.getLayer('hospital-guideline-line')) {
+        map.setLayoutProperty('hospital-guideline-line', 'visibility', 'none');
+      }
+    }
+
+    // 3. Ocultar o restaurar marcadores existentes en el DOM de forma inmediata
+    if (chestMarkerRef.current) {
+      const el = chestMarkerRef.current.getElement();
+      if (el) el.style.display = isMeWounded ? 'none' : 'flex';
+    }
+
+    crateMarkersRef.current.forEach((marker) => {
+      const el = marker.getElement();
+      if (el) el.style.display = isMeWounded ? 'none' : 'flex';
+    });
+
+    structureMarkersRef.current.forEach((marker, id) => {
+      const struct = structures.find((s) => s.id === id);
+      const isHospital = struct?.type === 'hospital';
+      const el = marker.getElement();
+      if (el) el.style.display = isMeWounded && !isHospital ? 'none' : 'flex';
+    });
+
+    droppedItemMarkersRef.current.forEach((marker) => {
+      const el = marker.getElement();
+      if (el) el.style.display = isMeWounded ? 'none' : 'flex';
+    });
+
+    wildPetMarkersRef.current.forEach((marker) => {
+      const el = marker.getElement();
+      if (el) el.style.display = isMeWounded ? 'none' : 'flex';
+    });
+
+    companionPetMarkersRef.current.forEach((marker) => {
+      const el = marker.getElement();
+      if (el) el.style.display = isMeWounded ? 'none' : 'block';
+    });
+
+    pingMarkersRef.current.forEach((marker) => {
+      const el = marker.getElement();
+      if (el) el.style.display = isMeWounded ? 'none' : 'flex';
+    });
+
+    playerMarkersRef.current.forEach((marker, id) => {
+      const isMe = id === myPlayer.id;
+      const el = marker.getElement();
+      if (el) {
+        if (isMe) {
+          el.style.display = myPlayer.insideBuildingId ? 'none' : 'flex';
+        } else {
+          el.style.display = isMeWounded ? 'none' : 'flex';
+        }
+      }
+    });
+
+    if (monsterMarkerRef.current) {
+      const el = monsterMarkerRef.current.getElement();
+      if (el) {
+        el.style.display = !isMeWounded && isMonsterVisible ? 'block' : 'none';
+      }
+    }
+  }, [
+    isMeWounded,
+    myPlayer.lat,
+    myPlayer.lng,
+    myPlayer.insideBuildingId,
+    structures,
+    center.lat,
+    center.lng,
+    isMonsterVisible,
+  ]);
 
   return (
     <div className={`relative w-screen h-screen overflow-hidden bg-hud-dark ${inCombat ? 'pointer-events-none' : ''}`}>
