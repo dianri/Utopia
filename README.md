@@ -19,7 +19,7 @@ En **Las Meriendas: Monster Hunt**, una escuadra de cazadores debe coordinarse e
   - Ataque manual con cadencia estricta (`cadenceMs`), consumo de munición/usos y feedback háptico.
   - Asistencia en combate de las mascotas activas que infligen daño continuo.
   - **Bucle Continuo de Contraataque del Monstruo:** El monstruo ataca periódica y sostenidamente cada 2.5s (20-24 DMG), acelerándose a 1.8s con daño potenciado (28-34 DMG) al entrar en modo furia (`isEnraged`), con sacudida de pantalla, viñeta roja e impacto auditivo/háptico.
-  - **Mitigación y Evasión:** Escudo del Tanque reduce el daño en un 50%; pasiva del Gato Callejero otorga un 10% de probabilidad de esquivar el golpe por completo; las mascotas activas absorben un 20% de daño residual de área.
+  - **Escudo Táctico de Mascotas y Mitigación:** Las mascotas activas y vivas forman una barrera protectora de primera línea para el cazador. El monstruo concentra su ataque de forma secuencial sobre una mascota a la vez; mientras quede al menos un compañero con vida, el jugador no recibe daño a su salud. Al caer una mascota (0 HP / incapacitada), el daño pasa a la siguiente. Solo si todas caen (o si el jugador carece de mascotas), el monstruo golpea la salud del cazador. Además, la habilidad del Tanque reduce el daño en un 50% y la pasiva del Gato Callejero otorga un 10% de probabilidad de esquivar el ataque por completo.
   - **Daño Monotónico y Umbral de Muerte:** La salud del jugador se reduce de forma estricta y decreciente sin oscilaciones ni sobrescrituras por sincronización en red; al llegar a <= 0 HP, pasa inmediatamente a "Herido de Muerte" (1 HP), cerrando el combate para iniciar el repliegue al Hospital.
   - **Opción de Huida Táctica:** Botón "HUIR" que otorga un sprint de emergencia (+30% de velocidad durante 5s) e inmunidad temporal de combate.
 
@@ -77,8 +77,8 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 ---
 
 ### 🐾 4. Sistema de Mascotas de Apoyo (Pets)
-- **Adopción Ilimitada:** Spawneo procedural de mascotas silvestres en el mapa con marcadores animados. Se adoptan automáticamente al aproximarse a menos de 12 metros, sumándose al séquito del cazador.
-- **Órbita en Mapa con Anclaje Geoespacial y Proyección Nativa:** Las mascotas acompañan al jugador con renderizado nativo proyectado a 2.5m en MapLibre GL sin opacidades diferidas, con capas fijas en z-index 35 por encima del canvas y estructura relativa interna que garantiza que el icono y la etiqueta de nombre queden perfectamente anclados al terreno sin colapsar en la esquina superior izquierda.
+- **Adopción Táctica Ampliada (25m):** Spawneo procedural de mascotas silvestres en el mapa con marcadores animados interactivos. Se adoptan automáticamente o mediante clic en el marcador al aproximarse a menos de 25 metros (igualado al radio táctico de suministros/loot), sumándose al séquito del cazador.
+- **Órbita Constante en Píxeles de Pantalla:** Las mascotas acompañan al jugador ancladas a sus coordenadas con una corona orbital equidistante a 42px fijos de pantalla (`transform: translate(x, y)`), garantizando una distribución circular simétrica y visible sin apelotonamiento independientemente del nivel de zoom del mapa.
 - **Perfiles y Habilidades Pasivas:**
   - 🐕 **Perro Guardián (`dog`):** 60 HP, 6 DMG. Rastreo y recogida de suministros ampliada a 25m.
   - 🛸 **Dron Táctico (`drone`):** 45 HP, 10 DMG. Fuego a distancia y +15m de radio de visión en la niebla de guerra.

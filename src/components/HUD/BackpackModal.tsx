@@ -413,7 +413,7 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
                       Sin mascotas asignadas
                     </h3>
                     <p className="text-[11px] font-mono text-slate-400 leading-relaxed">
-                      Explora el mapa para encontrar animales o drones silvestres. Al aproximarte a menos de 12 metros, se unirán automáticamente a tu comitiva de combate.
+                      Explora el mapa para encontrar animales o drones silvestres. Al aproximarte a menos de 25 metros, se unirán automáticamente a tu comitiva de combate.
                     </p>
                   </div>
                 </div>
