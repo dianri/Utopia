@@ -485,7 +485,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     } else {
       chestMarkerRef.current.setLngLat([treasureLocation.lng, treasureLocation.lat]);
       const el = chestMarkerRef.current.getElement();
-      if (el) el.style.display = isMeWounded ? 'none' : 'flex';
+      if (el) el.style.display = isMeWounded ? 'none' : 'block';
     }
   }, [treasureLocation.lat, treasureLocation.lng, isMeWounded]);
 
@@ -557,7 +557,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const marker = crateMarkersRef.current.get(crate.id);
         marker?.setLngLat([crate.lng, crate.lat]);
         const el = marker?.getElement();
-        if (el) el.style.display = isMeWounded ? 'none' : 'flex';
+        if (el) el.style.display = isMeWounded ? 'none' : 'block';
       }
     });
   }, [crates, isMeWounded]);
@@ -635,7 +635,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const marker = structureMarkersRef.current.get(structure.id);
         marker?.setLngLat([structure.lng, structure.lat]);
         const el = marker?.getElement();
-        if (el) el.style.display = (isMeWounded && !isHospital) ? 'none' : 'flex';
+        if (el) el.style.display = (isMeWounded && !isHospital) ? 'none' : 'block';
       }
     });
   }, [structures, isMeWounded]);
@@ -714,7 +714,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const marker = droppedItemMarkersRef.current.get(dropped.id);
         marker?.setLngLat([dropped.lng, dropped.lat]);
         const el = marker?.getElement();
-        if (el) el.style.display = isMeWounded ? 'none' : 'flex';
+        if (el) el.style.display = isMeWounded ? 'none' : 'block';
       }
     });
   }, [droppedItems, isMeWounded]);
@@ -754,15 +754,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         // NO añadir clases absolute ni fixed aquí; MapLibre gestiona la posición mediante transform
         el.className = 'pet-marker-container pointer-events-auto select-none';
         el.style.zIndex = '35'; // Visible por encima del canvas
-        if (isMeWounded) {
-          el.style.display = 'none';
-        }
+        el.style.display = isMeWounded ? 'none' : 'block';
 
         el.innerHTML = `
-          <div class="relative flex flex-col items-center justify-center transform -translate-x-1/2 -translate-y-1/2">
+          <div class="relative flex flex-col items-center justify-center">
             <!-- Icono / Avatar con pulso -->
             <div class="relative flex items-center justify-center w-10 h-10">
-              <div class="absolute inset-0 rounded-full bg-emerald-400/30 animate-ping"></div>
+              <div class="absolute inset-0 rounded-full bg-emerald-400/30 animate-ping pointer-events-none"></div>
               <div class="w-8 h-8 rounded-full bg-slate-950/90 border-2 border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)] flex items-center justify-center text-lg">
                 ${wp.pet.icon}
               </div>
@@ -786,7 +784,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const marker = wildPetMarkersRef.current.get(wp.id);
         marker?.setLngLat([wp.lng, wp.lat]);
         const el = marker?.getElement();
-        if (el) el.style.display = isMeWounded ? 'none' : 'flex';
+        if (el) el.style.display = isMeWounded ? 'none' : 'block';
       }
     });
   }, [wildPets, mapLoaded, center.lat, center.lng, isMeWounded]);
@@ -812,7 +810,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const el = document.createElement('div');
       el.className = 'monster-map-marker select-none pointer-events-none';
       el.innerHTML = `
-        <div class="relative flex items-center justify-center -translate-x-1/2 -translate-y-1/2 pointer-events-none">
+        <div class="relative flex items-center justify-center pointer-events-none">
           <div class="w-12 h-12 bg-red-600/30 rounded-full animate-ping absolute"></div>
           <div class="w-10 h-10 bg-red-950 border-2 border-red-500 rounded-full flex items-center justify-center shadow-lg shadow-red-500/50">
             <span class="text-xl">👹</span>
@@ -942,11 +940,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const el = marker?.getElement();
         if (el) {
           if (isMe) {
-            el.style.display = isInside ? 'none' : 'flex';
+            el.style.display = isInside ? 'none' : 'block';
           } else if (isMeWounded) {
             el.style.display = 'none';
           } else {
-            el.style.display = 'flex';
+            el.style.display = 'block';
             el.style.opacity = isInside ? '0.75' : '1';
           }
         }
@@ -1014,12 +1012,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           // NO añadir clases absolute ni fixed; MapLibre gestiona la posición mediante transform
           el.className = 'companion-pet-container pointer-events-none select-none';
           el.style.zIndex = '35';
-          if (isInside || isMeWounded) {
-            el.style.display = 'none';
-          }
+          el.style.display = (isInside || isMeWounded) ? 'none' : 'block';
 
           el.innerHTML = `
-            <div class="relative flex flex-col items-center justify-center transform -translate-x-1/2 -translate-y-1/2">
+            <div class="relative flex flex-col items-center justify-center">
               <div id="pet-avatar-${markerKey}" class="w-6 h-6 rounded-full bg-slate-950/90 border ${
                 pet.isWounded ? 'border-gray-500 grayscale opacity-60' : 'border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
               } flex items-center justify-center text-xs">
@@ -1176,29 +1172,29 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     // 3. Ocultar o restaurar marcadores existentes en el DOM de forma inmediata
     if (chestMarkerRef.current) {
       const el = chestMarkerRef.current.getElement();
-      if (el) el.style.display = isMeWounded ? 'none' : 'flex';
+      if (el) el.style.display = isMeWounded ? 'none' : 'block';
     }
 
     crateMarkersRef.current.forEach((marker) => {
       const el = marker.getElement();
-      if (el) el.style.display = isMeWounded ? 'none' : 'flex';
+      if (el) el.style.display = isMeWounded ? 'none' : 'block';
     });
 
     structureMarkersRef.current.forEach((marker, id) => {
       const struct = structures.find((s) => s.id === id);
       const isHospital = struct?.type === 'hospital';
       const el = marker.getElement();
-      if (el) el.style.display = isMeWounded && !isHospital ? 'none' : 'flex';
+      if (el) el.style.display = isMeWounded && !isHospital ? 'none' : 'block';
     });
 
     droppedItemMarkersRef.current.forEach((marker) => {
       const el = marker.getElement();
-      if (el) el.style.display = isMeWounded ? 'none' : 'flex';
+      if (el) el.style.display = isMeWounded ? 'none' : 'block';
     });
 
     wildPetMarkersRef.current.forEach((marker) => {
       const el = marker.getElement();
-      if (el) el.style.display = isMeWounded ? 'none' : 'flex';
+      if (el) el.style.display = isMeWounded ? 'none' : 'block';
     });
 
     companionPetMarkersRef.current.forEach((marker) => {
@@ -1208,7 +1204,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     pingMarkersRef.current.forEach((marker) => {
       const el = marker.getElement();
-      if (el) el.style.display = isMeWounded ? 'none' : 'flex';
+      if (el) el.style.display = isMeWounded ? 'none' : 'block';
     });
 
     playerMarkersRef.current.forEach((marker, id) => {
@@ -1216,9 +1212,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const el = marker.getElement();
       if (el) {
         if (isMe) {
-          el.style.display = myPlayer.insideBuildingId ? 'none' : 'flex';
+          el.style.display = myPlayer.insideBuildingId ? 'none' : 'block';
         } else {
-          el.style.display = isMeWounded ? 'none' : 'flex';
+          el.style.display = isMeWounded ? 'none' : 'block';
         }
       }
     });
@@ -1242,7 +1238,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
   return (
     <div className={`relative w-screen h-screen overflow-hidden bg-hud-dark ${inCombat ? 'pointer-events-none' : ''}`}>
-      <div ref={mapContainerRef} id="map" className="w-full h-full" />
+      <div ref={mapContainerRef} id="map" className="relative w-full h-full" />
 
       {/* BOTÓN DE CENTRAR CÁMARA */}
       <button
