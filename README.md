@@ -18,13 +18,13 @@ En **Las Meriendas: Monster Hunt**, una escuadra de cazadores debe coordinarse e
   - Barra de vida global y compartida del monstruo sincronizada por Supabase Realtime.
   - Ataque manual con cadencia estricta (`cadenceMs`), consumo de munición/usos y feedback háptico.
   - Asistencia en combate de las mascotas activas que infligen daño continuo.
-  - Ciclo de contraataques periódicos del monstruo (cada 2.5s) con sacudida de pantalla e impacto.
+  - **Bucle Continuo de Contraataque del Monstruo:** El monstruo ataca periódica y sostenidamente cada 2.5s (24 DMG), acelerándose a 1.8s con daño potenciado (34 DMG) al entrar en modo furia (`isEnraged`), con sacudida de pantalla, viñeta roja e impacto auditivo/háptico.
   - **Opción de Huida Táctica:** Botón "HUIR" que otorga un sprint de emergencia (+30% de velocidad durante 5s) e inmunidad temporal de combate.
 
 ---
 
 ### 🎒 2. Sistema Integral de Mochila, Jerarquía y Desgaste de Armamento
-- **Mochila Táctica (`BackpackModal.tsx`):** Capacidad limitada a **4 slots** de inventario con visor de estadísticas, nivel de daño, cadencia y munición.
+- **Mochila Táctica Ilimitada (`BackpackModal.tsx`):** Capacidad sin límite de slots con scroll fluido vertical, visor de estadísticas tácticas, nivel de daño, cadencia y munición.
 - **Jerarquía de Armas (7 Tiers):**
   1. **Tier 7 — Lanzacohetes RPG:** Daño masivo de área (120 DMG, 2 cohetes).
   2. **Tier 6 — Granadas Tácticas:** Daño explosivo alto (85 DMG, 4 granadas).
