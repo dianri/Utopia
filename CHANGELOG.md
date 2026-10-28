@@ -4,6 +4,12 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Unreleased]
+### Added
+- **Aislamiento táctico del mapa y guía al Hospital en Estado Herido de Muerte (`GameMap.tsx`, `README.md`):**
+  - Al caer un jugador en estado "Herido de Muerte" (`isCriticallyWounded` / `status === 'critically_wounded'`), se ocultan inmediatamente todos los elementos y marcadores del mapa (monstruo, cofre del tesoro, cajas de suministros, armas y botiquines en el suelo, mascotas silvestres y acompañantes, pings de fantasma, otros jugadores y áreas tácticas poligonales), dejando visible únicamente la estructura del Hospital de Campaña (`🏥`) y el marcador del propio jugador.
+  - Generada una capa GeoJSON dinámica (`hospital-guideline` y `hospital-guideline-line`) con una línea de puntos esmeralda (`#10b981`, `line-dasharray: [1.5, 2.5]`) que traza en tiempo real el camino directo y más corto desde la posición del herido hasta las coordenadas del Hospital.
+  - Al recuperarse dentro del Hospital (alcanzando >= 20 HP) y finalizar el estado herido, se retira la línea guía y se restauran de forma instantánea todos los iconos, entidades y radios de interacción del mapa táctico.
+
 ### Documentation
 - **Documentación exhaustiva de la IA y comportamiento del monstruo en `README.md` (`README.md`):**
   - Añadida sección dedicada detallando la máquina de estados de `MonsterAIController` (patrulla circular lenta a 1.1 m/s en radio de 55m, persecución con jerarquía de aggro y pérdida de rastro en refugios/hospital, sprint de furia defensiva a 3.8 m/s hacia el cofre, modo enfurecido en Fase 2 al <= 30% HP con ralentización en área y aceleración a 4.5 m/s, ciclo de respawn en 60s y reglas de combate en la arena táctica).

@@ -106,6 +106,10 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 - **Sustitución de la Muerte Instantánea:** Al recibir daño letal, el HP se ancla en 1 y el jugador pasa al estado `critically_wounded`.
 - **Restricciones de Combate:** Armas bloqueadas, habilidades deshabilitadas e imposibilidad de saquear cajas. La única acción disponible es replegarse hacia el Hospital de Campaña.
 - **HUD Crítico y Brújula Médica:** Viñeta roja pulsante en pantalla y compás direccional interactivo (`CriticallyWoundedOverlay.tsx`) que señala con precisión de rumbo y distancia hacia el Hospital más cercano.
+- **Aislamiento Táctico del Mapa y Línea Guía de Emergencia:**
+  - Al entrar en estado herido, **desaparecen todos los iconos del mapa** (monstruo, cofre del tesoro, cajas de suministros, armas en el suelo, mascotas, pings y otros jugadores), manteniendo únicamente visible la estructura del Hospital (`🏥`) y la posición del jugador.
+  - Se traza una **línea de puntos esmeralda** (`hospital-guideline-line` con `line-dasharray`) que une en tiempo real al combatiente con el Hospital indicando el camino más corto hacia la recuperación.
+  - Al alcanzar >= 20 HP dentro del Hospital y salir del estado herido, todos los elementos del mapa vuelven a mostrarse instantáneamente y la línea guía se retira.
 - **Recuperación Infinita en Hospital (Sin Derrota Global):** Al alcanzar >= 20 HP dentro del Hospital, el combatiente se estabiliza y reanuda el combate activo. La partida no tiene condición de derrota global (`defeat`); se mantiene en bucle continuo en estado `'playing'` permitiendo reapariciones y curaciones infinitas en el Hospital hasta que la escuadra consiga abrir el cofre del tesoro y alcance la victoria.
 
 ---
