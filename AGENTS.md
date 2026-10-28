@@ -67,6 +67,11 @@ Para evitar solapamientos, las tareas en paralelo deben asignarse a dominios ais
 - Ningún agente debe modificar migraciones previas ya aplicadas.
 - Cada cambio en base de datos debe añadirse como una nueva migración incremental en `supabase/migrations/` con timestamp secuencial o documentarse explícitamente en el commit para su ejecución en el SQL Editor de Supabase.
 
+### C. Sincronización Continua de Documentación (`README.md` y `AGENTS.md`)
+- **Regla estricta:** Con cada nueva feature, refactor o corrección de comportamiento, el agente **DEBE revisar y sincronizar obligatoriamente tanto `README.md` como `AGENTS.md`**:
+  - `README.md`: Debe reflejar inmediatamente cualquier nueva mecánica de juego, controles, cambios en la UI/HUD, reglas de combate o arquitectura técnica visible para usuarios y desarrolladores.
+  - `AGENTS.md`: Debe actualizarse si la tarea introduce nuevos dominios de código, nuevos archivos compartidos, cambios en el flujo de trabajo concurrente o directrices operativas.
+
 ---
 
 ## 4. Checklist de Validación para el Agente antes de Finalizar
@@ -78,7 +83,9 @@ Cada agente debe cumplir y reportar el siguiente checklist al culminar su interv
 - [ ] ¿He ejecutado `npm run build` sin errores de compilación ni advertencias de tipos TypeScript?
 - [ ] ¿He probado que la aplicación compila con `vite-plugin-pwa` y no rompe los chunks de build?
 - [ ] ¿Se ha documentado en el mensaje de commit qué módulos fueron modificados y qué endpoints o eventos de Supabase se vieron afectados?
-- [ ] ¿He registrado mis cambios (Added, Changed, Fixed, Database) en la sección [Unreleased] de CHANGELOG.md?
+- [ ] ¿He registrado mis cambios (Added, Changed, Fixed, Database, Documentation) en la sección [Unreleased] de CHANGELOG.md?
+- [ ] ¿He revisado y actualizado `README.md` reflejando las nuevas mecánicas, controles o cambios arquitectónicos introducidos?
+- [ ] ¿He revisado y actualizado `AGENTS.md` si la intervención modifica dominios, contratos de interfaz o directrices operativas?
 
 ---
 

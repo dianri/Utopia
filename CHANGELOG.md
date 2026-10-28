@@ -5,6 +5,8 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ## [Unreleased]
 ### Documentation
+- **Establecida la regla obligatoria de sincronización de `README.md` y `AGENTS.md` con cada feature (`AGENTS.md`, `README.md`):**
+  - Añadida directriz explícita (Sección 3.C) y casillas de verificación obligatorias en el checklist de validación previa (Sección 4 de `AGENTS.md`) para exigir la revisión y actualización de `README.md` y `AGENTS.md` en cada intervención.
 - **Actualización integral de `README.md`:**
   - Documentadas todas las mecánicas incorporadas en los últimos sprints: Arena de Combate táctica interactiva (`CombatArena.tsx`), sistema de mascotas de apoyo con habilidades pasivas y asistencia de combate (`Pet[]`), estructuras tácticas en el mapa (Hospital de Campaña y Casas/Refugios), rediseño del ciclo de vida con estado "Herido de Muerte" (`critically_wounded`) y brújula de emergencia, sistema de mochila de 4 slots con jerarquía de 7 tiers de armamento y desgaste de durabilidad, apertura cooperativa del cofre por fases de minijuegos con sprint de furia del monstruo, y optimizaciones visuales y mobile-first para el HUD.
 
