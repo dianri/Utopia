@@ -16,6 +16,11 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - El motor de interpolación Tap-to-Move (`useGeolocation.ts`) y el HUD del mapa (`GameMap.tsx`) aplican automáticamente la nueva velocidad seleccionada en la sala.
 
 ### Added
+- **Selector de vista de mapa (Táctico oscuro vs. Satélite real) en el HUD (`GameMap.tsx`, `README.md`):**
+  - Botón táctico interactivo en la esquina superior derecha (`top-36 right-4`) con estética ciberpunk y respuesta audiovisual/háptica mediante `soundEffects.playRadarPing()` y vibración.
+  - Alternancia fluida entre el mapa vectorial oscuro táctico por defecto de OpenFreeMap y la capa ortofoto satelital de alta resolución de ArcGIS World Imagery (`server.arcgisonline.com`).
+  - Inyección y preservación garantizada de las 7 capas GeoJSON de juego (área perimetral, radio del tesoro, cono de visión, zonas de suministros, estructuras tácticas, radios de interacción de loot/mascotas y línea de emergencia hospitalaria) mediante escucha del evento `map.once('style.load')`.
+  - Mantenimiento automático y sin parpadeo de todos los marcadores DOM de jugadores, monstruo, mascotas y botín sobre el terreno real.
 - **Tabbed backpack view with dedicated pets companion tab displaying passive traits and health (`BackpackModal.tsx`, `App.tsx`):**
   - Implementado sistema de pestañas tácticas segmentadas en la mochila: "EQUIPO / ARMAS" (por defecto) y "MASCOTAS".
   - La pestaña de armamento preserva la lista vertical sin límites de slots, detalle de daño, cadencia y munición, auto-equipado y objetos en el terreno.
