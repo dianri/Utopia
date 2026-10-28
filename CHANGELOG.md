@@ -16,6 +16,11 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - El motor de interpolación Tap-to-Move (`useGeolocation.ts`) y el HUD del mapa (`GameMap.tsx`) aplican automáticamente la nueva velocidad seleccionada en la sala.
 
 ### Added
+- **Generación dinámica progresiva por tiempo de airdrops y mascotas con animación de paracaídas y balanceo pendular (`mapEntities.ts`, `GameMap.tsx`, `App.tsx`, `useGameRealtime.ts`, `index.css`, `types/game.ts`, `README.md`):**
+  - **Lote base mínimo inicial:** Al iniciar o crear una sala, se instancian únicamente 3 cajas de suministros y 1 mascota silvestre en el terreno, evitando saturar el mapa de entidades desde el comienzo.
+  - **Bucle periódico del Host para airdrops y criaturas silvestres:** El anfitrión ejecuta un ciclo continuo cada 50s para lanzar un airdrop militar en una coordenada aleatoria del área operativa (`createAirdropCrate`), y cada 95s para engendrar una nueva mascota silvestre (`generateSingleWildPet`) con un tope de 5 criaturas simultáneas sin adoptar en el mapa.
+  - **Sincronización en tiempo real (Supabase Broadcast):** Nuevos eventos `new_airdrop` y `new_wild_pet` en `useGameRealtime` que comunican instantáneamente los suministros caídos y nuevas mascotas a todos los miembros de la sala, con avisos sonoros de radar y registros en el Combat Log.
+  - **Animación visual de paracaídas con balanceo (`@keyframes airdropSway`):** Al caer una caja de suministros, su marcador desciende desde una altura simulada con vaivén pendular lateral y rotación oscilante a lo largo de 5 segundos coronada por una cúpula de paracaídas militar con líneas de arnés. Al impactar en tierra firme, el paracaídas se pliega y desprende suavemente (`@keyframes parachuteFold`), anclando la caja al suelo con su halo táctico de 40m.
 - **Selector de vista de mapa (Táctico oscuro vs. Satélite real) en el HUD (`GameMap.tsx`, `README.md`):**
   - Botón táctico interactivo en la esquina superior derecha (`top-36 right-4`) con estética ciberpunk y respuesta audiovisual/háptica mediante `soundEffects.playRadarPing()` y vibración.
   - Alternancia fluida entre el mapa vectorial oscuro táctico por defecto de OpenFreeMap y la capa ortofoto satelital de alta resolución de ArcGIS World Imagery (`server.arcgisonline.com`).
