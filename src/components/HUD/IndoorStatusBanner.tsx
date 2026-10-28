@@ -4,15 +4,19 @@ import { ShieldCheck, HeartPulse } from 'lucide-react';
 
 interface IndoorStatusBannerProps {
   building: MapStructure | null;
+  isFullyHealed?: boolean;
 }
 
-export const IndoorStatusBanner: React.FC<IndoorStatusBannerProps> = ({ building }) => {
+export const IndoorStatusBanner: React.FC<IndoorStatusBannerProps> = ({
+  building,
+  isFullyHealed = false,
+}) => {
   if (!building) return null;
 
   const isHospital = building.type === 'hospital';
 
   return (
-    <div className="fixed top-20 left-1/2 -translate-x-1/2 z-40 pointer-events-none w-full max-w-sm px-4">
+    <div className="w-full pointer-events-none">
       <div
         className={`px-3.5 py-2 rounded-2xl border-2 shadow-2xl backdrop-blur-md flex items-center gap-3 ${
           isHospital
@@ -28,7 +32,9 @@ export const IndoorStatusBanner: React.FC<IndoorStatusBannerProps> = ({ building
           }`}
         >
           {isHospital ? (
-            <HeartPulse className="w-5 h-5 text-emerald-300 animate-pulse" />
+            <HeartPulse
+              className={`w-5 h-5 text-emerald-300 ${isFullyHealed ? '' : 'animate-pulse'}`}
+            />
           ) : (
             <ShieldCheck className="w-5 h-5 text-cyan-300" />
           )}
@@ -39,11 +45,17 @@ export const IndoorStatusBanner: React.FC<IndoorStatusBannerProps> = ({ building
               isHospital ? 'text-emerald-300' : 'text-cyan-300'
             }`}
           >
-            {isHospital ? 'EN EL INTERIOR: HOSPITAL' : `REFUGIADO: ${building.name.toUpperCase()}`}
-          </span>
-          <span className="block text-[10px] font-mono text-slate-200">
             {isHospital
-              ? 'Recuperando salud (+15 HP/s)'
+              ? isFullyHealed
+                ? 'INSTALACIÓN MÉDICA: HOSPITAL'
+                : 'EN EL INTERIOR: HOSPITAL'
+              : `REFUGIADO: ${building.name.toUpperCase()}`}
+          </span>
+          <span className="block text-[10px] font-mono text-slate-200 truncate">
+            {isHospital
+              ? isFullyHealed
+                ? 'Todos los signos vitales se encuentran al 100%'
+                : 'Recuperando salud (+15 HP/s)'
               : 'A cubierto: El monstruo no puede verte'}
           </span>
         </div>

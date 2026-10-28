@@ -448,6 +448,19 @@ export const App: React.FC = () => {
     [structures, myPlayer?.insideBuildingId]
   );
 
+  const isSquadFullyHealed = useMemo(() => {
+    if (!myPlayer) return false;
+    const playerFull =
+      myPlayer.hp >= (myPlayer.maxHp || 100) &&
+      !myPlayer.isCriticallyWounded &&
+      myPlayer.status !== 'critically_wounded';
+    const petsFull =
+      !myPlayer.pets ||
+      myPlayer.pets.length === 0 ||
+      myPlayer.pets.every((p) => !p.isWounded && p.hp >= (p.maxHp || 100));
+    return playerFull && petsFull;
+  }, [myPlayer]);
+
   // Logging táctico con descarte de duplicados y contador acumulativo
   const addLog = useCallback((text: string, type: TacticalLogMessage['type'] = 'info') => {
     setCombatLogs((prev) => {
@@ -963,9 +976,9 @@ export const App: React.FC = () => {
               setIsHospitalModalOpen(true);
               isHospitalModalOpenRef.current = true;
               addLog('Has entrado al Hospital de Campaña. Iniciando regeneración táctica.', 'info');
-            } else {
-              addLog('INSTALACIÓN MÉDICA: Todos los signos vitales se encuentran al 100%', 'info');
             }
+            // Si la escuadra está al 100% no se emite toast flotante redundante;
+            // el banner fijo superior IndoorStatusBanner muestra "Todos los signos vitales se encuentran al 100%"
           } else {
             addLog(`Has entrado a ${st?.name || 'un refugio'}. El monstruo pierde tu rastro.`, 'info');
           }
@@ -1921,6 +1934,8 @@ export const App: React.FC = () => {
   // HOSPITAL DE CAMPAÑA: DETECCIÓN CONTINUA Y APERTURA DE BAHÍA MÉDICA (< 18M)
   // Toda la curación hospitalaria ocurre exclusivamente a través de HospitalModal
   // ==========================================
+  const hasShownFullHealthNoticeRef = useRef(false);
+
   useEffect(() => {
     if (room?.status !== 'playing' || !myPlayer?.isAlive) return;
 
@@ -1954,14 +1969,20 @@ export const App: React.FC = () => {
 
       if (hospitalDistance <= hospitalRadius) {
         if (needsHealing && !isHospitalModalOpenRef.current) {
+          hasShownFullHealthNoticeRef.current = false;
           // Detener movimiento y abrir de inmediato la interfaz táctica del hospital
           cancelMovementRef.current();
           setIsHospitalModalOpen(true);
           isHospitalModalOpenRef.current = true;
           addLogRef.current?.('Has entrado al Hospital de Campaña. Iniciando regeneración táctica.', 'info');
+        } else if (!needsHealing) {
+          // Si toda la escuadra está sana (100% HP y sin mascotas heridas),
+          // NO emitir toasts repetitivos ni mensajes parpadeantes; el banner fijo permanente se encarga.
+          hasShownFullHealthNoticeRef.current = true;
         }
       } else {
         // Al alejarse más allá del radio de la instalación
+        hasShownFullHealthNoticeRef.current = false;
         if (isHospitalModalOpenRef.current) {
           setIsHospitalModalOpen(false);
           isHospitalModalOpenRef.current = false;
@@ -3629,11 +3650,6 @@ export const App: React.FC = () => {
             onPickDroppedItem={handlePickDroppedItem}
           />
 
-          {/* BANNER DE ESTADO EN INTERIOR DE ESTRUCTURA (HOSPITAL O REFUGIO) */}
-          {currentBuilding && !(myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded') && (
-            <IndoorStatusBanner building={currentBuilding} />
-          )}
-
           {/* OVERLAY DE ESTADO HERIDO DE MUERTE (VIGNETTE ROJA Y BRÚJULA AL HOSPITAL) */}
           {(myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded') && (
             <CriticallyWoundedOverlay
@@ -3647,6 +3663,16 @@ export const App: React.FC = () => {
 
           {/* CONTENEDOR FLEXBOX VERTICAL PARA ALERTAS CENTRALES (Evita solapamientos) */}
           <div className="fixed top-20 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-40 pointer-events-none w-full max-w-sm px-4">
+            {/* BANNER DE ESTADO EN INTERIOR DE ESTRUCTURA (HOSPITAL O REFUGIO) */}
+            {currentBuilding &&
+              !isHospitalModalOpen &&
+              !(myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded') && (
+                <IndoorStatusBanner
+                  building={currentBuilding}
+                  isFullyHealed={isSquadFullyHealed}
+                />
+              )}
+
             {/* AVISO TÁCTICO: FUERA DEL ÁREA DE JUEGO */}
             {isOutOfPlayArea && (
               <div className="pointer-events-auto w-full bg-red-950/90 border-2 border-red-500 text-red-200 px-3 py-2 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-2.5 animate-pulse">
@@ -3680,32 +3706,35 @@ export const App: React.FC = () => {
               </div>
             )}
 
-            {/* AVISO / BOTÓN TÁCTICO: HOSPITAL DE CAMPAÑA (BAHÍA MÉDICA) */}
-            {myPlayer.insideBuildingType === 'hospital' && !isHospitalModalOpen && !isCombatArenaOpen && (
-              <button
-                type="button"
-                onClick={() => {
-                  setIsHospitalModalOpen(true);
-                  cancelMovementRef.current();
-                }}
-                className="pointer-events-auto w-full bg-emerald-950/90 border-2 border-emerald-400 text-emerald-200 px-3 py-2 rounded-xl shadow-2xl backdrop-blur-md flex items-center justify-between gap-2.5 animate-pulse hover:bg-emerald-900/90 active:scale-95 transition-all"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">🏥</span>
-                  <div className="text-left">
-                    <span className="font-mono font-black text-xs text-emerald-300 block uppercase tracking-wider">
-                      BAHÍA MÉDICA ACTIVA
-                    </span>
-                    <span className="font-mono text-[10px] text-cyan-300">
-                      Toca para acceder al Pod de Regeneración (+15 HP/s)
-                    </span>
+            {/* AVISO / BOTÓN TÁCTICO: HOSPITAL DE CAMPAÑA (BAHÍA MÉDICA) - Solo visible si la escuadra necesita curación */}
+            {myPlayer.insideBuildingType === 'hospital' &&
+              !isHospitalModalOpen &&
+              !isCombatArenaOpen &&
+              !isSquadFullyHealed && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsHospitalModalOpen(true);
+                    cancelMovementRef.current();
+                  }}
+                  className="pointer-events-auto w-full bg-emerald-950/90 border-2 border-emerald-400 text-emerald-200 px-3 py-2 rounded-xl shadow-2xl backdrop-blur-md flex items-center justify-between gap-2.5 animate-pulse hover:bg-emerald-900/90 active:scale-95 transition-all"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">🏥</span>
+                    <div className="text-left">
+                      <span className="font-mono font-black text-xs text-emerald-300 block uppercase tracking-wider">
+                        BAHÍA MÉDICA ACTIVA
+                      </span>
+                      <span className="font-mono text-[10px] text-cyan-300">
+                        Toca para acceder al Pod de Regeneración (+15 HP/s)
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <span className="font-mono font-bold text-xs bg-emerald-800/80 px-2.5 py-1 rounded-lg text-white border border-emerald-400/50 shadow-sm">
-                  INGRESAR
-                </span>
-              </button>
-            )}
+                  <span className="font-mono font-bold text-xs bg-emerald-800/80 px-2.5 py-1 rounded-lg text-white border border-emerald-400/50 shadow-sm">
+                    INGRESAR
+                  </span>
+                </button>
+              )}
 
             {room.status === 'playing' && (chestPhase < 3 || chestStep < 2) && (
               <ChestCountdown
@@ -3733,7 +3762,7 @@ export const App: React.FC = () => {
             <RespawnTimer secondsRemaining={monster.respawnTimeRemaining} />
           </div>
 
-          <CombatLog messages={combatLogs} onDismiss={handleDismissLog} />
+          {!isHospitalModalOpen && <CombatLog messages={combatLogs} onDismiss={handleDismissLog} />}
 
           {/* OVERLAY DE MODO FANTASMA CUANDO EL JUGADOR ESTÁ MUERTO */}
           {!myPlayer.isAlive && (
