@@ -67,6 +67,7 @@ import { GhostOverlay } from './components/HUD/GhostOverlay';
 import { CriticallyWoundedOverlay } from './components/HUD/CriticallyWoundedOverlay';
 import { IndoorStatusBanner } from './components/HUD/IndoorStatusBanner';
 import { BackpackModal } from './components/HUD/BackpackModal';
+import 'maplibre-gl/dist/maplibre-gl.css';
 
 import { CreateRoomModal } from './components/Lobby/CreateRoomModal';
 import { JoinRoomModal } from './components/Lobby/JoinRoomModal';

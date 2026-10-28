@@ -701,30 +701,32 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       if (!wildPetMarkersRef.current.has(wp.id)) {
         const el = document.createElement('div');
-        el.className = `wild-pet-marker-${wp.id} flex flex-col items-center select-none cursor-pointer animate-bounce`;
-        el.style.opacity = '0';
-        el.style.transition = 'opacity 0.25s ease-out';
+        // NO añadir clases absolute ni fixed aquí; MapLibre gestiona la posición mediante transform
+        el.className = 'pet-marker-container pointer-events-auto select-none';
+        el.style.zIndex = '35'; // Visible por encima del canvas
+
         el.innerHTML = `
-          <div class="relative flex items-center justify-center">
-            <div class="w-10 h-10 rounded-full bg-emerald-400/20 animate-ping absolute"></div>
-            <div class="w-8 h-8 rounded-full bg-emerald-950/90 border-2 border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.7)] flex items-center justify-center text-base">
-              ${wp.pet.icon}
+          <div class="relative flex flex-col items-center justify-center transform -translate-x-1/2 -translate-y-1/2">
+            <!-- Icono / Avatar con pulso -->
+            <div class="relative flex items-center justify-center w-10 h-10">
+              <div class="absolute inset-0 rounded-full bg-emerald-400/30 animate-ping"></div>
+              <div class="w-8 h-8 rounded-full bg-slate-950/90 border-2 border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)] flex items-center justify-center text-lg">
+                ${wp.pet.icon}
+              </div>
+            </div>
+            <!-- Etiqueta del nombre centrada bajo el avatar -->
+            <div class="mt-1 px-1.5 py-0.5 text-[9px] font-mono font-bold bg-slate-900/95 border border-emerald-500/80 text-emerald-300 rounded uppercase tracking-wider whitespace-nowrap shadow-lg">
+              ${wp.pet.name}
             </div>
           </div>
-          <span class="mt-0.5 px-1 py-0.5 text-[8px] font-mono font-bold bg-hud-dark/95 border border-emerald-500/70 text-emerald-300 rounded uppercase tracking-wider whitespace-nowrap shadow-md">
-            ${wp.pet.name}
-          </span>
         `;
 
-        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+        const marker = new maplibregl.Marker({
+          element: el,
+          anchor: 'center',
+        })
           .setLngLat([wp.lng, wp.lat])
           .addTo(map);
-
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            el.style.opacity = '1';
-          });
-        });
 
         wildPetMarkersRef.current.set(wp.id, marker);
       } else {
@@ -949,32 +951,27 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
         if (!companionPetMarkersRef.current.has(markerKey)) {
           const el = document.createElement('div');
-          // Sin transition-all para evitar deslizamientos/lag en el ciclo de proyección de MapLibre
-          el.className = `companion-pet-${markerKey} flex flex-col items-center select-none pointer-events-none`;
-          el.style.opacity = '0';
-          el.style.transition = 'opacity 0.25s ease-out';
+          // NO añadir clases absolute ni fixed; MapLibre gestiona la posición mediante transform
+          el.className = 'companion-pet-container pointer-events-none select-none';
+          el.style.zIndex = '35';
           if (isInside) {
             el.style.display = 'none';
           }
 
           el.innerHTML = `
-            <div id="pet-avatar-${markerKey}" class="w-6 h-6 rounded-full bg-slate-900/90 border ${
-              pet.isWounded ? 'border-gray-500 grayscale opacity-60' : 'border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
-            } flex items-center justify-center text-xs">
-              ${pet.icon}
+            <div class="relative flex flex-col items-center justify-center transform -translate-x-1/2 -translate-y-1/2">
+              <div id="pet-avatar-${markerKey}" class="w-6 h-6 rounded-full bg-slate-950/90 border ${
+                pet.isWounded ? 'border-gray-500 grayscale opacity-60' : 'border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
+              } flex items-center justify-center text-xs">
+                ${pet.icon}
+              </div>
+              ${pet.isWounded ? '<span class="text-[8px] animate-spin">💫</span>' : ''}
             </div>
-            ${pet.isWounded ? '<span class="text-[8px] animate-spin">💫</span>' : ''}
           `;
 
           const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
             .setLngLat([petLng, petLat])
             .addTo(map);
-
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              el.style.opacity = '1';
-            });
-          });
 
           companionPetMarkersRef.current.set(markerKey, marker);
         } else {
@@ -982,11 +979,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           marker?.setLngLat([petLng, petLat]);
           const el = marker?.getElement();
           if (el) {
-            el.style.display = isInside ? 'none' : 'flex';
+            el.style.display = isInside ? 'none' : 'block';
             const avatar = el.querySelector(`#pet-avatar-${markerKey}`);
             if (avatar) {
-              avatar.className = `w-6 h-6 rounded-full bg-slate-900/90 border ${
-                pet.isWounded ? 'border-gray-500 grayscale opacity-60' : 'border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+              avatar.className = `w-6 h-6 rounded-full bg-slate-950/90 border ${
+                pet.isWounded ? 'border-gray-500 grayscale opacity-60' : 'border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
               } flex items-center justify-center text-xs`;
             }
           }
