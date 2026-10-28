@@ -365,6 +365,38 @@ export const App: React.FC = () => {
     []
   );
 
+  const syncRoomEntitiesToSupabase = useCallback(
+    async (
+      roomId: string,
+      entities: {
+        crates?: SupplyCrate[];
+        wildPets?: WildPet[];
+        droppedItems?: DroppedItem[];
+      }
+    ) => {
+      if (!roomId) return;
+      try {
+        const payload: Record<string, any> = {};
+        if (entities.crates !== undefined) {
+          const activeCrates = entities.crates.filter((c) => !c.opened);
+          payload.active_crates = activeCrates;
+          payload.active_loot = activeCrates;
+        }
+        if (entities.wildPets !== undefined) {
+          payload.active_wild_pets = entities.wildPets;
+        }
+        if (entities.droppedItems !== undefined) {
+          payload.active_dropped_items = entities.droppedItems;
+        }
+
+        await (supabase.from('games') as any).update(payload).eq('id', roomId);
+      } catch (err) {
+        console.warn('Error al sincronizar entidades de sala con Supabase:', err);
+      }
+    },
+    []
+  );
+
   // Guardar snapshot local inmediato ante cualquier cambio de estado del jugador
   useEffect(() => {
     if (myPlayer && room?.id) {
@@ -2149,6 +2181,96 @@ export const App: React.FC = () => {
   }, [roleSkillCooldown, myPlayer, realtime, addLog, room?.centerLat, room?.centerLng, monster.hp]);
 
   // ==========================================
+  // GENERACIÓN DINÁMICA PROGRESIVA (HOST AIRDROP Y MASCOTAS CADA INTERVALO)
+  // ==========================================
+  useEffect(() => {
+    if (!room || room.status !== 'playing' || !myPlayer?.isHost) return;
+
+    const AIRDROP_INTERVAL_MS = 50000; // Cada 50 segundos
+    const PET_INTERVAL_MS = 95000; // Cada 95 segundos
+    const MAX_WILD_PETS_IN_MAP = 5;
+
+    const startedAtMs = room.startedAt
+      ? new Date(room.startedAt).getTime()
+      : room.createdAt
+      ? new Date(room.createdAt).getTime()
+      : Date.now();
+
+    const elapsedMs = Math.max(0, Date.now() - startedAtMs);
+
+    // Sincronizar el primer disparo con el tiempo transcurrido desde el inicio de la partida
+    const initialAirdropDelay = Math.max(
+      1000,
+      AIRDROP_INTERVAL_MS - (elapsedMs % AIRDROP_INTERVAL_MS)
+    );
+    const initialPetDelay = Math.max(
+      1000,
+      PET_INTERVAL_MS - (elapsedMs % PET_INTERVAL_MS)
+    );
+
+    let airdropInterval: any = null;
+    let petInterval: any = null;
+
+    const dropAirdrop = () => {
+      const newCrate = createAirdropCrate(
+        { lat: room.centerLat, lng: room.centerLng },
+        room.playAreaRadius
+      );
+      setCrates((prev) => {
+        const updated = [...prev, newCrate];
+        syncRoomEntitiesToSupabase(room.id, { crates: updated });
+        return updated;
+      });
+      realtimeRef.current.broadcastNewAirdrop(newCrate);
+      soundEffects.playCrateLoot();
+      addLog('🪂 ¡Airdrop táctico detectado! Cayendo en paracaídas', 'loot');
+    };
+
+    const spawnPet = () => {
+      if (wildPetsRef.current.length >= MAX_WILD_PETS_IN_MAP) return;
+      const newPet = generateSingleWildPet(
+        { lat: room.centerLat, lng: room.centerLng },
+        room.playAreaRadius
+      );
+      setWildPets((prev) => {
+        const updated = [...prev, newPet];
+        syncRoomEntitiesToSupabase(room.id, { wildPets: updated });
+        return updated;
+      });
+      realtimeRef.current.broadcastNewWildPet(newPet);
+      addLog(`🐾 Se ha avistado una nueva criatura en el mapa: ${newPet.pet.name} ${newPet.pet.icon}`, 'info');
+    };
+
+    const airdropTimeout = setTimeout(() => {
+      dropAirdrop();
+      airdropInterval = setInterval(dropAirdrop, AIRDROP_INTERVAL_MS);
+    }, initialAirdropDelay);
+
+    const petTimeout = setTimeout(() => {
+      spawnPet();
+      petInterval = setInterval(spawnPet, PET_INTERVAL_MS);
+    }, initialPetDelay);
+
+    return () => {
+      clearTimeout(airdropTimeout);
+      clearTimeout(petTimeout);
+      if (airdropInterval) clearInterval(airdropInterval);
+      if (petInterval) clearInterval(petInterval);
+    };
+  }, [
+    room?.id,
+    room?.status,
+    room?.startedAt,
+    room?.createdAt,
+    room?.centerLat,
+    room?.centerLng,
+    room?.playAreaRadius,
+    myPlayer?.isHost,
+    syncRoomEntitiesToSupabase,
+    addLog,
+  ]);
+
+  // ==========================================
   // REANIMACIÓN DE COMPAÑEROS CAÍDOS
   // ==========================================
   useEffect(() => {
@@ -2455,7 +2577,13 @@ export const App: React.FC = () => {
       return;
     }
 
-    setWildPets((prev) => prev.filter((p) => p.id !== wp.id));
+    setWildPets((prev) => {
+      const updated = prev.filter((p) => p.id !== wp.id);
+      if (roomRef.current?.id) {
+        syncRoomEntitiesToSupabase(roomRef.current.id, { wildPets: updated });
+      }
+      return updated;
+    });
 
     setMyPlayer((prev) => {
       if (!prev) return null;
@@ -3061,51 +3189,43 @@ export const App: React.FC = () => {
       setPlayers([player]);
     }
 
-    // Si la partida ya está en combate (late join o reconexión), configurar airdrops iniciales de contingencia
-    if (gameData.status === 'playing') {
-      const fallbackCrates: SupplyCrate[] = [];
-      const crateTemplates: {
-        type: CrateType;
-        weapon?: typeof WEAPON_REGISTRY[keyof typeof WEAPON_REGISTRY];
-        heal: number;
-        ammo: number;
-      }[] = [
-        { type: 'rocket_launcher', weapon: WEAPON_REGISTRY.rocket_launcher, heal: 0, ammo: 3 },
-        { type: 'rifle', weapon: WEAPON_REGISTRY.rifle, heal: 0, ammo: 60 },
-        { type: 'shotgun', weapon: WEAPON_REGISTRY.shotgun, heal: 0, ammo: 20 },
-        { type: 'grenade', weapon: WEAPON_REGISTRY.grenade, heal: 0, ammo: 5 },
-        { type: 'medkit', weapon: undefined, heal: 100, ammo: 0 },
-        { type: 'ammo', weapon: undefined, heal: 0, ammo: 90 },
-        { type: 'melee', weapon: WEAPON_REGISTRY.axe, heal: 0, ammo: 15 },
-      ];
-      for (let i = 0; i < 5; i++) {
-        const dropPoint = getRandomPointInCircle(
-          { lat: gameData.center_lat, lng: gameData.center_lng },
-          gameData.play_area_radius * 0.7
-        );
-        const template = crateTemplates[i % crateTemplates.length];
-        fallbackCrates.push({
-          id: `crate_${gameData.id}_${i}`,
-          lat: dropPoint.lat,
-          lng: dropPoint.lng,
-          opened: false,
-          droppedAt: Date.now(),
-          crateType: template.type,
-          weaponReward: template.weapon,
-          healReward: template.heal,
-          ammoReward: template.ammo,
-        });
-      }
-      setCrates(fallbackCrates);
+    // Hidratar con las entidades autoritativas que realmente siguen vivas en la sala de Supabase
+    // Guardia booleana estricta: prohibido regenerar lotes masivos si la partida ya existe o está en curso
+    const dbCrates: SupplyCrate[] =
+      (Array.isArray(gameData.active_crates) && gameData.active_crates.length > 0)
+        ? gameData.active_crates
+        : (Array.isArray(gameData.settings?.active_crates) && gameData.settings.active_crates.length > 0)
+          ? gameData.settings.active_crates
+          : (Array.isArray(gameData.active_loot) && gameData.active_loot.length > 0)
+            ? gameData.active_loot
+            : [];
 
-      // Generar mascotas silvestres de contingencia para la partida en curso
-      const fallbackWildPets = generateWildPets(
-        { lat: gameData.center_lat, lng: gameData.center_lng },
-        gameData.play_area_radius,
-        5
-      );
-      setWildPets(fallbackWildPets);
-    }
+    const dbWildPets: WildPet[] =
+      (Array.isArray(gameData.active_wild_pets) && gameData.active_wild_pets.length > 0)
+        ? gameData.active_wild_pets
+        : (Array.isArray(gameData.settings?.active_wild_pets) && gameData.settings.active_wild_pets.length > 0)
+          ? gameData.settings.active_wild_pets
+          : [];
+
+    const dbDroppedItems: DroppedItem[] =
+      (Array.isArray(gameData.active_dropped_items) && gameData.active_dropped_items.length > 0)
+        ? gameData.active_dropped_items
+        : (Array.isArray(gameData.settings?.active_dropped_items) && gameData.settings.active_dropped_items.length > 0)
+          ? gameData.settings.active_dropped_items
+          : [];
+
+    // Solo si la sala está en lobby y por alguna razón legacy estuviera vacía, sembrar lote inicial
+    const finalCrates = (dbCrates.length > 0 || gameData.status === 'playing')
+      ? dbCrates
+      : generateInitialCrates({ lat: gameData.center_lat, lng: gameData.center_lng }, gameData.play_area_radius, 3);
+
+    const finalWildPets = (dbWildPets.length > 0 || gameData.status === 'playing')
+      ? dbWildPets
+      : generateWildPets({ lat: gameData.center_lat, lng: gameData.center_lng }, gameData.play_area_radius, 1);
+
+    setCrates(finalCrates);
+    setWildPets(finalWildPets);
+    setDroppedItems(dbDroppedItems);
 
     setRoom(currentRoom);
     setMyPlayer(player);
@@ -3117,16 +3237,18 @@ export const App: React.FC = () => {
   const handleStartGame = async () => {
     if (!room || !myPlayer?.isHost) return;
 
+    const nowIso = new Date().toISOString();
     try {
       await (supabase.rpc as any)('set_game_status', {
         p_game_id: room.id,
         p_status: 'playing',
       });
+      await (supabase.from('games') as any).update({ started_at: nowIso }).eq('id', room.id);
     } catch {
-      await (supabase.from('games') as any).update({ status: 'playing' }).eq('id', room.id);
+      await (supabase.from('games') as any).update({ status: 'playing', started_at: nowIso }).eq('id', room.id);
     }
 
-    setRoom((prev) => (prev ? { ...prev, status: 'playing' } : null));
+    setRoom((prev) => (prev ? { ...prev, status: 'playing', startedAt: nowIso } : null));
     addLog('¡OPERACIÓN INICIADA! Buscad suministros y asegurad el tesoro.', 'info');
   };
 
