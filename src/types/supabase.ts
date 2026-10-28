@@ -37,6 +37,7 @@ export type Database = {
           status: string
           treasure_lat: number
           treasure_lng: number
+          winner?: string | null
           active_crates?: Json | null
           active_wild_pets?: Json | null
           active_dropped_items?: Json | null
@@ -64,6 +65,7 @@ export type Database = {
           status?: string
           treasure_lat: number
           treasure_lng: number
+          winner?: string | null
           active_crates?: Json | null
           active_wild_pets?: Json | null
           active_dropped_items?: Json | null
@@ -91,6 +93,7 @@ export type Database = {
           status?: string
           treasure_lat?: number
           treasure_lng?: number
+          winner?: string | null
           active_crates?: Json | null
           active_wild_pets?: Json | null
           active_dropped_items?: Json | null
@@ -241,6 +244,19 @@ export type Database = {
       generate_room_code: { Args: never; Returns: string }
       set_game_status: {
         Args: { p_game_id: string; p_status: string }
+        Returns: undefined
+      }
+      finish_game_victory: {
+        Args: { p_game_id: string; p_winner_nickname?: string }
+        Returns: undefined
+      }
+      update_chest_progress: {
+        Args: {
+          p_game_id: string
+          p_unlocked_steps: number
+          p_current_phase: number
+          p_progress_pct: number
+        }
         Returns: undefined
       }
     }

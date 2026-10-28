@@ -498,12 +498,13 @@ export const App: React.FC = () => {
         try {
           const { data: activeGame } = await (supabase
             .from('games') as any)
-            .select('id, code, status')
+            .select('id, code, status, ended_at')
             .eq('code', activeCode.toUpperCase())
             .in('status', ['lobby', 'playing'])
+            .is('ended_at', null)
             .maybeSingle();
 
-          if (activeGame) {
+          if (activeGame && !activeGame.ended_at && (activeGame.status === 'playing' || activeGame.status === 'lobby')) {
             const { data: existingPlayer } = await (supabase
               .from('players') as any)
               .select('id')
@@ -515,6 +516,7 @@ export const App: React.FC = () => {
               setSavedActiveRoomCode(activeGame.code);
             } else {
               localStorage.removeItem('utopia_active_room');
+              if (activeGame.id) clearPlayerSessionSnapshot(activeGame.id);
               setSavedActiveRoomCode(null);
             }
           } else {
@@ -534,12 +536,13 @@ export const App: React.FC = () => {
         try {
           const { data: urlGame } = await (supabase
             .from('games') as any)
-            .select('id, code, status')
+            .select('id, code, status, ended_at')
             .eq('code', codeUpper)
             .in('status', ['lobby', 'playing'])
+            .is('ended_at', null)
             .maybeSingle();
 
-          if (urlGame) {
+          if (urlGame && !urlGame.ended_at && (urlGame.status === 'playing' || urlGame.status === 'lobby')) {
             const { data: existingPlayer } = await (supabase
               .from('players') as any)
               .select('id')
@@ -552,6 +555,9 @@ export const App: React.FC = () => {
               handleJoinRoomRef.current({ code: codeUpper });
               return;
             }
+          } else {
+            // La partida ya concluyó o no existe, limpiar parámetro de URL
+            window.history.replaceState({}, '', window.location.pathname);
           }
         } catch {
           // continuar a abrir el modal
@@ -856,13 +862,40 @@ export const App: React.FC = () => {
         if (room?.id) {
           try {
             localStorage.removeItem(`utopia_chest_progress_${room.id}`);
+            clearPlayerSessionSnapshot(room.id);
           } catch {
             // Ignorar
           }
+
+          // Persistencia autoritativa en DB para sellar la sala desde cualquier peer conectado
+          (async () => {
+            try {
+              const { error: rpcErr } = await (supabase.rpc as any)('finish_game_victory', {
+                p_game_id: room.id,
+                p_winner_nickname: unlockedBy || 'Escuadra',
+              });
+              if (rpcErr) {
+                console.warn('onGameVictory finish_game_victory fallback:', rpcErr);
+                await (supabase.from('games') as any)
+                  .update({
+                    status: 'victory',
+                    chest_unlocked_steps: 6,
+                    chest_current_phase: 3,
+                    chest_progress_pct: 100,
+                    chest_opened: true,
+                    winner: unlockedBy || 'Escuadra',
+                    ended_at: new Date().toISOString(),
+                  })
+                  .eq('id', room.id);
+              }
+            } catch (err) {
+              console.warn('Error al persistir victoria desde onGameVictory:', err);
+            }
+          })();
         }
         localStorage.removeItem('utopia_active_room');
         setSavedActiveRoomCode(null);
-        setRoom((prev) => (prev ? { ...prev, status: 'victory' } : null));
+        setRoom((prev) => (prev ? { ...prev, status: 'victory', endedAt: new Date().toISOString() } : null));
         addLog(`¡${unlockedBy || 'La escuadra'} ha desbloqueado el sexto cerrojo! ¡TESORO ASEGURADO!`, 'victory');
         soundEffects.playVictoryFanfare();
       },
@@ -1758,17 +1791,28 @@ export const App: React.FC = () => {
           // Ignorar error de storage
         }
 
-        // Persistir en base de datos si la sala está activa
-        (supabase.from('games') as any)
-          .update({
-            chest_unlocked_steps: totalCompleted,
-            chest_current_phase: nextPhase,
-            chest_progress_pct: progressPct,
-          })
-          .eq('id', room.id)
-          .then(({ error }: any) => {
-            if (error) console.warn('Error al actualizar progreso del cofre en DB:', error);
-          });
+        // Persistir en base de datos si la sala está activa (RPC autoritativa con SECURITY DEFINER + Fallback)
+        (async () => {
+          try {
+            const { error: rpcErr } = await (supabase.rpc as any)('update_chest_progress', {
+              p_game_id: room.id,
+              p_unlocked_steps: totalCompleted,
+              p_current_phase: nextPhase,
+              p_progress_pct: progressPct,
+            });
+            if (rpcErr) {
+              await (supabase.from('games') as any)
+                .update({
+                  chest_unlocked_steps: totalCompleted,
+                  chest_current_phase: nextPhase,
+                  chest_progress_pct: progressPct,
+                })
+                .eq('id', room.id);
+            }
+          } catch (err) {
+            console.warn('Error al actualizar progreso del cofre en DB:', err);
+          }
+        })();
       }
 
       realtimeRef.current.broadcastChestProgress(nextPhase, nextStep, myPlayerRef.current?.nickname);
@@ -1790,6 +1834,7 @@ export const App: React.FC = () => {
     if (room?.id) {
       try {
         localStorage.removeItem(`utopia_chest_progress_${room.id}`);
+        clearPlayerSessionSnapshot(room.id);
       } catch {
         // Ignorar
       }
@@ -1797,8 +1842,10 @@ export const App: React.FC = () => {
     localStorage.removeItem('utopia_active_room');
     setSavedActiveRoomCode(null);
 
+    const endedAt = new Date().toISOString();
+
     // 2. Transición inmediata de estado de sala a 'victory'
-    setRoom((prev) => (prev ? { ...prev, status: 'victory' } : null));
+    setRoom((prev) => (prev ? { ...prev, status: 'victory', endedAt } : null));
 
     // 3. Emitir broadcast a todos los jugadores conectados
     const unlockedByNickname = myPlayerRef.current?.nickname || 'Escuadra';
@@ -1806,10 +1853,25 @@ export const App: React.FC = () => {
     addLog(`¡${unlockedByNickname} ha desbloqueado el sexto cerrojo! ¡TESORO ASEGURADO!`, 'victory');
     soundEffects.playVictoryFanfare();
 
-    // 4. Actualizar base de datos de forma atómica y explícita
+    // 4. Actualizar base de datos de forma atómica y autoritativa (RPC SECURITY DEFINER + Fallbacks)
     if (room?.id) {
       try {
-        const endedAt = new Date().toISOString();
+        const { error: rpcErr } = await (supabase.rpc as any)('finish_game_victory', {
+          p_game_id: room.id,
+          p_winner_nickname: unlockedByNickname,
+        });
+        if (rpcErr) {
+          console.warn('finish_game_victory RPC falló, intentando set_game_status:', rpcErr);
+          await (supabase.rpc as any)('set_game_status', {
+            p_game_id: room.id,
+            p_status: 'victory',
+          });
+        }
+      } catch (err) {
+        console.warn('Excepción al invocar finish_game_victory:', err);
+      }
+
+      try {
         await (supabase.from('games') as any)
           .update({
             status: 'victory',
@@ -1817,6 +1879,7 @@ export const App: React.FC = () => {
             chest_current_phase: 3,
             chest_progress_pct: 100,
             chest_opened: true,
+            winner: unlockedByNickname,
             ended_at: endedAt,
           })
           .eq('id', room.id);
@@ -2877,10 +2940,13 @@ export const App: React.FC = () => {
     }
 
     // Comprobar estado de la partida
-    if (gameData.status === 'victory' || gameData.status === 'defeat' || gameData.status === 'cancelled') {
-      alert(`La partida ya ha concluido (Estado: ${gameData.status.toUpperCase()}).`);
+    if (gameData.status === 'victory' || gameData.status === 'defeat' || gameData.status === 'cancelled' || gameData.ended_at) {
+      alert(`La partida ya ha concluido (Estado: ${gameData.status ? gameData.status.toUpperCase() : 'FINALIZADA'}).`);
       localStorage.removeItem('utopia_active_room');
       setSavedActiveRoomCode(null);
+      if (gameData.id) {
+        clearPlayerSessionSnapshot(gameData.id);
+      }
       return;
     }
 
@@ -3703,6 +3769,7 @@ export const App: React.FC = () => {
             if (room?.id) {
               try {
                 localStorage.removeItem(`utopia_chest_progress_${room.id}`);
+                clearPlayerSessionSnapshot(room.id);
               } catch {
                 // Ignorar
               }
@@ -3729,6 +3796,16 @@ export const App: React.FC = () => {
         <DefeatModal
           players={players}
           onRestart={() => {
+            if (room?.id) {
+              try {
+                localStorage.removeItem(`utopia_chest_progress_${room.id}`);
+                clearPlayerSessionSnapshot(room.id);
+              } catch {
+                // Ignorar
+              }
+            }
+            localStorage.removeItem('utopia_active_room');
+            setSavedActiveRoomCode(null);
             setRoom(null);
             setMyPlayer(null);
             setPlayers([]);

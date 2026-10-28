@@ -46,12 +46,14 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
           play_area_radius,
           created_at,
           updated_at,
+          ended_at,
           players (
             id,
             is_alive
           )
         `)
         .in('status', ['lobby', 'playing'])
+        .is('ended_at', null)
         .or(`updated_at.gt.${cutoffTime},and(updated_at.is.null,created_at.gt.${cutoffTime})`)
         .order('created_at', { ascending: false });
 
@@ -67,12 +69,14 @@ export const GameExplorer: React.FC<GameExplorerProps> = ({ onJoinGame, onCreate
             movement_mode,
             play_area_radius,
             created_at,
+            ended_at,
             players (
               id,
               is_alive
             )
           `)
           .in('status', ['lobby', 'playing'])
+          .is('ended_at', null)
           .gt('created_at', cutoffTime)
           .order('created_at', { ascending: false });
         data = fallback.data;
