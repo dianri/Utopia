@@ -49,7 +49,7 @@ import {
   getDestinationPoint,
 } from './services/geoUtils';
 import { generateMapStructures } from './services/mapStructures';
-import { generateWildPets } from './services/mapEntities';
+import { generateWildPets, PET_ADOPTION_RADIUS_METERS } from './services/mapEntities';
 import { soundEffects } from './services/soundEffects';
 import { MonsterAIController } from './services/monsterAI';
 import { useGameRealtime } from './hooks/useGameRealtime';
@@ -1556,7 +1556,7 @@ export const App: React.FC = () => {
 
     wildPets.forEach((wp) => {
       const dist = getDistanceMeters(myCoord, { lat: wp.lat, lng: wp.lng });
-      if (dist <= 12) {
+      if (dist <= PET_ADOPTION_RADIUS_METERS) {
         // Adoptar mascota
         setWildPets((prev) => prev.filter((p) => p.id !== wp.id));
 

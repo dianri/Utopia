@@ -12,6 +12,7 @@ interface CombatArenaProps {
   onAttack: (damage: number, newHp: number, weapon: Weapon) => void;
   onPlayerDamaged: (damage: number) => void;
   onPetDamaged?: (updatedPets: Pet[]) => void;
+  onAddLog?: (message: string, type?: 'info' | 'combat' | 'warning' | 'loot') => void;
   onFlee: () => void;
   onClose: () => void;
 }
@@ -24,6 +25,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   onAttack,
   onPlayerDamaged,
   onPetDamaged,
+  onAddLog,
   onFlee,
   onClose,
 }) => {
@@ -32,6 +34,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   const [screenShake, setScreenShake] = useState<boolean>(false);
   const [cardHitAnim, setCardHitAnim] = useState<boolean>(false);
   const [attackCooldown, setAttackCooldown] = useState<number>(0);
+  const [damagedPetId, setDamagedPetId] = useState<string | null>(null);
   const [damageNumbers, setDamageNumbers] = useState<{ id: number; text: string; isCrit: boolean; isPet?: boolean }[]>([]);
 
   const monsterRef = useRef<Monster>(monster);
@@ -48,6 +51,9 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
   const onPetDamagedRef = useRef(onPetDamaged);
   onPetDamagedRef.current = onPetDamaged;
+
+  const onAddLogRef = useRef(onAddLog);
+  onAddLogRef.current = onAddLog;
 
   const onAttackRef = useRef(onAttack);
   onAttackRef.current = onAttack;
@@ -204,7 +210,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
       }
 
       // Habilidad pasiva del Gato Callejero: +10% evasión
-      const hasActiveCat = (curPlayer.pets || []).some((p) => p.type === 'cat' && !p.isWounded);
+      const hasActiveCat = (curPlayer.pets || []).some((p) => p.type === 'cat' && !p.isWounded && p.hp > 0);
       if (hasActiveCat && Math.random() < 0.1) {
         const numId = Date.now() + Math.random();
         setDamageNumbers((prev) => [
@@ -217,44 +223,97 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         return;
       }
 
-      // 1. Feedback audiovisual continuo (pantalla roja, sonido de zarpazo/rugido y hápticos)
-      setIsMonsterAttacking(true);
-      setScreenShake(true);
-      if (curMonster.isEnraged) {
-        soundEffects.playMonsterRoar();
-      } else {
-        soundEffects.playAlarm();
-      }
-      soundEffects.triggerDamageHaptics();
+      // Mitigación del rol Tanque
+      const isShielded = isRoleSkillActiveRef.current && curPlayer.role === 'tank';
+      const effectiveMonsterDamage = isShielded ? Math.max(1, Math.round(currentDamage * 0.5)) : currentDamage;
 
-      // 2. Infligir daño continuo al jugador local (la mitigación de rol se aplica en el manejador central)
-      onPlayerDamagedRef.current(currentDamage);
-
-      // 3. Aplicar el 20% de daño residual a las mascotas activas
-      const petSplashDamage = Math.max(1, Math.round(currentDamage * 0.2));
+      // Buscar la primera mascota viva para actuar como escudo táctico secuencial
       const currentPets = curPlayer.pets || [];
-      if (currentPets.length > 0 && onPetDamagedRef.current) {
-        let anyPetChanged = false;
-        const updatedPets = currentPets.map((pet) => {
-          if (pet.isWounded || pet.hp <= 0) return pet;
-          anyPetChanged = true;
-          const newHp = Math.max(0, pet.hp - petSplashDamage);
-          return {
-            ...pet,
-            hp: newHp,
-            isWounded: newHp <= 0,
-          };
+      const activeShieldPetIndex = currentPets.findIndex((p) => !p.isWounded && p.hp > 0);
+
+      if (activeShieldPetIndex !== -1 && onPetDamagedRef.current) {
+        // --- 1. IMPACTO ABSORBIDO POR EL ESCUDO TÁCTICO DE MASCOTAS ---
+        const targetPet = currentPets[activeShieldPetIndex];
+        const newHp = Math.max(0, targetPet.hp - effectiveMonsterDamage);
+        const isNowWounded = newHp <= 0;
+
+        const updatedPets = currentPets.map((pet, idx) => {
+          if (idx === activeShieldPetIndex) {
+            return {
+              ...pet,
+              hp: newHp,
+              isWounded: isNowWounded,
+            };
+          }
+          return pet;
         });
 
-        if (anyPetChanged) {
-          onPetDamagedRef.current(updatedPets);
-        }
-      }
+        // Sincronizar estado de las mascotas
+        onPetDamagedRef.current(updatedPets);
 
-      setTimeout(() => {
-        setIsMonsterAttacking(false);
-        setScreenShake(false);
-      }, 400);
+        // Feedback audiovisual de impacto en la mascota
+        setIsMonsterAttacking(true);
+        setScreenShake(true);
+        setDamagedPetId(targetPet.id);
+        setTimeout(() => setDamagedPetId(null), 600);
+
+        if (curMonster.isEnraged) {
+          soundEffects.playMonsterRoar();
+        } else {
+          soundEffects.playAlarm();
+        }
+        soundEffects.triggerDamageHaptics();
+
+        // Indicador de daño flotante sobre el escudo
+        const numId = Date.now() + Math.random();
+        setDamageNumbers((prev) => [
+          ...prev,
+          {
+            id: numId,
+            text: `🛡️ ${targetPet.name}: -${effectiveMonsterDamage} HP`,
+            isCrit: isNowWounded,
+            isPet: true,
+          },
+        ]);
+        setTimeout(() => {
+          setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));
+        }, 1200);
+
+        // Registro táctico en el log de combate
+        onAddLogRef.current?.(
+          `¡El monstruo atacó a ${targetPet.name} ${targetPet.icon}! (-${effectiveMonsterDamage} HP)`,
+          'combat'
+        );
+        if (isNowWounded) {
+          onAddLogRef.current?.(
+            `¡${targetPet.name} ha caído herida (0 HP)! 💫 El escudo táctico pasa a la siguiente mascota.`,
+            'warning'
+          );
+        }
+
+        setTimeout(() => {
+          setIsMonsterAttacking(false);
+          setScreenShake(false);
+        }, 400);
+      } else {
+        // --- 2. IMPACTO DIRECTO AL JUGADOR (SIN MASCOTAS VIVAS) ---
+        setIsMonsterAttacking(true);
+        setScreenShake(true);
+        if (curMonster.isEnraged) {
+          soundEffects.playMonsterRoar();
+        } else {
+          soundEffects.playAlarm();
+        }
+        soundEffects.triggerDamageHaptics();
+
+        // Infligir daño continuo al jugador local (la mitigación de rol se aplica en el manejador central)
+        onPlayerDamagedRef.current(currentDamage);
+
+        setTimeout(() => {
+          setIsMonsterAttacking(false);
+          setScreenShake(false);
+        }, 400);
+      }
     }, attackCadenceMs);
 
     return () => {
@@ -343,8 +402,12 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
           {damageNumbers.map((num) => (
             <span
               key={num.id}
-              className={`absolute font-mono font-black animate-ping text-2xl sm:text-3xl ${
-                num.isCrit ? 'text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,0.9)]' : 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]'
+              className={`absolute font-mono font-black animate-ping text-xl sm:text-2xl ${
+                num.isPet
+                  ? 'text-amber-300 drop-shadow-[0_0_12px_rgba(251,191,36,0.9)]'
+                  : num.isCrit
+                  ? 'text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,0.9)]'
+                  : 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]'
               }`}
             >
               {num.text}
@@ -463,23 +526,36 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
               <span className="text-[10px] text-slate-500">Ataque Automático</span>
             </div>
             <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-thin">
-              {myPlayer.pets.map((pet) => {
+              {myPlayer.pets.map((pet, idx) => {
                 const petHpPercent = Math.max(0, Math.min(100, Math.round((pet.hp / pet.maxHp) * 100)));
+                const firstAliveIndex = myPlayer.pets?.findIndex((p) => !p.isWounded && p.hp > 0);
+                const isFrontlineShield = idx === firstAliveIndex;
+                const isDamaged = damagedPetId === pet.id;
+
                 return (
                   <div
                     key={pet.id}
                     className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-mono shrink-0 transition-all ${
-                      pet.isWounded
+                      isDamaged
+                        ? 'bg-red-950/80 border-red-500 ring-2 ring-red-400 scale-105 shadow-[0_0_12px_rgba(239,68,68,0.7)]'
+                        : isFrontlineShield
+                        ? 'bg-emerald-950/70 border-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.3)]'
+                        : pet.isWounded
                         ? 'bg-slate-900/60 border-slate-800 opacity-50'
                         : 'bg-emerald-950/40 border-emerald-500/40 shadow-sm'
                     }`}
                   >
                     <span className="text-base">{pet.icon}</span>
                     <div className="flex flex-col min-w-[55px]">
-                      <div className="flex items-center justify-between text-[10px]">
+                      <div className="flex items-center justify-between text-[10px] gap-1">
                         <span className={`font-bold truncate max-w-[65px] ${pet.isWounded ? 'text-slate-400' : 'text-emerald-200'}`}>
                           {pet.name}
                         </span>
+                        {isFrontlineShield && (
+                          <span className="text-[8px] bg-amber-500/30 text-amber-300 border border-amber-400/60 px-1 rounded font-bold whitespace-nowrap">
+                            🛡️ ESCUDO
+                          </span>
+                        )}
                         {pet.isWounded && <span className="text-[9px]">💫</span>}
                       </div>
                       <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden mt-0.5">

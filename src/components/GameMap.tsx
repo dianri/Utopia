@@ -40,6 +40,7 @@ interface GameMapProps {
   onMapClick: (coords: Coordinates) => void;
   onReviveAttempt?: (targetPlayer: Player) => void;
   onPickDroppedItem?: (dropped: DroppedItem) => void;
+  onAdoptWildPet?: (wildPet: WildPet) => void;
 }
 
 const GameMapComponent: React.FC<GameMapProps> = ({
@@ -62,6 +63,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   isVictory = false,
   onMapClick,
   onPickDroppedItem,
+  onAdoptWildPet,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -83,6 +85,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
   const onPickDroppedItemRef = useRef(onPickDroppedItem);
   onPickDroppedItemRef.current = onPickDroppedItem;
+
+  const onAdoptWildPetRef = useRef(onAdoptWildPet);
+  onAdoptWildPetRef.current = onAdoptWildPet;
 
   // Refs para desacoplar arrastre de cámara (drag) de clic de movimiento (tap-to-move)
   const isDraggingRef = useRef<boolean>(false);
@@ -774,7 +779,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!wildPetMarkersRef.current.has(wp.id)) {
         const el = document.createElement('div');
         // NO añadir clases absolute ni fixed aquí; MapLibre gestiona la posición mediante transform
-        el.className = 'pet-marker-container pointer-events-auto select-none';
+        el.className = 'pet-marker-container pointer-events-auto select-none cursor-pointer';
         el.style.zIndex = '35'; // Visible por encima del canvas
         el.style.display = isMeWounded ? 'none' : 'block';
 
@@ -793,6 +798,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             </div>
           </div>
         `;
+
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onAdoptWildPetRef.current?.(wp);
+        });
 
         const marker = new maplibregl.Marker({
           element: el,
