@@ -8,12 +8,14 @@ interface VictoryModalProps {
   players: Player[];
   onRestart: () => void;
   onOpenLeaderboard: () => void;
+  startedAt?: string | null;
 }
 
 export const VictoryModal: React.FC<VictoryModalProps> = ({
   players,
   onRestart,
   onOpenLeaderboard,
+  startedAt,
 }) => {
   useEffect(() => {
     soundEffects.playVictoryFanfare();
@@ -46,6 +48,19 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
     frame();
   }, []);
 
+  // Calcular tiempo de partida transcurrido
+  const calculateDuration = () => {
+    if (!startedAt) return '04:12';
+    const start = new Date(startedAt).getTime();
+    const end = Date.now();
+    const seconds = Math.max(0, Math.floor((end - start) / 1000));
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const gameDurationStr = calculateDuration();
+
   // Encontrar el MVP (mayor daño infligido o revividos)
   const sortedPlayers = [...players].sort(
     (a, b) => b.damageDealt + b.revivesDone * 50 - (a.damageDealt + a.revivesDone * 50)
@@ -54,18 +69,36 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-lg flex items-center justify-center p-4 overflow-y-auto">
-      <div className="max-w-md w-full bg-hud-dark border-2 border-yellow-500/80 rounded-2xl shadow-2xl shadow-yellow-500/20 p-6 flex flex-col gap-5 text-center my-auto">
+      <div className="max-w-md w-full bg-hud-dark border-2 border-yellow-500/80 rounded-2xl shadow-2xl shadow-yellow-500/20 p-6 flex flex-col gap-4 text-center my-auto">
         {/* TROFEO */}
         <div className="flex flex-col items-center">
           <div className="w-16 h-16 rounded-full bg-yellow-500/20 border-2 border-yellow-400 flex items-center justify-center text-yellow-400 mb-2 shadow-xl shadow-yellow-500/40 animate-bounce">
             <Trophy className="w-8 h-8" />
           </div>
           <h1 className="text-2xl font-mono font-black text-yellow-300 tracking-wider uppercase">
-            ¡MISIÓN CUMPLIDA!
+            ¡TESORO ASEGURADO!
           </h1>
-          <p className="text-xs font-mono text-slate-300 mt-1">
-            El tesoro de Las Meriendas ha sido asegurado con éxito.
+          <p className="text-xs font-mono text-slate-300 mt-0.5">
+            Misión Cumplida • El cofre de Las Meriendas ha sido desencriptado con éxito.
           </p>
+        </div>
+
+        {/* RESUMEN TÁCTICO */}
+        <div className="grid grid-cols-3 gap-2 bg-slate-900/90 border border-yellow-500/40 p-2.5 rounded-xl font-mono text-center shadow-inner">
+          <div className="flex flex-col">
+            <span className="text-[9px] text-slate-400 uppercase tracking-wider">Tiempo</span>
+            <span className="text-xs font-black text-yellow-300">{gameDurationStr}</span>
+          </div>
+          <div className="flex flex-col border-x border-slate-800">
+            <span className="text-[9px] text-slate-400 uppercase tracking-wider">Cerrojos</span>
+            <span className="text-xs font-black text-emerald-400">6 / 6 (100%)</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[9px] text-slate-400 uppercase tracking-wider">Escuadra</span>
+            <span className="text-xs font-black text-cyan-300">
+              {players.filter((p) => p.isAlive).length}/{players.length} Activos
+            </span>
+          </div>
         </div>
 
         {/* MVP PODIO */}
@@ -97,7 +130,7 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
           <span className="text-[11px] font-mono text-hud-muted uppercase tracking-wider text-left">
             Informe de Combate
           </span>
-          <div className="flex flex-col gap-1.5 max-h-48 overflow-y-auto pr-1">
+          <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto pr-1">
             {players.map((p) => (
               <div
                 key={p.id}
@@ -118,7 +151,7 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
         </div>
 
         {/* BOTONES DE ACCIÓN */}
-        <div className="flex flex-col gap-2 mt-2">
+        <div className="flex flex-col gap-2 mt-1">
           <button
             onClick={onOpenLeaderboard}
             className="w-full py-2.5 rounded-xl bg-hud-panel border border-hud-cyan/60 hover:border-hud-cyan text-xs font-mono font-black text-hud-cyan uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
@@ -132,7 +165,7 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
             className="w-full py-3 rounded-xl bg-gradient-to-r from-yellow-500 to-amber-400 text-black font-mono font-black text-sm uppercase tracking-wider shadow-lg shadow-yellow-500/30 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2"
           >
             <RotateCcw className="w-4 h-4" />
-            <span>Volver a la Base</span>
+            <span>Volver al Lobby / Nueva Partida</span>
           </button>
         </div>
       </div>

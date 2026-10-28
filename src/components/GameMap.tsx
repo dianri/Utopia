@@ -35,6 +35,8 @@ interface GameMapProps {
   droppedItems?: DroppedItem[];
   wildPets?: WildPet[];
   inCombat?: boolean;
+  isChestOpened?: boolean;
+  isVictory?: boolean;
   onMapClick: (coords: Coordinates) => void;
   onReviveAttempt?: (targetPlayer: Player) => void;
   onPickDroppedItem?: (dropped: DroppedItem) => void;
@@ -56,6 +58,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   droppedItems = [],
   wildPets = [],
   inCombat = false,
+  isChestOpened = false,
+  isVictory = false,
   onMapClick,
   onPickDroppedItem,
 }) => {
@@ -461,13 +465,20 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     const map = mapRef.current;
     if (!map) return;
 
-    if (!chestMarkerRef.current) {
-      const el = document.createElement('div');
-      el.className = 'treasure-marker cursor-pointer flex flex-col items-center select-none';
-      if (isMeWounded) {
-        el.style.display = 'none';
-      }
-      el.innerHTML = `
+    const isOpened = isChestOpened || isVictory;
+
+    const chestHtml = isOpened
+      ? `
+        <div class="relative flex items-center justify-center">
+          <div class="w-10 h-10 bg-emerald-950 border-2 border-emerald-400 rounded-lg shadow-lg shadow-emerald-500/50 flex items-center justify-center text-xl text-white font-black">
+            🔓
+          </div>
+        </div>
+        <span class="mt-1 px-2 py-0.5 text-[10px] font-bold bg-hud-dark/90 border border-emerald-500/60 text-emerald-300 rounded uppercase tracking-wider">
+          Cofre Abierto / Saqueado
+        </span>
+      `
+      : `
         <div class="relative flex items-center justify-center">
           <div class="absolute w-12 h-12 bg-amber-500/20 rounded-full animate-ping"></div>
           <div class="w-10 h-10 bg-amber-500 border-2 border-yellow-200 rounded-lg shadow-lg shadow-amber-500/50 flex items-center justify-center text-xl text-black font-black">
@@ -479,15 +490,26 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         </span>
       `;
 
+    if (!chestMarkerRef.current) {
+      const el = document.createElement('div');
+      el.className = 'treasure-marker cursor-pointer flex flex-col items-center select-none';
+      if (isMeWounded) {
+        el.style.display = 'none';
+      }
+      el.innerHTML = chestHtml;
+
       chestMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
         .setLngLat([treasureLocation.lng, treasureLocation.lat])
         .addTo(map);
     } else {
       chestMarkerRef.current.setLngLat([treasureLocation.lng, treasureLocation.lat]);
       const el = chestMarkerRef.current.getElement();
-      if (el) el.style.display = isMeWounded ? 'none' : 'block';
+      if (el) {
+        el.style.display = isMeWounded ? 'none' : 'flex';
+        el.innerHTML = chestHtml;
+      }
     }
-  }, [treasureLocation.lat, treasureLocation.lng, isMeWounded]);
+  }, [treasureLocation.lat, treasureLocation.lng, isMeWounded, isChestOpened, isVictory]);
 
   // ==========================================
   // 6. MARCADORES Y RADIOS DE CAJAS DE SUMINISTROS (AIRDROPS)
