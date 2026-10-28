@@ -1314,18 +1314,13 @@ export const App: React.FC = () => {
   }, []);
 
   // ==========================================
-  // DETECCIÓN DE DERROTA (TODOS LOS JUGADORES HERIDOS DE MUERTE O MUERTOS)
+  // ESTADO DE PARTIDA CONTINUO (SIN DERROTA GLOBAL)
   // ==========================================
-  useEffect(() => {
-    if (room?.status !== 'playing' || players.length === 0) return;
-
-    const standingPlayers = players.filter(
-      (p) => p.isAlive && !p.isCriticallyWounded && p.status !== 'critically_wounded'
-    );
-    if (standingPlayers.length === 0) {
-      handleGameEnd('defeat');
-    }
-  }, [players, room?.status]);
+  // No existe condición de fin de partida por derrota del equipo ('defeat').
+  // Si todos los jugadores caen heridos de muerte simultáneamente, todos pueden
+  // desplazarse al Hospital de Campaña para recuperar salud al 100% y reanimarse.
+  // La partida continúa en bucle indefinido en estado 'playing' hasta que la escuadra
+  // consiga descifrar y abrir el cofre del tesoro para alcanzar 'victory'.
 
   // ==========================================
   // CURACIÓN PROGRESIVA EN EL HOSPITAL (+10 HP/S Y RECUPERACIÓN DE HERIDO DE MUERTE)
