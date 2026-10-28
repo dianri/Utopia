@@ -1,44 +1,120 @@
 # Las Meriendas: Monster Hunt 👹⚔️
 
-> **Utopia** — Juego web cooperativo y táctico de geolocalización en tiempo real desarrollado como Progressive Web App (PWA).
+> **Utopia** — Juego web táctico y cooperativo de geolocalización en tiempo real desarrollado como Progressive Web App (PWA).
 
 ---
 
-## 🎮 Descripción y Mecánicas
+## 🎮 Descripción General
 
-En **Las Meriendas: Monster Hunt**, una escuadra de hasta 4 cazadores debe coordinarse en un mapa táctico del mundo real para saquear airdrops de armas, defenderse del temible Monstruo de Las Meriendas y asegurar el cofre del tesoro para lograr la victoria.
+En **Las Meriendas: Monster Hunt**, una escuadra de cazadores debe coordinarse en un mapa táctico del mundo real para explorar estructuras, adoptar compañeros de apoyo, gestionar mochilas de armamento, enfrentarse en combates por turnos/tiempo real contra el temible **Monstruo de Las Meriendas** y desbloquear cooperativamente las fases de seguridad del cofre del tesoro para asegurar la victoria.
 
-### Características Principales
+---
 
-- **Modos de Movimiento Dual:**
-  - **GPS Real:** Geolocalización de alta precisión en vivo (`navigator.geolocation.watchPosition`). Si el jugador se encuentra fuera del perímetro del juego, un aviso táctico en el HUD muestra la distancia exacta a la que se encuentra del área de operaciones sin teletransportar al jugador.
-  - **Tap-to-Move:** Pulsa en cualquier punto del mapa para moverte con paso humano simulado a 1.4 m/s (~5 km/h). La navegación respeta los límites del círculo de juego reajustando el rumbo al perímetro interior si se pulsa fuera.
-- **Partidas Públicas vs. Privadas y Explorador de Operaciones en Vivo:**
-  - **Selector de Privacidad:** Al crear una operación, el anfitrión puede elegir entre **Pública** (visible en el radar del lobby para incorporación inmediata con 1 toque) o **Privada** (oculta, accesible exclusivamente mediante código de 6 letras o enlace directo `/?room=CODIGO`).
-  - **Explorador Táctico en el Lobby:** Listado en tiempo real de operaciones activas (`lobby` o `playing`) con estado en combate/espera, número de agentes conectados/vivos, modo de control (GPS o Manual) y acceso directo con selección de clase.
-  - **Incorporación a Partidas Empezadas (Late Join / In-Game Reconnect):** Si un jugador entra a una partida que ya ha comenzado (`playing`), recibe un spawn seguro y uniforme dentro de la zona de juego activa y sincroniza de inmediato el estado del monstruo, cajas restantes y escuadra vía Supabase Realtime sin reiniciar la partida.
-- **Protocolo de Cancelación y Abandono de Misión:**
-  - **Controles del Anfitrión:** El host dispone de la opción "Terminar / Cancelar Misión" en el HUD táctico y sala de espera con modal de confirmación. Al cancelar, actualiza `status = 'cancelled'` en Supabase y emite `game_cancelled` por Realtime Broadcast, deteniendo bucles de IA, silenciando Web Audio y redirigiendo a toda la escuadra al lobby tras 2s de aviso.
-  - **Abandono Individual:** Cualquier jugador no-host puede pulsar "Abandonar Misión" para salir de la partida de forma segura, eliminando su registro de la escuadra y desconectando canales en tiempo real sin romper la sesión de los demás cazadores.
-- **Sistema de Spawn y Posicionamiento Dinámico:**
-  - Los jugadores (tanto anfitrión como aliados que se unen) aparecen distribuidos de forma segura y uniforme en una corona circular interior (entre el 20% y el 70% del radio de juego respecto al centro), evitando teletransportes a coordenadas fijas o aparecer encima del tesoro.
-  - Sincronización completa de coordenadas de cámara (`center_lat`, `center_lng`) y tesoro entre todos los clientes conectados a través de Supabase.
-- **Clases de Combate:**
-  - **Médico:** Reanimación de aliados caídos en 10s (en lugar de 20s) y radio de curación ampliado a 35m.
-  - **Tanque:** +50% de vida base (150 HP) y atracción de agro prioritario del monstruo.
-  - **Explorador:** Radio de visión de 105m y habilidad activa **Radar Táctico** (cooldown 60s, revela al monstruo durante 10s a todos los aliados).
-  - **Tirador:** +35% de daño a distancia y mayor alcance de tiro efectivo.
-- **Motor de Mapas Vectoriales:** MapLibre GL con estilos vectoriales libres de OpenFreeMap (modo oscuro acelerado por WebGL a 60 FPS).
-- **IA del Monstruo (Host-driven):**
-  - **Patrulla:** Vigilancia circular en torno al cofre.
-  - **Persecución:** Detección de radio de agresión y ataque continuo cuerpo a cuerpo.
-  - **Fase 2 (Enfurecimiento):** Al bajar del 30% de HP, velocidad +40%, rugido ensordecedor y ralentización de jugadores cercanos.
-  - **Muerte Temporal:** Desaparición con cuenta atrás visible de 60s y resurrección en el cofre.
-- **Audio y Hápticos Procedurales:** Sintetizador con Web Audio API (disparos, latidos cardíacos, rugidos, alarmas y fanfarria triunfal sin archivos externos pesados) y Navigator Vibration API para alerta por proximidad.
-- **Modo Sigilo / Discreto:** Alterna el audio para confiar únicamente en pulsos táctiles y HUD visual.
-- **Modo Fantasma y Resurrección:** Al caer a 0 HP, conviértete en tumba y envía pings tácticos de alerta a tus aliados mientras te reaniman.
-- **Condición de Victoria:** Asegura el cofre permaneciendo en un radio de 20m durante 30 segundos continuos mientras el monstruo entra en furia hacia el cofre.
-- **Ranking Histórico Persistente:** Tabla de clasificación conectada a PostgreSQL en Supabase con desglose de estadísticas (daño, revividos, cajas y bajas).
+## ⚡ Novedades y Mecánicas Principales
+
+### ⚔️ 1. Combate Táctico en Modo Arena (RPG / Cartas)
+- **Eliminación del Auto-Combate Pasivo:** Se ha suprimido el ataque automático en el mapa por simple proximidad. El mapa táctico se reserva para exploración, rescate, suministros y posicionamiento.
+- **Arena de Combate Interactiva (`CombatArena.tsx`):** Al aproximarse a menos de 20 metros del monstruo, el jugador entra en una interfaz de combate inmersiva estilo RPG de cartas:
+  - Barra de vida global y compartida del monstruo sincronizada por Supabase Realtime.
+  - Ataque manual con cadencia estricta (`cadenceMs`), consumo de munición/usos y feedback háptico.
+  - Asistencia en combate de las mascotas activas que infligen daño continuo.
+  - Ciclo de contraataques periódicos del monstruo (cada 2.5s) con sacudida de pantalla e impacto.
+  - **Opción de Huida Táctica:** Botón "HUIR" que otorga un sprint de emergencia (+30% de velocidad durante 5s) e inmunidad temporal de combate.
+
+---
+
+### 🎒 2. Sistema Integral de Mochila, Jerarquía y Desgaste de Armamento
+- **Mochila Táctica (`BackpackModal.tsx`):** Capacidad limitada a **4 slots** de inventario con visor de estadísticas, nivel de daño, cadencia y munición.
+- **Jerarquía de Armas (7 Tiers):**
+  1. **Tier 7 — Lanzacohetes RPG:** Daño masivo de área (120 DMG, 2 cohetes).
+  2. **Tier 6 — Granadas Tácticas:** Daño explosivo alto (85 DMG, 4 granadas).
+  3. **Tier 5 — Fusil Táctico M4:** Ráfagas automáticas de alta cadencia (28 DMG, 45 balas).
+  4. **Tier 4 — Escopeta de Postas:** Dispersión letal a corta distancia (55 DMG, 12 cartuchos).
+  5. **Tier 3 — Pistola 9mm:** Arma de fuego equilibrada (22 DMG, 30 balas).
+  6. **Tier 2 — Hacha Táctica:** Arma cuerpo a cuerpo avanzada con **15 usos de durabilidad** (35 DMG).
+  7. **Tier 1 — Cuchillo de Supervivencia:** Arma básica permanente, indestructible e infinita (12 DMG).
+- **Desgaste Dinámico y Auto-Fallback:** Al agotarse la munición o romperse un arma de durabilidad, el sistema equipa automáticamente la siguiente mejor arma disponible en la mochila.
+- **Descarte e Intercambio en el Suelo (`DroppedItem`):** Los jugadores pueden soltar armas o intercambiarlas al tener la mochila llena. Los objetos caen al terreno como marcadores interactivos en MapLibre GL con colores por Tier y son recolectables a menos de 20m.
+- **Curación Instantánea:** Los botiquines de primeros auxilios y raciones se consumen inmediatamente al abrir cajas de suministros, curando la salud sin ocupar slots de mochila.
+
+---
+
+### 🐾 3. Sistema de Mascotas de Apoyo (Pets)
+- **Adopción Ilimitada:** Spawneo procedural de mascotas silvestres en el mapa con marcadores animados. Se adoptan automáticamente al aproximarse a menos de 12 metros, sumándose al séquito del cazador.
+- **Órbita en Mapa en Tiempo Real:** Las mascotas acompañan al jugador con renderizado cosmético y visualización de avatares orbitales a 2.5m en MapLibre GL.
+- **Perfiles y Habilidades Pasivas:**
+  - 🐕 **Perro Guardián (`dog`):** 60 HP, 6 DMG. Rastreo y recogida de suministros ampliada a 25m.
+  - 🛸 **Dron Táctico (`drone`):** 45 HP, 10 DMG. Fuego a distancia y +15m de radio de visión en la niebla de guerra.
+  - ⚡ **Roedor Eléctrico (`electric_mouse`):** 50 HP, 8 DMG. Descargas rápidas de alta cadencia.
+  - 🐇 **Conejo Veloz (`rabbit`):** 40 HP, 4 DMG. Velocidad de reacción y recolección rápida.
+  - 🐈 **Gato Callejero (`cat`):** 45 HP, 7 DMG. Sigilo felino que otorga al dueño +10% de evasión frente a los ataques del monstruo.
+  - 🤖 **Mini Robot Médico (`med_bot`):** 50 HP, 3 DMG. Nanobots de soporte que regeneran pasivamente +2 HP cada 5s fuera de combate.
+- **Recogida Pasiva de Suministros (Fetch Loot):** Las mascotas escanean y recolectan suministros automáticamente dentro de su radio de acción. Si el jugador necesita vida, la curación se transfiere a él; si está al 100%, cura a la mascota con menor salud. Las armas van directamente a la mochila.
+- **Estado Desmayada y Reanimación:** Si la vida de una mascota llega a 0, queda incapacitada (`isWounded: true`) y entra en modo flotación con animación de mareo (`💫`) hasta ser revivida al 100% en el Hospital de Campaña.
+
+---
+
+### 🏥 4. Estructuras Tácticas en el Mapa
+- **Hospital de Campaña (`🏥`):**
+  - Radio de interacción de 18 metros.
+  - Curación médica continua (+10 HP/segundo) para jugadores en su interior.
+  - Revive y restaura automáticamente al 100% de salud a todas las mascotas desmayadas de la comitiva.
+  - Centro de estabilización clínica para jugadores en estado crítico.
+- **Casas / Refugios Tácticos (`🏠`):**
+  - De 3 a 5 búnkeres distribuidos en el área operativa con radio de 14 metros.
+  - **Mecánica de Cobertura Total:** Al entrar, el avatar se oculta visualmente del mapa exterior (`style.display = 'none'`), los aliados lo visualizan con etiqueta `[A CUBIERTO]`, y el monstruo pierde inmediatamente el aggro.
+- **Capa Táctica Visual:** Representación poligonal GeoJSON de las zonas de influencia estructural (`structures-zones`) y banner contextual de estado interior (`IndoorStatusBanner.tsx`).
+
+---
+
+### 🩸 5. Rediseño del Ciclo de Vida: Estado "Herido de Muerte"
+- **Sustitución de la Muerte Instantánea:** Al recibir daño letal, el HP se ancla en 1 y el jugador pasa al estado `critically_wounded`.
+- **Restricciones de Combate:** Armas bloqueadas, habilidades deshabilitadas e imposibilidad de saquear cajas. La única acción disponible es replegarse hacia el Hospital de Campaña.
+- **HUD Crítico y Brújula Médica:** Viñeta roja pulsante en pantalla y compás direccional interactivo (`CriticallyWoundedOverlay.tsx`) que señala con precisión de rumbo y distancia hacia el Hospital más cercano.
+- **Recuperación y Supervivencia Colectiva:** Al alcanzar >= 20 HP dentro del Hospital, el combatiente se estabiliza y reanuda el combate activo. La partida solo se pierde si **todos** los miembros de la escuadra caen heridos de muerte simultáneamente.
+
+---
+
+### 🗝️ 6. Apertura Cooperativa del Cofre por Fases
+- Sustituida la cuenta regresiva estática por un sistema cooperativo de **3 fases con 2 cerrojos cada una** (6 desafíos en total):
+  1. **Fase 1 (Sincronización QTE):** Puntería temporal sobre zonas verdes oscilantes.
+  2. **Fase 2 (Código Lumínico):** Secuencia de memoria táctica tipo Simón Dice de 3 a 4 colores.
+  3. **Fase 3 (Frecuencia Magnética):** Dial rotatorio sintonizador con respuesta háptica.
+- **Furia Defensiva del Monstruo:** Cuando cualquier agente inicia el desbloqueo del cofre, el monstruo entra en modo `defend_chest` y realiza un sprint a 3.8 m/s directamente hacia las coordenadas del cofre.
+- **Aislamiento por Partida:** Estado de desbloqueo estricto por ID único de sala (`game.id`), evitando que nuevas partidas hereden progreso residual.
+
+---
+
+### 📱 7. Optimización Mobile-First y HUD Táctico
+- **Soporte para Safe Area:** Separación inferior del panel de armas (`bottom-6` / `bottom-8` y `pb-[env(safe-area-inset-bottom)]`) evitando colisiones con la barra de navegación del sistema operativo móvil.
+- **Contenedor Flex Vertical de Alertas:** Notificaciones de respawn y alertas de cofre apiladas en columna (`top-20 flex-col gap-2`) sin solapamiento entre tarjetas.
+- **Autocierre de Mensajes de Bitácora:** Desvanecimiento temporal del log de combate (`CombatLog.tsx`) tras 5 segundos de inactividad para mantener despejada la vista de mapa.
+- **Renderizado Seguro de Marcadores en MapLibre:** Guardia estricta de ciclo de vida del mapa WebGL y revelación diferida mediante doble `requestAnimationFrame` que elimina cualquier parpadeo de marcadores en la coordenada `(0, 0)`.
+
+---
+
+## 🕹️ Modos de Movimiento y Conectividad
+
+- **Movimiento Dual:**
+  - **GPS Real:** Geolocalización de alta precisión en vivo (`navigator.geolocation.watchPosition`). Indicador de distancia si te encuentras fuera del área sin teletransporte forzado.
+  - **Tap-to-Move:** Navegación táctil con velocidad humana de 1.4 m/s (~5 km/h) y reajuste perimetral automático si pulsas fuera del radio de juego.
+- **Lobby y Explorador de Operaciones en Vivo:**
+  - Creación de partidas **Públicas** (visibles en el radar del lobby) o **Privadas** (acceso mediante código de 6 letras o enlace `/?room=CODIGO`).
+  - Incorporación a partidas ya iniciadas (**Late Join / Reconnect**) con spawn seguro y sincronización inmediata vía Supabase Realtime.
+- **Protocolo de Cancelación y Abandono:**
+  - Cancelación global por el anfitrión con confirmación y redirección ordenada de la escuadra.
+  - Abandono seguro individual sin romper la sesión de los demás compañeros.
+
+---
+
+## 🎖️ Clases de Combate
+
+| Clase | Rol Táctico | Habilidad Especial / Ventaja |
+| :--- | :--- | :--- |
+| ✚ **Médico** | Soporte y Sanación | Reanimación rápida y radio de curación táctica ampliado a 35m. |
+| 🛡️ **Tanque** | Primera Línea | +50% de vida base (150 HP) y atracción prioritaria del aggro del monstruo. |
+| 👁️ **Explorador** | Reconocimiento | Radio de visión de 105m y habilidad activa **Radar Táctico** (revela al monstruo a toda la escuadra). |
+| 🎯 **Tirador** | Daño a Distancia | +35% de daño con armas de fuego y mayor alcance efectivo de disparo. |
 
 ---
 
@@ -46,13 +122,13 @@ En **Las Meriendas: Monster Hunt**, una escuadra de hasta 4 cazadores debe coord
 
 - **Frontend:** React 18+, Vite, TypeScript estricto.
 - **Estilos & HUD:** Tailwind CSS (diseño táctico oscuro mobile-first), Lucide React, Canvas Confetti.
-- **Motor de Mapas:** `maplibre-gl` con azulejos libres de OpenFreeMap.
-- **Sonido y Hápticos:** Web Audio API procedural + Navigator Vibration API.
+- **Motor de Mapas:** `maplibre-gl` con azulejos vectoriales libres de OpenFreeMap (aceleración WebGL a 60 FPS).
+- **Audio y Hápticos:** Web Audio API procedural (síntesis de sonido sin archivos de audio pesados) + Navigator Vibration API.
 - **PWA:** `vite-plugin-pwa` con Service Worker agresivo, precache de assets y soporte offline.
 - **Backend & Realtime:** Supabase.
   - Autenticación Anónima (`signInAnonymously()`).
-  - Base de datos relacional PostgreSQL con RLS estricto y triggers automáticos.
-  - Supabase Realtime (Canales combinados con `broadcast` para movimiento sin saturar la BD y `presence` para estados de conexión).
+  - Base de datos PostgreSQL con RLS estricto y triggers automáticos.
+  - Supabase Realtime (Canales combinados con `broadcast` para movimiento sin saturar la BD y `presence` para sincronización de escuadra).
 
 ---
 
@@ -93,20 +169,19 @@ Genera la carpeta `dist/` optimizada con división de módulos (`vendor`, `mapli
 
 ### 6. Despliegue en Vercel
 El repositorio incluye [`vercel.json`](./vercel.json) con la regla de reescritura para Single Page Applications (SPA).
-Para desplegar en Vercel:
 1. Conecta el repositorio en Vercel.
 2. En **Settings > Environment Variables**, añade:
    - `VITE_SUPABASE_URL` = `https://iadiswktxduqetzjujli.supabase.co`
    - `VITE_SUPABASE_ANON_KEY` = tu clave pública/anónima de Supabase
 3. La aplicación cuenta con blindaje contra fallos de inicialización:
-   - Si no se configuran las variables en Vercel, la aplicación no crashea en pantalla negra; muestra un banner descriptivo y activa el modo de demostración local.
-   - Cuenta con un `<ErrorBoundary>` táctico que captura cualquier excepción de WebGL, audio o geolocalización mostrando el diagnóstico en pantalla.
+   - Si no se configuran las variables en Vercel, muestra un banner descriptivo y activa el modo de demostración local sin pantalla negra.
+   - Cuenta con un `<ErrorBoundary>` táctico que captura cualquier excepción de WebGL, audio o geolocalización.
 
 ---
 
-## 🌿 Flujo de Desarrollo
+## 🌿 Flujo de Desarrollo Multi-Agente
 
 Cumpliendo las directrices de [`AGENTS.md`](./AGENTS.md):
-- Todas las características se desarrollan en ramas `features/*` o `fix/*`.
+- Todas las características se desarrollan en ramas aisladas (`feature/agent-<id>-<tarea>`).
 - El comando `npm run build` debe finalizar con **0 errores y 0 advertencias** antes de cualquier commit o merge.
-- Sincronización continua de documentación post-feature.
+- Sincronización continua de `CHANGELOG.md` bajo la sección `[Unreleased]` y actualización de documentación de arquitectura.
