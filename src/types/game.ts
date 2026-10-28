@@ -221,6 +221,7 @@ export interface GameRoom {
   chestProgressPct?: number;
   startedAt?: string | null;
   endedAt?: string | null;
+  winner?: string | null;
   createdAt: string;
   updatedAt?: string;
   updated_at?: string;

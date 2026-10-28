@@ -42,6 +42,7 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
             .select('id')
             .eq('code', cleanCode)
             .in('status', ['lobby', 'playing'])
+            .is('ended_at', null)
             .maybeSingle();
 
           if (g && isMounted) {
