@@ -2797,6 +2797,7 @@ export const App: React.FC = () => {
             isOpen={isBackpackOpen}
             onClose={() => setIsBackpackOpen(false)}
             inventory={myPlayer.inventory || getDefaultInventoryForRole(myPlayer.role)}
+            pets={myPlayer.pets || []}
             equippedItemId={myPlayer.equippedItemId || myPlayer.equippedWeapon?.id}
             onEquipItem={handleEquipItem}
             onDropItem={handleDropItem}

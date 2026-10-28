@@ -11,6 +11,11 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - El motor de interpolación Tap-to-Move (`useGeolocation.ts`) y el HUD del mapa (`GameMap.tsx`) aplican automáticamente la nueva velocidad seleccionada en la sala.
 
 ### Added
+- **Tabbed backpack view with dedicated pets companion tab displaying passive traits and health (`BackpackModal.tsx`, `App.tsx`):**
+  - Implementado sistema de pestañas tácticas segmentadas en la mochila: "EQUIPO / ARMAS" (por defecto) y "MASCOTAS".
+  - La pestaña de armamento preserva la lista vertical sin límites de slots, detalle de daño, cadencia y munición, auto-equipado y objetos en el terreno.
+  - La pestaña de mascotas mapea la comitiva activa (`myPlayer.pets`), mostrando tarjetas detalladas con avatar, nombre, badge de estado ("ACTIVA / EN ÓRBITA" o "HERIDA / INACTIVA" con `💫`), barra de salud en tiempo real, ventaja táctica pasiva según especie (perro, dron, ratón eléctrico, conejo, gato, med bot) y estadísticas de combate (daño y cadencia).
+  - Incluye estado vacío táctico si el jugador aún no ha adoptado ninguna mascota en el mapa.
 - **Aislamiento táctico del mapa y guía al Hospital en Estado Herido de Muerte (`GameMap.tsx`, `README.md`):**
   - Al caer un jugador en estado "Herido de Muerte" (`isCriticallyWounded` / `status === 'critically_wounded'`), se ocultan inmediatamente todos los elementos y marcadores del mapa (monstruo, cofre del tesoro, cajas de suministros, armas y botiquines en el suelo, mascotas silvestres y acompañantes, pings de fantasma, otros jugadores y áreas tácticas poligonales), dejando visible únicamente la estructura del Hospital de Campaña (`🏥`) y el marcador del propio jugador.
   - Generada una capa GeoJSON dinámica (`hospital-guideline` y `hospital-guideline-line`) con una línea de puntos esmeralda (`#10b981`, `line-dasharray: [1.5, 2.5]`) que traza en tiempo real el camino directo y más corto desde la posición del herido hasta las coordenadas del Hospital.
