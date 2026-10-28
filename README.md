@@ -76,7 +76,7 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 
 ### 🐾 4. Sistema de Mascotas de Apoyo (Pets)
 - **Adopción Ilimitada:** Spawneo procedural de mascotas silvestres en el mapa con marcadores animados. Se adoptan automáticamente al aproximarse a menos de 12 metros, sumándose al séquito del cazador.
-- **Órbita en Mapa con Anclaje Geoespacial Estricto:** Las mascotas acompañan al jugador con renderizado nativo proyectado a 2.5m en MapLibre GL, perfectamente fijas al terreno sin deslizamientos ni retardo durante paneos o zoom de la cámara.
+- **Órbita en Mapa con Anclaje Geoespacial y Proyección Nativa:** Las mascotas acompañan al jugador con renderizado nativo proyectado a 2.5m en MapLibre GL sin opacidades diferidas, con capas fijas en z-index 35 por encima del canvas y estructura relativa interna que garantiza que el icono y la etiqueta de nombre queden perfectamente anclados al terreno sin colapsar en la esquina superior izquierda.
 - **Perfiles y Habilidades Pasivas:**
   - 🐕 **Perro Guardián (`dog`):** 60 HP, 6 DMG. Rastreo y recogida de suministros ampliada a 25m.
   - 🛸 **Dron Táctico (`drone`):** 45 HP, 10 DMG. Fuego a distancia y +15m de radio de visión en la niebla de guerra.
