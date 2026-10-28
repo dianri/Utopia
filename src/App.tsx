@@ -720,7 +720,7 @@ export const App: React.FC = () => {
     [realtime, addLog]
   );
 
-  const { setManualDestination, resetPosition } = useGeolocation({
+  const { setManualDestination, resetPosition, cancelMovement } = useGeolocation({
     mode: room?.movementMode ?? 'manual',
     baseSpeedMps: room?.playerSpeed ? PLAYER_SPEED_MPS[room.playerSpeed] : 1.4,
     initialPosition:
@@ -734,6 +734,7 @@ export const App: React.FC = () => {
     isAlive: myPlayer?.isAlive ?? true,
     isSlowed: myPlayer?.isSlowed ?? false,
     speedMultiplier: fleeImmunityUntil > Date.now() ? 1.3 : 1,
+    isMovingBlocked: isCombatArenaOpen,
   });
 
   // ==========================================
@@ -1025,6 +1026,7 @@ export const App: React.FC = () => {
       if (dist <= 20 && !inImmunity) {
         if (!isCombatArenaOpen) {
           setIsCombatArenaOpen(true);
+          cancelMovement();
           // Si estaba manipulando el cofre, interrumpirlo de inmediato
           if (isChestLockModalOpenRef.current) {
             setIsChestLockModalOpen(false);
@@ -2701,7 +2703,7 @@ export const App: React.FC = () => {
   };
 
   const handleMapClick = useCallback((coords: Coordinates) => {
-    if (!room) return;
+    if (!room || isCombatArenaOpen) return;
 
     if (myPlayer && !myPlayer.isAlive) {
       // MODO FANTASMA: EMITIR PING TÁCTICO
@@ -2798,6 +2800,7 @@ export const App: React.FC = () => {
           structures={structures}
           droppedItems={droppedItems}
           wildPets={wildPets}
+          inCombat={isCombatArenaOpen}
           onMapClick={handleMapClick}
           onPickDroppedItem={handlePickDroppedItem}
         />

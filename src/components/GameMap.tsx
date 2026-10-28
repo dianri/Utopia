@@ -34,6 +34,7 @@ interface GameMapProps {
   structures?: MapStructure[];
   droppedItems?: DroppedItem[];
   wildPets?: WildPet[];
+  inCombat?: boolean;
   onMapClick: (coords: Coordinates) => void;
   onReviveAttempt?: (targetPlayer: Player) => void;
   onPickDroppedItem?: (dropped: DroppedItem) => void;
@@ -54,12 +55,16 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   structures = [],
   droppedItems = [],
   wildPets = [],
+  inCombat = false,
   onMapClick,
   onPickDroppedItem,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const isMapLoadedRef = useRef<boolean>(false);
+
+  const inCombatRef = useRef(inCombat);
+  inCombatRef.current = inCombat;
 
   // Marcadores HTML persistentes en refs para animación a 60 FPS sin re-renderizar React
   const playerMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
@@ -278,6 +283,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     // Control de clic estricto para movimiento o pings
     map.on('click', (e) => {
+      // 0. Descartar si el jugador está en combate
+      if (inCombatRef.current) return;
+
       // 1. Descartar si el mapa estuvo arrastrándose activamente o finalizó hace menos de 150ms
       if (isDraggingRef.current || Date.now() - dragEndTimeRef.current < 150) {
         return;
@@ -993,7 +1001,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   }, [ghostPings]);
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-hud-dark">
+    <div className={`relative w-screen h-screen overflow-hidden bg-hud-dark ${inCombat ? 'pointer-events-none' : ''}`}>
       <div ref={mapContainerRef} id="map" className="w-full h-full" />
 
       {/* BOTÓN DE CENTRAR CÁMARA */}

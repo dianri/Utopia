@@ -11,6 +11,7 @@ interface UseGeolocationOptions {
   isAlive: boolean;
   isSlowed?: boolean;
   speedMultiplier?: number;
+  isMovingBlocked?: boolean;
 }
 
 export function useGeolocation({
@@ -22,6 +23,7 @@ export function useGeolocation({
   isAlive,
   isSlowed = false,
   speedMultiplier = 1,
+  isMovingBlocked = false,
 }: UseGeolocationOptions) {
   const [currentPosition, setCurrentPosition] = useState<Coordinates | null>(initialPosition);
   const [targetPosition, setTargetPosition] = useState<Coordinates | null>(null);
@@ -56,6 +58,21 @@ export function useGeolocation({
     setTargetPosition(null);
     onPositionChangeRef.current(coords, true);
   }, []);
+
+  // Cancelar inmediatamente cualquier desplazamiento activo y fijar posición
+  const cancelMovement = useCallback(() => {
+    setTargetPosition(null);
+    if (currentPosRef.current) {
+      onPositionChangeRef.current(currentPosRef.current, true);
+    }
+  }, []);
+
+  // Si se bloquea el movimiento (ej. al entrar en combate), cancelar destino inmediatamente
+  useEffect(() => {
+    if (isMovingBlocked) {
+      cancelMovement();
+    }
+  }, [isMovingBlocked, cancelMovement]);
 
   // ==========================================
   // MODO GPS REAL (watchPosition)
@@ -105,14 +122,14 @@ export function useGeolocation({
   // ==========================================
   const setManualDestination = useCallback(
     (target: Coordinates) => {
-      if (mode !== 'manual' || !isAlive) return;
+      if (mode !== 'manual' || !isAlive || isMovingBlocked) return;
       setTargetPosition(target);
     },
-    [mode, isAlive]
+    [mode, isAlive, isMovingBlocked]
   );
 
   useEffect(() => {
-    if (mode !== 'manual' || !targetPosition || !isAlive) return;
+    if (mode !== 'manual' || !targetPosition || !isAlive || isMovingBlocked) return;
 
     let animFrame: number;
     let lastTime = performance.now();
@@ -121,7 +138,7 @@ export function useGeolocation({
     const speedMps = isSlowed ? effectiveBaseSpeed * 0.5 : effectiveBaseSpeed;
 
     const loop = (time: number) => {
-      if (!currentPosRef.current) return;
+      if (!currentPosRef.current || isMovingBlocked) return;
 
       const deltaMs = Math.min(time - lastTime, 100);
       lastTime = time;
@@ -136,7 +153,7 @@ export function useGeolocation({
       setCurrentPosition(position);
       onPositionChangeRef.current(position, arrived);
 
-      if (!arrived) {
+      if (!arrived && !isMovingBlocked) {
         animFrame = requestAnimationFrame(loop);
       } else {
         setTargetPosition(null);
@@ -148,13 +165,14 @@ export function useGeolocation({
     return () => {
       cancelAnimationFrame(animFrame);
     };
-  }, [mode, targetPosition, isAlive, isSlowed, baseSpeedMps]);
+  }, [mode, targetPosition, isAlive, isSlowed, baseSpeedMps, speedMultiplier, isMovingBlocked]);
 
   return {
     currentPosition,
     targetPosition,
     setManualDestination,
     resetPosition,
+    cancelMovement,
     gpsAccuracy,
     isGpsActive,
     gpsError,
