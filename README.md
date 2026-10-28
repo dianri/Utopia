@@ -19,6 +19,7 @@ En **Las Meriendas: Monster Hunt**, una escuadra de cazadores debe coordinarse e
   - Ataque manual con cadencia estricta (`cadenceMs`), consumo de munición/usos y feedback háptico.
   - Asistencia en combate de las mascotas activas que infligen daño continuo.
   - **Bucle Continuo de Contraataque del Monstruo:** El monstruo ataca periódica y sostenidamente cada 2.5s (24 DMG), acelerándose a 1.8s con daño potenciado (34 DMG) al entrar en modo furia (`isEnraged`), con sacudida de pantalla, viñeta roja e impacto auditivo/háptico.
+  - **Daño Monotónico y Umbral de Muerte:** La salud del jugador se reduce de forma estricta y decreciente sin oscilaciones ni sobrescrituras por sincronización en red; al llegar a <= 0 HP, pasa inmediatamente a "Herido de Muerte" (1 HP), cerrando el combate para iniciar el repliegue al Hospital.
   - **Opción de Huida Táctica:** Botón "HUIR" que otorga un sprint de emergencia (+30% de velocidad durante 5s) e inmunidad temporal de combate.
 
 ---

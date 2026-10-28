@@ -227,11 +227,8 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
       }
       soundEffects.triggerDamageHaptics();
 
-      // 2. Infligir daño continuo al jugador local (con mitigación de Tanque si la habilidad está activa)
-      const isShielded = isRoleSkillActiveRef.current && curPlayer.role === 'tank';
-      const monsterDamage = isShielded ? Math.round(currentDamage * 0.5) : currentDamage;
-
-      onPlayerDamagedRef.current(monsterDamage);
+      // 2. Infligir daño continuo al jugador local (la mitigación de rol se aplica en el manejador central)
+      onPlayerDamagedRef.current(currentDamage);
 
       // 3. Aplicar el 20% de daño residual a las mascotas activas
       const petSplashDamage = Math.max(1, Math.round(currentDamage * 0.2));

@@ -20,6 +20,7 @@ import type {
   DroppedItem,
   Pet,
   WildPet,
+  PlayerStatus,
 } from './types/game';
 import { PLAYER_SPEED_MPS, isMonsterAlive } from './types/game';
 import {
@@ -401,11 +402,19 @@ export const App: React.FC = () => {
               (playerId && p.id === playerId) ||
               (userId && p.userId === userId);
             if (!matches) return p;
+            // Solo permitir aumento de HP si el jugador está en el hospital; en cualquier otro caso, el movimiento no puede subir la salud
+            const isHospital = insideBuildingType === 'hospital' || p.insideBuildingType === 'hospital';
+            const resolvedHp =
+              hp !== undefined
+                ? isHospital
+                  ? hp
+                  : Math.min(p.hp, hp)
+                : p.hp;
             return {
               ...p,
               lat,
               lng,
-              hp: hp !== undefined ? hp : p.hp,
+              hp: resolvedHp,
               isAlive: isAlive !== undefined ? isAlive : p.isAlive,
               status: status !== undefined ? status : p.status,
               isCriticallyWounded:
@@ -420,12 +429,12 @@ export const App: React.FC = () => {
         );
       },
       onPlayerDamaged: ({ playerId, damage, currentHp }) => {
-        const isWounded = currentHp <= 0 || currentHp === 1;
         setPlayers((prev) =>
           prev.map((p) => {
             if (p.id === playerId) {
-              const newHp = currentHp <= 0 ? 1 : currentHp;
-              const criticallyWounded = currentHp <= 0 || p.isCriticallyWounded;
+              // Monotónico: el daño NUNCA puede aumentar la vida actual
+              const newHp = Math.min(p.hp, currentHp <= 0 ? 1 : currentHp);
+              const criticallyWounded = newHp <= 1 || p.isCriticallyWounded;
               return {
                 ...p,
                 hp: newHp,
@@ -438,25 +447,28 @@ export const App: React.FC = () => {
           })
         );
         if (myPlayerRef.current?.id === playerId) {
-          const isWoundedLocal = currentHp <= 0;
-          const newHp = isWoundedLocal ? 1 : currentHp;
-          setMyPlayer((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  hp: newHp,
-                  isAlive: true,
-                  isCriticallyWounded: isWoundedLocal || prev.isCriticallyWounded,
-                  status:
-                    isWoundedLocal || prev.isCriticallyWounded
-                      ? 'critically_wounded'
-                      : (prev.status || 'active'),
-                }
-              : null
-          );
+          setMyPlayer((prev) => {
+            if (!prev) return null;
+            // Monotónico para jugador local: nunca sobreescribir con valor mayor
+            const newHp = Math.min(prev.hp, currentHp <= 0 ? 1 : currentHp);
+            const isWoundedLocal = newHp <= 1;
+            if (isWoundedLocal) {
+              setIsCombatArenaOpen(false);
+            }
+            return {
+              ...prev,
+              hp: newHp,
+              isAlive: true,
+              isCriticallyWounded: isWoundedLocal || prev.isCriticallyWounded,
+              status:
+                isWoundedLocal || prev.isCriticallyWounded
+                  ? 'critically_wounded'
+                  : (prev.status || 'active'),
+            };
+          });
           soundEffects.triggerDamageHaptics();
           soundEffects.playAlarm();
-          if (isWoundedLocal) {
+          if (currentHp <= 1) {
             addLog('¡ATAQUE CRÍTICO! Has quedado Herido de Muerte. ¡Corre al Hospital!', 'warning');
           } else {
             addLog(`¡Has recibido ${damage} de daño!`, 'combat');
@@ -785,16 +797,22 @@ export const App: React.FC = () => {
                   gameId: d.game_id,
                   nickname: d.nickname,
                   role: d.role as PlayerRole,
-                  hp: d.hp,
+                  hp: existing ? existing.hp : d.hp, // Preservar salud viva de combate en memoria
                   maxHp: d.max_hp,
-                  isAlive: d.is_alive,
+                  isAlive: existing ? existing.isAlive : d.is_alive,
+                  status: existing?.status || 'active',
+                  isCriticallyWounded: existing?.isCriticallyWounded ?? false,
                   lat: existing?.lat ?? d.lat ?? room.centerLat,
                   lng: existing?.lng ?? d.lng ?? room.centerLng,
-                  damageDealt: d.damage_dealt,
-                  revivesDone: d.revives_done,
-                  cratesOpened: d.crates_opened,
-                  monsterKills: d.monster_kills,
+                  damageDealt: existing ? existing.damageDealt : d.damage_dealt,
+                  revivesDone: existing ? existing.revivesDone : d.revives_done,
+                  cratesOpened: existing ? existing.cratesOpened : d.crates_opened,
+                  monsterKills: existing ? existing.monsterKills : d.monster_kills,
                   isHost: d.user_id === room.hostId,
+                  pets: existing?.pets,
+                  inventory: existing?.inventory,
+                  equippedWeapon: existing?.equippedWeapon,
+                  equippedItemId: existing?.equippedItemId,
                 };
               })
             );
@@ -841,26 +859,44 @@ export const App: React.FC = () => {
       setMonster(result.updatedMonster);
       realtimeRef.current.broadcastMonsterUpdate(result.updatedMonster);
 
-      // Si el monstruo atacó a un jugador
+      // Si el monstruo atacó a un jugador en el mapa
       if (result.attackedPlayerId && result.attackDamage > 0) {
         const victim = playersRef.current.find((p) => p.id === result.attackedPlayerId);
         if (victim) {
+          // Si el jugador local está en la arena de combate, la arena ya ejecuta su propio bucle de daño periódico
+          if (victim.id === myPlayerRef.current?.id && isCombatArenaOpen) {
+            return;
+          }
+
           const isShielded = isRoleSkillActiveRef.current && victim.id === myPlayerRef.current?.id && myPlayerRef.current?.role === 'tank';
           const damageApplied = isShielded ? Math.round(result.attackDamage * 0.5) : result.attackDamage;
-          const calculatedHp = victim.hp - damageApplied;
-          const isWounded = calculatedHp <= 0;
+          const currentVictimHp = victim.id === myPlayerRef.current?.id && myPlayerRef.current ? myPlayerRef.current.hp : victim.hp;
+          const calculatedHp = Math.max(0, currentVictimHp - damageApplied);
+          const isWounded = calculatedHp <= 0 || calculatedHp === 1;
           const newHp = isWounded ? 1 : calculatedHp;
-          const newStatus = isWounded ? 'critically_wounded' : (victim.status || 'active');
+          const newStatus: PlayerStatus = isWounded ? 'critically_wounded' : (victim.status || 'active');
+
           realtimeRef.current.broadcastPlayerHit(victim.id, damageApplied, newHp);
+
           // Si el host es la víctima
           if (victim.id === myPlayerRef.current?.id) {
             setMyPlayer((prev) => (prev ? {
               ...prev,
               hp: newHp,
               isAlive: true,
-              isCriticallyWounded: isWounded,
+              isCriticallyWounded: isWounded || prev.isCriticallyWounded,
               status: newStatus,
             } : null));
+
+            // Sincronizar simultáneamente en la lista local
+            setPlayers((prev) =>
+              prev.map((p) =>
+                p.id === victim.id
+                  ? { ...p, hp: newHp, isCriticallyWounded: isWounded || p.isCriticallyWounded, status: newStatus }
+                  : p
+              )
+            );
+
             soundEffects.triggerDamageHaptics();
             soundEffects.playAlarm();
             if (isWounded) {
@@ -1132,33 +1168,54 @@ export const App: React.FC = () => {
 
   const handleArenaPlayerDamaged = useCallback(
     (damage: number) => {
+      let resultingHp = 1;
+      let resultingStatus: PlayerStatus = 'active';
+      let resultingWounded = false;
+      let actualDamage = damage;
+
       setMyPlayer((prev) => {
         if (!prev) return null;
         const isShielded = isRoleSkillActiveRef.current && prev.role === 'tank';
-        const damageApplied = isShielded ? Math.round(damage * 0.5) : damage;
-        const calculatedHp = prev.hp - damageApplied;
-        const isWounded = calculatedHp <= 0;
-        const newHp = isWounded ? 1 : calculatedHp;
-        const newStatus = isWounded ? 'critically_wounded' : (prev.status || 'active');
+        actualDamage = isShielded ? Math.round(damage * 0.5) : damage;
+        const calculatedHp = Math.max(0, prev.hp - actualDamage);
+        resultingWounded = calculatedHp <= 0 || calculatedHp === 1;
+        resultingHp = resultingWounded ? 1 : calculatedHp;
+        resultingStatus = resultingWounded ? 'critically_wounded' : (prev.status || 'active');
 
-        realtimeRef.current.broadcastPlayerHit(prev.id, damageApplied, newHp);
+        // Transmitir daño a compañeros de escuadra
+        realtimeRef.current.broadcastPlayerHit(prev.id, actualDamage, resultingHp);
 
-        if (isWounded) {
+        if (resultingWounded) {
           setIsCombatArenaOpen(false);
           soundEffects.triggerDamageHaptics();
           soundEffects.playAlarm();
           addLog('¡ATAQUE CRÍTICO EN LA ARENA! Has quedado Herido de Muerte. ¡Huye al Hospital!', 'combat');
         } else {
-          addLog(`¡El monstruo te golpeó por ${damageApplied} de daño!`, 'combat');
+          addLog(`¡El monstruo te golpeó por ${actualDamage} de daño!`, 'combat');
         }
 
         return {
           ...prev,
-          hp: newHp,
-          isCriticallyWounded: isWounded || prev.isCriticallyWounded,
-          status: newStatus,
+          hp: resultingHp,
+          isCriticallyWounded: resultingWounded || prev.isCriticallyWounded,
+          status: resultingStatus,
         };
       });
+
+      // Sincronizar simultáneamente la lista de jugadores local para que playersRef esté alineado
+      setPlayers((prev) =>
+        prev.map((p) => {
+          if (p.id === myPlayerRef.current?.id) {
+            return {
+              ...p,
+              hp: resultingHp,
+              isCriticallyWounded: resultingWounded || p.isCriticallyWounded,
+              status: resultingStatus,
+            };
+          }
+          return p;
+        })
+      );
     },
     [addLog]
   );
