@@ -4,6 +4,10 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Unreleased]
+### Documentation
+- **Actualización integral de `README.md`:**
+  - Documentadas todas las mecánicas incorporadas en los últimos sprints: Arena de Combate táctica interactiva (`CombatArena.tsx`), sistema de mascotas de apoyo con habilidades pasivas y asistencia de combate (`Pet[]`), estructuras tácticas en el mapa (Hospital de Campaña y Casas/Refugios), rediseño del ciclo de vida con estado "Herido de Muerte" (`critically_wounded`) y brújula de emergencia, sistema de mochila de 4 slots con jerarquía de 7 tiers de armamento y desgaste de durabilidad, apertura cooperativa del cofre por fases de minijuegos con sprint de furia del monstruo, y optimizaciones visuales y mobile-first para el HUD.
+
 ### Fixed
 - **Marcadores de mascotas silvestres y de acompañamiento fijados en la esquina superior izquierda (0,0) (`GameMap.tsx`):**
   - Añadida guardia estricta de ciclo de vida del mapa WebGL (`!map || !isMapLoadedRef.current`) y estado de carga reactivo (`mapLoaded`) en los efectos de mascotas silvestres y mascotas acompañantes, evitando instanciar marcadores HTML antes de que el motor de proyección de MapLibre GL esté activo.
