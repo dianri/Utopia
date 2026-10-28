@@ -611,8 +611,14 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       }
     });
 
-    const getTierStyle = (tier: number) => {
-      switch (tier) {
+    const getTierStyle = (item: { tier: number; category?: string; type?: string }) => {
+      if (item.category === 'health' || item.type === 'medkit') {
+        return { border: 'border-emerald-500', bg: 'bg-emerald-950/90', text: 'text-emerald-300', aura: 'bg-emerald-500/30', icon: '❤️' };
+      }
+      if (item.category === 'ammo' || item.type === 'ammo') {
+        return { border: 'border-amber-400', bg: 'bg-amber-950/90', text: 'text-amber-300', aura: 'bg-amber-500/30', icon: '⚡' };
+      }
+      switch (item.tier) {
         case 7:
           return { border: 'border-red-500', bg: 'bg-red-950/90', text: 'text-red-300', aura: 'bg-red-500/30', icon: '🚀' };
         case 6:
@@ -632,7 +638,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     droppedItems.forEach((dropped) => {
       if (!droppedItemMarkersRef.current.has(dropped.id)) {
-        const style = getTierStyle(dropped.item.tier);
+        const style = getTierStyle(dropped.item);
         const el = document.createElement('div');
         el.className = `dropped-item-${dropped.id} flex flex-col items-center select-none cursor-pointer group`;
         el.innerHTML = `

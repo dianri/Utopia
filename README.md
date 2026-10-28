@@ -37,7 +37,7 @@ En **Las Meriendas: Monster Hunt**, una escuadra de cazadores debe coordinarse e
 - **Mochila Ilimitada:** Capacidad infinita sin restricción de slots y con scroll táctico fluido en el modal de mochila, permitiendo acumular todo el arsenal y suministros recogidos sin descarte forzado.
 - **Desgaste Dinámico y Auto-Fallback:** Al agotarse la munición o romperse un arma de durabilidad, el sistema equipa automáticamente la siguiente mejor arma disponible en la mochila hasta recurrir a Puños (Tier 0). Al recoger cualquier nueva arma, se auto-equipa al instante si se portaban los puños.
 - **Descarte Total en el Suelo (`DroppedItem`):** Los jugadores pueden soltar cualquier arma en el terreno (incluido el cuchillo táctico). Los objetos caen al terreno como marcadores interactivos en MapLibre GL con colores por Tier y son recolectables a menos de 20m.
-- **Curación Instantánea:** Los botiquines de primeros auxilios y raciones se consumen inmediatamente al abrir cajas de suministros, curando la salud sin ocupar espacio en la mochila.
+- **Curación Instantánea Aislada:** Los botiquines de primeros auxilios y suministros médicos se consumen inmediatamente al abrir cajas médicas o recoger kits del terreno, restaurando la salud sin ocupar espacio en la mochila. El armamento, munición y llaves están estrictamente aislados y no alteran los puntos de vida del jugador al ser recogidos.
 
 ---
 

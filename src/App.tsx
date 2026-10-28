@@ -36,6 +36,11 @@ import {
   WEAPON_TIER_CONFIG,
 } from './services/combatEngine';
 import {
+  applyCratePickup,
+  applyPetCratePickup,
+  applyDroppedItemPickup,
+} from './services/lootService';
+import {
   getDistanceMeters,
   getRandomPointInCircle,
   getRandomSpawnPointInPlayArea,
@@ -1381,83 +1386,17 @@ export const App: React.FC = () => {
           prev.map((c) => (c.id === crate.id ? { ...c, opened: true } : c))
         );
 
-        // 1. RECOLECCIÓN INSTANTÁNEA DE SALUD Y GESTIÓN DE MOCHILA
+        // 1. RECOLECCIÓN AISLADA DE SUMINISTROS (CURACIÓN ESTRICTAMENTE LIMITADA A BOTIQUINES)
+        let lootedName = 'Suministros';
         setMyPlayer((prev) => {
           if (!prev) return null;
-
-          // Curación instantánea directa sin ocupar slots en la mochila
-          const healedHp = Math.min(prev.maxHp, prev.hp + crate.healReward);
-          if (crate.healReward > 0) {
-            addLogRef.current(`¡Botiquín recogido! +${crate.healReward} HP restaurados al instante.`, 'loot');
-          }
-
-          // Convertir recompensa de arma a InventoryItem
-          const rawType = (crate.weaponReward.weaponType || crate.weaponReward.id) as string;
-          const mappedType: WeaponType =
-            rawType === 'assault_rifle'
-              ? 'rifle'
-              : rawType === 'combat_shotgun'
-              ? 'shotgun'
-              : rawType === 'baseball_bat'
-              ? 'axe'
-              : rawType === 'tactical_knife'
-              ? 'knife'
-              : (rawType as WeaponType);
-
-          const hasConfig = mappedType in WEAPON_TIER_CONFIG;
-          const newInventoryItem: InventoryItem = hasConfig
-            ? createInventoryItem(mappedType, crate.weaponReward.ammo > 0 ? crate.weaponReward.ammo : undefined)
-            : {
-                id: crypto.randomUUID(),
-                type: crate.weaponReward.id,
-                name: crate.weaponReward.name,
-                category: 'weapon',
-                tier: crate.weaponReward.tier || 3,
-                damage: crate.weaponReward.damage,
-                cadenceMs: crate.weaponReward.fireRateMs,
-                ammo: crate.weaponReward.ammo,
-                maxAmmo: crate.weaponReward.maxAmmo,
-                durability: -1,
-                isInfinite: crate.weaponReward.ammo === -1,
-                rangeMeters: crate.weaponReward.rangeMeters,
-                iconName: crate.weaponReward.iconName,
-              };
-
-          const currentInv = prev.inventory && prev.inventory.length > 0
-            ? prev.inventory
-            : getDefaultInventoryForRole(prev.role);
-
-          const updatedInv = [...currentInv, newInventoryItem];
-          let updatedEquippedWeapon = prev.equippedWeapon;
-          let updatedEquippedItemId = prev.equippedItemId;
-
-          const currentTier = prev.equippedWeapon?.tier ?? 0;
-          const isCurrentlyFists = prev.equippedWeapon?.weaponType === 'fists' || currentTier === 0;
-          if (isCurrentlyFists || newInventoryItem.tier > currentTier) {
-            updatedEquippedWeapon = inventoryItemToWeapon(newInventoryItem);
-            updatedEquippedItemId = newInventoryItem.id;
-            addLogRef.current(
-              `¡Has obtenido ${newInventoryItem.name} (Tier ${newInventoryItem.tier})! Auto-equipada.`,
-              'loot'
-            );
-          } else {
-            addLogRef.current(
-              `¡${newInventoryItem.name} (Tier ${newInventoryItem.tier}) guardada en la mochila!`,
-              'loot'
-            );
-          }
-
-          return {
-            ...prev,
-            hp: healedHp,
-            inventory: updatedInv,
-            equippedWeapon: updatedEquippedWeapon,
-            equippedItemId: updatedEquippedItemId,
-            cratesOpened: prev.cratesOpened + 1,
-          };
+          const result = applyCratePickup(crate, prev);
+          lootedName = result.lootedItemName;
+          addLogRef.current(result.logMessage, result.logType);
+          return result.updatedPlayer;
         });
 
-        realtime.broadcastCrateLooted(crate.id, myPlayer.nickname, crate.weaponReward.name);
+        realtime.broadcastCrateLooted(crate.id, myPlayer.nickname, lootedName);
         soundEffects.playCrateLoot();
       }
     });
@@ -1554,123 +1493,16 @@ export const App: React.FC = () => {
           prev.map((c) => (c.id === crate.id ? { ...c, opened: true } : c))
         );
 
+        let lootedName = 'Suministros';
         setMyPlayer((prev) => {
           if (!prev) return null;
-
-          let healedPlayerHp = prev.hp;
-          let updatedPets = [...(prev.pets || [])];
-
-          // Gestión de botiquines / curación pasiva por mascota:
-          // Si el jugador tiene vida incompleta (< maxHp), la curación se aplica al jugador
-          // Si el jugador ya tiene vida al 100%, se cura a la mascota con menor porcentaje de salud
-          if (crate.healReward > 0) {
-            if (prev.hp < prev.maxHp) {
-              healedPlayerHp = Math.min(prev.maxHp, prev.hp + crate.healReward);
-              addLogRef.current(
-                `🐾 ${fetchingPet.name} te trajo suministros médicos: +${crate.healReward} HP!`,
-                'loot'
-              );
-            } else {
-              // Buscar mascota con menor porcentaje de salud
-              let lowestPetIndex = -1;
-              let lowestRatio = 1.0;
-              updatedPets.forEach((p, idx) => {
-                const ratio = p.hp / p.maxHp;
-                if (ratio < lowestRatio) {
-                  lowestRatio = ratio;
-                  lowestPetIndex = idx;
-                }
-              });
-
-              if (lowestPetIndex >= 0) {
-                const targetPet = updatedPets[lowestPetIndex];
-                const newPetHp = Math.min(targetPet.maxHp, targetPet.hp + crate.healReward);
-                updatedPets[lowestPetIndex] = {
-                  ...targetPet,
-                  hp: newPetHp,
-                  isWounded: false,
-                };
-                addLogRef.current(
-                  `🐾 ${fetchingPet.name} curó a ${targetPet.name} (+${crate.healReward} HP)!`,
-                  'loot'
-                );
-              } else {
-                addLogRef.current(
-                  `🐾 ${fetchingPet.name} recogió suministros médicos (Squad al 100% HP).`,
-                  'loot'
-                );
-              }
-            }
-          }
-
-          // Armas y munición van a la mochila del jugador siguiendo la lógica existente
-          const rawType = (crate.weaponReward.weaponType || crate.weaponReward.id) as string;
-          const mappedType: WeaponType =
-            rawType === 'assault_rifle'
-              ? 'rifle'
-              : rawType === 'combat_shotgun'
-              ? 'shotgun'
-              : rawType === 'baseball_bat'
-              ? 'axe'
-              : rawType === 'tactical_knife'
-              ? 'knife'
-              : (rawType as WeaponType);
-
-          const hasConfig = mappedType in WEAPON_TIER_CONFIG;
-          const newInventoryItem: InventoryItem = hasConfig
-            ? createInventoryItem(mappedType, crate.weaponReward.ammo > 0 ? crate.weaponReward.ammo : undefined)
-            : {
-                id: crypto.randomUUID(),
-                type: crate.weaponReward.id,
-                name: crate.weaponReward.name,
-                category: 'weapon',
-                tier: crate.weaponReward.tier || 3,
-                damage: crate.weaponReward.damage,
-                cadenceMs: crate.weaponReward.fireRateMs,
-                ammo: crate.weaponReward.ammo,
-                maxAmmo: crate.weaponReward.maxAmmo,
-                durability: -1,
-                isInfinite: crate.weaponReward.ammo === -1,
-                rangeMeters: crate.weaponReward.rangeMeters,
-                iconName: crate.weaponReward.iconName,
-              };
-
-          const currentInv = prev.inventory && prev.inventory.length > 0
-            ? prev.inventory
-            : getDefaultInventoryForRole(prev.role);
-
-          const updatedInv = [...currentInv, newInventoryItem];
-          let updatedEquippedWeapon = prev.equippedWeapon;
-          let updatedEquippedItemId = prev.equippedItemId;
-
-          const currentTier = prev.equippedWeapon?.tier ?? 0;
-          const isCurrentlyFists = prev.equippedWeapon?.weaponType === 'fists' || currentTier === 0;
-          if (isCurrentlyFists || newInventoryItem.tier > currentTier) {
-            updatedEquippedWeapon = inventoryItemToWeapon(newInventoryItem);
-            updatedEquippedItemId = newInventoryItem.id;
-            addLogRef.current(
-              `🐾 ${fetchingPet.name} trajo ${newInventoryItem.name} (Tier ${newInventoryItem.tier})! Auto-equipada.`,
-              'loot'
-            );
-          } else {
-            addLogRef.current(
-              `🐾 ${fetchingPet.name} guardó ${newInventoryItem.name} (Tier ${newInventoryItem.tier}) en tu mochila!`,
-              'loot'
-            );
-          }
-
-          return {
-            ...prev,
-            hp: healedPlayerHp,
-            pets: updatedPets,
-            inventory: updatedInv,
-            equippedWeapon: updatedEquippedWeapon,
-            equippedItemId: updatedEquippedItemId,
-            cratesOpened: prev.cratesOpened + 1,
-          };
+          const result = applyPetCratePickup(crate, prev, fetchingPet);
+          lootedName = result.lootedItemName;
+          addLogRef.current(result.logMessage, result.logType);
+          return result.updatedPlayer;
         });
 
-        realtime.broadcastCrateLooted(crate.id, myPlayer.nickname, crate.weaponReward.name);
+        realtime.broadcastCrateLooted(crate.id, myPlayer.nickname, lootedName);
         soundEffects.playCrateLoot();
       }
     });
@@ -2078,26 +1910,10 @@ export const App: React.FC = () => {
 
     setMyPlayer((prev) => {
       if (!prev) return null;
-      const currentInv = prev.inventory || getDefaultInventoryForRole(prev.role);
-      const updatedInv = [...currentInv, dropped.item];
-      const currentTier = prev.equippedWeapon?.tier ?? 0;
-      const isCurrentlyFists = prev.equippedWeapon?.weaponType === 'fists' || currentTier === 0;
-      const shouldAutoEquip = isCurrentlyFists || dropped.item.tier > currentTier;
-
-      addLog(
-        `¡Has recogido ${dropped.item.name} (Tier ${dropped.item.tier})! ${
-          shouldAutoEquip ? 'Auto-equipada.' : 'Guardada en la mochila.'
-        }`,
-        'loot'
-      );
+      const result = applyDroppedItemPickup(dropped, prev);
+      addLog(result.logMessage, result.logType);
       soundEffects.playCrateLoot();
-
-      return {
-        ...prev,
-        inventory: updatedInv,
-        equippedWeapon: shouldAutoEquip ? inventoryItemToWeapon(dropped.item) : prev.equippedWeapon,
-        equippedItemId: shouldAutoEquip ? dropped.item.id : prev.equippedItemId,
-      };
+      return result.updatedPlayer;
     });
   }, [addLog]);
 
@@ -2281,17 +2097,17 @@ export const App: React.FC = () => {
     const generatedCrates: SupplyCrate[] = [];
     const crateTemplates: {
       type: CrateType;
-      weapon: typeof WEAPON_REGISTRY[keyof typeof WEAPON_REGISTRY];
+      weapon?: typeof WEAPON_REGISTRY[keyof typeof WEAPON_REGISTRY];
       heal: number;
       ammo: number;
     }[] = [
-      { type: 'rocket_launcher', weapon: WEAPON_REGISTRY.rocket_launcher, heal: 25, ammo: 3 },
-      { type: 'rifle', weapon: WEAPON_REGISTRY.rifle, heal: 30, ammo: 60 },
-      { type: 'shotgun', weapon: WEAPON_REGISTRY.shotgun, heal: 30, ammo: 20 },
-      { type: 'grenade', weapon: WEAPON_REGISTRY.grenade, heal: 25, ammo: 5 },
-      { type: 'medkit', weapon: WEAPON_REGISTRY.knife, heal: 100, ammo: 0 },
-      { type: 'ammo', weapon: WEAPON_REGISTRY.pistol, heal: 20, ammo: 90 },
-      { type: 'melee', weapon: WEAPON_REGISTRY.axe, heal: 40, ammo: 15 },
+      { type: 'rocket_launcher', weapon: WEAPON_REGISTRY.rocket_launcher, heal: 0, ammo: 3 },
+      { type: 'rifle', weapon: WEAPON_REGISTRY.rifle, heal: 0, ammo: 60 },
+      { type: 'shotgun', weapon: WEAPON_REGISTRY.shotgun, heal: 0, ammo: 20 },
+      { type: 'grenade', weapon: WEAPON_REGISTRY.grenade, heal: 0, ammo: 5 },
+      { type: 'medkit', weapon: undefined, heal: 100, ammo: 0 },
+      { type: 'ammo', weapon: undefined, heal: 0, ammo: 90 },
+      { type: 'melee', weapon: WEAPON_REGISTRY.axe, heal: 0, ammo: 15 },
     ];
 
     for (let i = 0; i < 5; i++) {
@@ -2565,17 +2381,17 @@ export const App: React.FC = () => {
       const fallbackCrates: SupplyCrate[] = [];
       const crateTemplates: {
         type: CrateType;
-        weapon: typeof WEAPON_REGISTRY[keyof typeof WEAPON_REGISTRY];
+        weapon?: typeof WEAPON_REGISTRY[keyof typeof WEAPON_REGISTRY];
         heal: number;
         ammo: number;
       }[] = [
-        { type: 'rocket_launcher', weapon: WEAPON_REGISTRY.rocket_launcher, heal: 25, ammo: 3 },
-        { type: 'rifle', weapon: WEAPON_REGISTRY.rifle, heal: 30, ammo: 60 },
-        { type: 'shotgun', weapon: WEAPON_REGISTRY.shotgun, heal: 30, ammo: 20 },
-        { type: 'grenade', weapon: WEAPON_REGISTRY.grenade, heal: 25, ammo: 5 },
-        { type: 'medkit', weapon: WEAPON_REGISTRY.knife, heal: 100, ammo: 0 },
-        { type: 'ammo', weapon: WEAPON_REGISTRY.pistol, heal: 20, ammo: 90 },
-        { type: 'melee', weapon: WEAPON_REGISTRY.axe, heal: 40, ammo: 15 },
+        { type: 'rocket_launcher', weapon: WEAPON_REGISTRY.rocket_launcher, heal: 0, ammo: 3 },
+        { type: 'rifle', weapon: WEAPON_REGISTRY.rifle, heal: 0, ammo: 60 },
+        { type: 'shotgun', weapon: WEAPON_REGISTRY.shotgun, heal: 0, ammo: 20 },
+        { type: 'grenade', weapon: WEAPON_REGISTRY.grenade, heal: 0, ammo: 5 },
+        { type: 'medkit', weapon: undefined, heal: 100, ammo: 0 },
+        { type: 'ammo', weapon: undefined, heal: 0, ammo: 90 },
+        { type: 'melee', weapon: WEAPON_REGISTRY.axe, heal: 0, ammo: 15 },
       ];
       for (let i = 0; i < 5; i++) {
         const dropPoint = getRandomPointInCircle(
