@@ -83,6 +83,43 @@ import { ChestLockModal } from './components/Chest/ChestLockModal';
 
 import { Play, Users, Trophy, Footprints } from 'lucide-react';
 
+export const savePlayerSessionSnapshot = (gameId: string, player: Player) => {
+  try {
+    const snapshot = {
+      id: player.id,
+      userId: player.userId,
+      gameId,
+      nickname: player.nickname,
+      role: player.role,
+      lat: player.lat,
+      lng: player.lng,
+      hp: player.hp,
+      maxHp: player.maxHp,
+      status: player.status || (player.hp <= 0 || player.isCriticallyWounded ? 'critically_wounded' : 'active'),
+      isCriticallyWounded: !!(player.isCriticallyWounded || player.status === 'critically_wounded' || player.hp <= 0),
+      isAlive: player.isAlive,
+      inventory: player.inventory,
+      pets: player.pets,
+      equippedWeapon: player.equippedWeapon,
+      equippedItemId: player.equippedItemId || player.equippedWeapon?.id,
+      updatedAt: Date.now(),
+    };
+    sessionStorage.setItem(`utopia_player_session_${gameId}`, JSON.stringify(snapshot));
+    localStorage.setItem(`utopia_player_session_${gameId}`, JSON.stringify(snapshot));
+  } catch (err) {
+    console.warn('Error al guardar snapshot de sesión del jugador:', err);
+  }
+};
+
+export const clearPlayerSessionSnapshot = (gameId: string) => {
+  try {
+    sessionStorage.removeItem(`utopia_player_session_${gameId}`);
+    localStorage.removeItem(`utopia_player_session_${gameId}`);
+  } catch {
+    // Ignorar
+  }
+};
+
 export const App: React.FC = () => {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [room, setRoom] = useState<GameRoom | null>(null);
@@ -217,6 +254,95 @@ export const App: React.FC = () => {
 
   const chestHoldersCountRef = useRef<number>(chestHoldersCount);
   chestHoldersCountRef.current = chestHoldersCount;
+
+  // ==========================================
+  // PERSISTENCIA CONTINUA DE SESIÓN Y SUPABASE
+  // ==========================================
+  const lastDbSyncTimeRef = useRef<number>(0);
+  const dbSyncTimeoutRef = useRef<any>(null);
+
+  const syncPlayerToSupabase = useCallback(
+    async (player: Player, immediate = false) => {
+      if (!player || !player.id) return;
+
+      const doSync = async () => {
+        try {
+          const updatePayload: Record<string, any> = {
+            lat: player.lat,
+            lng: player.lng,
+            hp: player.hp,
+            is_alive: player.isAlive,
+            inventory: player.inventory || [],
+            pets: player.pets || [],
+            status:
+              player.status ||
+              (player.hp <= 0 || player.isCriticallyWounded
+                ? 'critically_wounded'
+                : 'active'),
+          };
+
+          await (supabase.from('players') as any)
+            .update(updatePayload)
+            .eq('id', player.id);
+        } catch (err) {
+          console.warn('Error al sincronizar estado del jugador con Supabase:', err);
+        }
+      };
+
+      if (immediate) {
+        if (dbSyncTimeoutRef.current) {
+          clearTimeout(dbSyncTimeoutRef.current);
+          dbSyncTimeoutRef.current = null;
+        }
+        lastDbSyncTimeRef.current = Date.now();
+        await doSync();
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastDbSyncTimeRef.current >= 2000) {
+        lastDbSyncTimeRef.current = now;
+        if (dbSyncTimeoutRef.current) {
+          clearTimeout(dbSyncTimeoutRef.current);
+          dbSyncTimeoutRef.current = null;
+        }
+        doSync();
+      } else {
+        if (!dbSyncTimeoutRef.current) {
+          dbSyncTimeoutRef.current = setTimeout(() => {
+            dbSyncTimeoutRef.current = null;
+            lastDbSyncTimeRef.current = Date.now();
+            if (myPlayerRef.current) {
+              doSync();
+            }
+          }, 2000);
+        }
+      }
+    },
+    []
+  );
+
+  // Guardar snapshot local inmediato ante cualquier cambio de estado del jugador
+  useEffect(() => {
+    if (myPlayer && room?.id) {
+      savePlayerSessionSnapshot(room.id, myPlayer);
+    }
+  }, [myPlayer, room?.id]);
+
+  // Asegurar persistencia sincrónica ante cierre de pestaña o F5
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (myPlayerRef.current && roomRef.current?.id) {
+        savePlayerSessionSnapshot(roomRef.current.id, myPlayerRef.current);
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('pagehide', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('pagehide', handleBeforeUnload);
+    };
+  }, []);
 
   // ESTRUCTURAS TÁCTICAS EN EL MAPA (1 HOSPITAL Y 4 REFUGIOS)
   const structures = useMemo<MapStructure[]>(() => {
@@ -755,8 +881,15 @@ export const App: React.FC = () => {
           myPlayerRef.current.pets
         );
       }
+
+      // Sincronizar posición persistente con Supabase (inmediato si es posición final, o throttled cada 2s)
+      if (isFinal) {
+        syncPlayerToSupabase({ ...myPlayerRef.current, lat: coords.lat, lng: coords.lng }, true);
+      } else {
+        syncPlayerToSupabase({ ...myPlayerRef.current, lat: coords.lat, lng: coords.lng }, false);
+      }
     },
-    [realtime, addLog]
+    [realtime, addLog, syncPlayerToSupabase]
   );
 
   const { setManualDestination, resetPosition, cancelMovement } = useGeolocation({
@@ -810,20 +943,25 @@ export const App: React.FC = () => {
           if (data) {
             setPlayers((prev) =>
               (data as any[]).map((d) => {
+                if (myPlayerRef.current && (d.id === myPlayerRef.current.id || d.user_id === myPlayerRef.current.userId)) {
+                  return myPlayerRef.current;
+                }
                 const existing = prev.find(
                   (p) => p.id === d.id || (d.user_id && p.userId === d.user_id)
                 );
+                const teammateRole = (d.role as PlayerRole) || existing?.role || 'medic';
+                const teammateStatus = existing?.status || (d.status as PlayerStatus) || (d.hp <= 0 ? 'critically_wounded' : 'active');
                 return {
                   id: d.id,
                   userId: d.user_id,
                   gameId: d.game_id,
                   nickname: d.nickname,
-                  role: d.role as PlayerRole,
+                  role: teammateRole,
                   hp: existing ? existing.hp : d.hp, // Preservar salud viva de combate en memoria
                   maxHp: d.max_hp,
                   isAlive: existing ? existing.isAlive : d.is_alive,
-                  status: existing?.status || 'active',
-                  isCriticallyWounded: existing?.isCriticallyWounded ?? false,
+                  status: teammateStatus,
+                  isCriticallyWounded: existing?.isCriticallyWounded ?? (teammateStatus === 'critically_wounded' || d.hp <= 0),
                   lat: existing?.lat ?? d.lat ?? room.centerLat,
                   lng: existing?.lng ?? d.lng ?? room.centerLng,
                   damageDealt: existing ? existing.damageDealt : d.damage_dealt,
@@ -831,8 +969,8 @@ export const App: React.FC = () => {
                   cratesOpened: existing ? existing.cratesOpened : d.crates_opened,
                   monsterKills: existing ? existing.monsterKills : d.monster_kills,
                   isHost: d.user_id === room.hostId,
-                  pets: existing?.pets,
-                  inventory: existing?.inventory,
+                  pets: existing?.pets ?? d.pets ?? [],
+                  inventory: existing?.inventory ?? d.inventory ?? [],
                   equippedWeapon: existing?.equippedWeapon,
                   equippedItemId: existing?.equippedItemId,
                 };
@@ -1845,6 +1983,7 @@ export const App: React.FC = () => {
     if (room.id) {
       try {
         localStorage.removeItem(`utopia_chest_progress_${room.id}`);
+        clearPlayerSessionSnapshot(room.id);
       } catch {
         // Ignorar
       }
@@ -1902,6 +2041,7 @@ export const App: React.FC = () => {
     if (room.id) {
       try {
         localStorage.removeItem(`utopia_chest_progress_${room.id}`);
+        clearPlayerSessionSnapshot(room.id);
       } catch {
         // Ignorar
       }
@@ -1934,6 +2074,7 @@ export const App: React.FC = () => {
     if (room.id) {
       try {
         localStorage.removeItem(`utopia_chest_progress_${room.id}`);
+        clearPlayerSessionSnapshot(room.id);
       } catch {
         // Ignorar
       }
@@ -2197,6 +2338,9 @@ export const App: React.FC = () => {
       return;
     }
 
+    const hostInventory = getDefaultInventoryForRole(config.role);
+    const hostBestWeapon = getBestWeaponInInventory(hostInventory);
+
     // Insertar jugador Host en la posición de spawn generada
     const maxHp = getMaxHpForRole(config.role);
     const { data: playerData, error: playerError } = await (supabase
@@ -2209,8 +2353,11 @@ export const App: React.FC = () => {
         hp: maxHp,
         max_hp: maxHp,
         is_alive: true,
+        status: 'active',
         lat: hostSpawnPoint.lat,
         lng: hostSpawnPoint.lng,
+        inventory: hostInventory,
+        pets: [],
       })
       .select()
       .single();
@@ -2242,9 +2389,6 @@ export const App: React.FC = () => {
       createdAt: gameData.created_at,
     };
 
-    const hostInventory = getDefaultInventoryForRole(config.role);
-    const hostBestWeapon = getBestWeaponInInventory(hostInventory);
-
     const hostPlayer: Player = {
       id: playerData.id,
       userId,
@@ -2254,6 +2398,8 @@ export const App: React.FC = () => {
       hp: maxHp,
       maxHp,
       isAlive: true,
+      status: 'active',
+      isCriticallyWounded: false,
       lat: hostSpawnPoint.lat,
       lng: hostSpawnPoint.lng,
       damageDealt: 0,
@@ -2262,6 +2408,7 @@ export const App: React.FC = () => {
       monsterKills: 0,
       isHost: true,
       inventory: hostInventory,
+      pets: [],
       equippedWeapon: inventoryItemToWeapon(hostBestWeapon),
       equippedItemId: hostBestWeapon.id,
     };
@@ -2334,6 +2481,7 @@ export const App: React.FC = () => {
 
     setRoom(newRoom);
     setMyPlayer(hostPlayer);
+    savePlayerSessionSnapshot(gameData.id, hostPlayer);
     setPlayers([hostPlayer]);
     setCrates(generatedCrates);
     setWildPets(initialWildPets);
@@ -2381,6 +2529,17 @@ export const App: React.FC = () => {
 
     let playerData = existingPlayer;
     let spawnCoords: Coordinates;
+    let localSnapshot: any = null;
+    try {
+      const rawLocal =
+        sessionStorage.getItem(`utopia_player_session_${gameData.id}`) ||
+        localStorage.getItem(`utopia_player_session_${gameData.id}`);
+      if (rawLocal) {
+        localSnapshot = JSON.parse(rawLocal);
+      }
+    } catch (err) {
+      console.warn('Error leyendo snapshot local de sesión:', err);
+    }
 
     if (!existingPlayer) {
       // 2. Si es un jugador nuevo:
@@ -2437,8 +2596,11 @@ export const App: React.FC = () => {
           hp: maxHp,
           max_hp: maxHp,
           is_alive: true,
+          status: 'active',
           lat: spawnCoords.lat,
           lng: spawnCoords.lng,
+          inventory: getDefaultInventoryForRole(config.role),
+          pets: [],
         })
         .select()
         .single();
@@ -2452,10 +2614,34 @@ export const App: React.FC = () => {
       addLog(`¡Te has unido a la escuadra como ${playerData.nickname}!`, 'info');
     } else {
       // Reconexión transparente de jugador existente
-      spawnCoords = {
-        lat: playerData.lat ?? gameData.center_lat,
-        lng: playerData.lng ?? gameData.center_lng,
-      };
+      const hasValidSnapshotCoords =
+        localSnapshot &&
+        typeof localSnapshot.lat === 'number' &&
+        !isNaN(localSnapshot.lat) &&
+        localSnapshot.lat !== 0 &&
+        typeof localSnapshot.lng === 'number' &&
+        !isNaN(localSnapshot.lng) &&
+        localSnapshot.lng !== 0;
+
+      const hasValidPlayerCoords =
+        playerData &&
+        typeof playerData.lat === 'number' &&
+        !isNaN(playerData.lat) &&
+        playerData.lat !== 0 &&
+        typeof playerData.lng === 'number' &&
+        !isNaN(playerData.lng) &&
+        playerData.lng !== 0;
+
+      if (hasValidSnapshotCoords) {
+        spawnCoords = { lat: localSnapshot.lat, lng: localSnapshot.lng };
+      } else if (hasValidPlayerCoords) {
+        spawnCoords = { lat: playerData.lat, lng: playerData.lng };
+      } else {
+        spawnCoords = {
+          lat: gameData.center_lat,
+          lng: gameData.center_lng,
+        };
+      }
       addLog(`¡Bienvenido de vuelta, ${playerData.nickname}! Reconectando a la misión...`, 'info');
     }
 
@@ -2483,8 +2669,59 @@ export const App: React.FC = () => {
 
     const finalRole = (playerData.role as PlayerRole) || config.role || 'medic';
     const finalMaxHp = playerData.max_hp ?? getMaxHpForRole(finalRole);
-    const joinInventory = getDefaultInventoryForRole(finalRole);
-    const joinBestWeapon = getBestWeaponInInventory(joinInventory);
+
+    // Recuperar inventario: Snapshot local > Base de datos > Inventario por defecto
+    let restoredInventory: InventoryItem[] = getDefaultInventoryForRole(finalRole);
+    if (
+      localSnapshot?.inventory &&
+      Array.isArray(localSnapshot.inventory) &&
+      localSnapshot.inventory.length > 0
+    ) {
+      restoredInventory = localSnapshot.inventory;
+    } else if (
+      playerData.inventory &&
+      Array.isArray(playerData.inventory) &&
+      playerData.inventory.length > 0
+    ) {
+      restoredInventory = playerData.inventory;
+    }
+
+    // Recuperar mascotas: Snapshot local > Base de datos > []
+    let restoredPets: Pet[] = [];
+    if (
+      localSnapshot?.pets &&
+      Array.isArray(localSnapshot.pets) &&
+      localSnapshot.pets.length > 0
+    ) {
+      restoredPets = localSnapshot.pets;
+    } else if (
+      playerData.pets &&
+      Array.isArray(playerData.pets) &&
+      playerData.pets.length > 0
+    ) {
+      restoredPets = playerData.pets;
+    }
+
+    // Recuperar salud y estado crítico
+    const restoredHp =
+      localSnapshot?.hp != null ? localSnapshot.hp : (playerData.hp ?? finalMaxHp);
+    const restoredStatus: PlayerStatus =
+      localSnapshot?.status ||
+      (playerData.status as PlayerStatus) ||
+      (restoredHp <= 0 ? 'critically_wounded' : 'active');
+    const restoredIsCriticallyWounded: boolean =
+      localSnapshot?.isCriticallyWounded ??
+      (restoredStatus === 'critically_wounded' || restoredHp <= 0);
+
+    // Recuperar arma equipada
+    let restoredEquippedItemId: string | undefined = localSnapshot?.equippedItemId;
+    let restoredEquippedWeapon: Weapon | undefined = localSnapshot?.equippedWeapon;
+
+    if (!restoredEquippedWeapon) {
+      const best = getBestWeaponInInventory(restoredInventory);
+      restoredEquippedWeapon = inventoryItemToWeapon(best);
+      restoredEquippedItemId = best.id;
+    }
 
     const player: Player = {
       id: playerData.id,
@@ -2492,9 +2729,11 @@ export const App: React.FC = () => {
       gameId: gameData.id,
       nickname: playerData.nickname,
       role: finalRole,
-      hp: playerData.hp ?? finalMaxHp,
+      hp: restoredHp,
       maxHp: finalMaxHp,
       isAlive: playerData.is_alive ?? true,
+      status: restoredStatus,
+      isCriticallyWounded: restoredIsCriticallyWounded,
       lat: spawnCoords.lat,
       lng: spawnCoords.lng,
       damageDealt: playerData.damage_dealt ?? 0,
@@ -2502,10 +2741,14 @@ export const App: React.FC = () => {
       cratesOpened: playerData.crates_opened ?? 0,
       monsterKills: playerData.monster_kills ?? 0,
       isHost: gameData.host_id === userId,
-      inventory: joinInventory,
-      equippedWeapon: inventoryItemToWeapon(joinBestWeapon),
-      equippedItemId: joinBestWeapon.id,
+      inventory: restoredInventory,
+      pets: restoredPets,
+      equippedWeapon: restoredEquippedWeapon,
+      equippedItemId: restoredEquippedItemId,
     };
+
+    // Guardar snapshot local actualizado de la sesión
+    savePlayerSessionSnapshot(gameData.id, player);
 
     // Guardar sala activa en localStorage para reconexiones futuras
     localStorage.setItem('utopia_active_room', gameData.code);
@@ -2532,9 +2775,18 @@ export const App: React.FC = () => {
     if (teammatesData && teammatesData.length > 0) {
       setPlayers(
         teammatesData.map((d: any) => {
+          if (d.id === player.id) {
+            return player;
+          }
           const teammateRole = (d.role as PlayerRole) || 'medic';
-          const teammateInv = getDefaultInventoryForRole(teammateRole);
+          const teammateInv =
+            d.inventory && Array.isArray(d.inventory) && d.inventory.length > 0
+              ? d.inventory
+              : getDefaultInventoryForRole(teammateRole);
           const teammateBest = getBestWeaponInInventory(teammateInv);
+          const teammatePets = d.pets && Array.isArray(d.pets) ? d.pets : [];
+          const teammateStatus =
+            (d.status as PlayerStatus) || (d.hp <= 0 ? 'critically_wounded' : 'active');
           return {
             id: d.id,
             userId: d.user_id,
@@ -2544,14 +2796,17 @@ export const App: React.FC = () => {
             hp: d.hp,
             maxHp: d.max_hp,
             isAlive: d.is_alive,
-            lat: d.id === player.id ? spawnCoords.lat : (d.lat ?? gameData.center_lat),
-            lng: d.id === player.id ? spawnCoords.lng : (d.lng ?? gameData.center_lng),
+            status: teammateStatus,
+            isCriticallyWounded: teammateStatus === 'critically_wounded',
+            lat: d.lat ?? gameData.center_lat,
+            lng: d.lng ?? gameData.center_lng,
             damageDealt: d.damage_dealt,
             revivesDone: d.revives_done,
             cratesOpened: d.crates_opened,
             monsterKills: d.monster_kills,
             isHost: d.user_id === gameData.host_id,
             inventory: teammateInv,
+            pets: teammatePets,
             equippedWeapon: inventoryItemToWeapon(teammateBest),
             equippedItemId: teammateBest.id,
           };

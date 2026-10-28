@@ -137,6 +137,7 @@ export type Database = {
           game_id: string
           hp: number
           id: string
+          inventory: Json | null
           is_alive: boolean
           joined_at: string
           lat: number | null
@@ -144,8 +145,10 @@ export type Database = {
           max_hp: number
           monster_kills: number
           nickname: string
+          pets: Json | null
           revives_done: number
           role: string
+          status: string | null
           user_id: string
         }
         Insert: {
@@ -154,6 +157,7 @@ export type Database = {
           game_id: string
           hp?: number
           id?: string
+          inventory?: Json | null
           is_alive?: boolean
           joined_at?: string
           lat?: number | null
@@ -161,8 +165,10 @@ export type Database = {
           max_hp?: number
           monster_kills?: number
           nickname: string
+          pets?: Json | null
           revives_done?: number
           role: string
+          status?: string | null
           user_id: string
         }
         Update: {
@@ -171,6 +177,7 @@ export type Database = {
           game_id?: string
           hp?: number
           id?: string
+          inventory?: Json | null
           is_alive?: boolean
           joined_at?: string
           lat?: number | null
@@ -178,8 +185,10 @@ export type Database = {
           max_hp?: number
           monster_kills?: number
           nickname?: string
+          pets?: Json | null
           revives_done?: number
           role?: string
+          status?: string | null
           user_id?: string
         }
         Relationships: [

@@ -155,6 +155,10 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         const curMonster = monsterRef.current;
         if (!isOpen || curMonster.hp <= 0 || curMonster.state === 'dead') return;
 
+        // Si la mascota cayó herida durante el combate, cesar su ataque
+        const curPet = (myPlayerRef.current.pets || []).find((p) => p.id === pet.id);
+        if (!curPet || curPet.isWounded || curPet.hp <= 0) return;
+
         const dmg = pet.damage;
         const newHp = Math.max(0, curMonster.hp - dmg);
 
@@ -227,28 +231,32 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
       const isShielded = isRoleSkillActiveRef.current && curPlayer.role === 'tank';
       const effectiveMonsterDamage = isShielded ? Math.max(1, Math.round(currentDamage * 0.5)) : currentDamage;
 
-      // Buscar la primera mascota viva para actuar como escudo táctico secuencial
-      const currentPets = curPlayer.pets || [];
-      const activeShieldPetIndex = currentPets.findIndex((p) => !p.isWounded && p.hp > 0);
+      // Obtener la comitiva actual desde la referencia estable
+      const currentPets = myPlayerRef.current.pets || [];
 
-      if (activeShieldPetIndex !== -1 && onPetDamagedRef.current) {
+      // Localizar la primera mascota con vida disponible
+      const targetPetIndex = currentPets.findIndex(
+        (p) => !p.isWounded && p.hp > 0
+      );
+
+      if (targetPetIndex !== -1 && onPetDamagedRef.current) {
         // --- 1. IMPACTO ABSORBIDO POR EL ESCUDO TÁCTICO DE MASCOTAS ---
-        const targetPet = currentPets[activeShieldPetIndex];
-        const newHp = Math.max(0, targetPet.hp - effectiveMonsterDamage);
-        const isNowWounded = newHp <= 0;
+        const targetPet = currentPets[targetPetIndex];
+        const remainingHp = Math.max(0, targetPet.hp - effectiveMonsterDamage);
+        const isWounded = remainingHp <= 0;
 
-        const updatedPets = currentPets.map((pet, idx) => {
-          if (idx === activeShieldPetIndex) {
-            return {
-              ...pet,
-              hp: newHp,
-              isWounded: isNowWounded,
-            };
-          }
-          return pet;
-        });
+        const updatedPets = currentPets.map((p, idx) =>
+          idx === targetPetIndex ? { ...p, hp: remainingHp, isWounded } : p
+        );
 
-        // Sincronizar estado de las mascotas
+        // Actualizar la referencia mutable inmediatamente para el próximo tick
+        myPlayerRef.current = {
+          ...myPlayerRef.current,
+          pets: updatedPets,
+        };
+        petsRef.current = updatedPets;
+
+        // Actualizar estado de esa mascota en concreto en el componente padre / Supabase
         onPetDamagedRef.current(updatedPets);
 
         // Feedback audiovisual de impacto en la mascota
@@ -271,7 +279,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
           {
             id: numId,
             text: `🛡️ ${targetPet.name}: -${effectiveMonsterDamage} HP`,
-            isCrit: isNowWounded,
+            isCrit: isWounded,
             isPet: true,
           },
         ]);
@@ -281,12 +289,12 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
         // Registro táctico en el log de combate
         onAddLogRef.current?.(
-          `¡El monstruo atacó a ${targetPet.name} ${targetPet.icon}! (-${effectiveMonsterDamage} HP)`,
+          `¡El monstruo atacó a ${targetPet.name}! (-${effectiveMonsterDamage} HP)`,
           'combat'
         );
-        if (isNowWounded) {
+        if (isWounded) {
           onAddLogRef.current?.(
-            `¡${targetPet.name} ha caído herida (0 HP)! 💫 El escudo táctico pasa a la siguiente mascota.`,
+            `¡${targetPet.name} ha caído herida!`,
             'warning'
           );
         }
@@ -308,6 +316,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
         // Infligir daño continuo al jugador local (la mitigación de rol se aplica en el manejador central)
         onPlayerDamagedRef.current(currentDamage);
+        onAddLogRef.current?.(`¡El monstruo te ha golpeado directamente! (-${currentDamage} HP)`, 'combat');
 
         setTimeout(() => {
           setIsMonsterAttacking(false);
@@ -516,63 +525,68 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         </div>
 
         {/* Tarjetas secundarias de Mascotas de Apoyo en Combate */}
-        {myPlayer.pets && myPlayer.pets.length > 0 && (
-          <div className="flex flex-col gap-1.5 bg-slate-950/70 p-2 rounded-xl border border-slate-800">
-            <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
-              <span className="flex items-center gap-1 font-bold text-emerald-300">
-                <Heart className="w-3 h-3 text-emerald-400" />
-                MASCOTAS DE COMBATE ({myPlayer.pets.filter((p) => !p.isWounded).length}/{myPlayer.pets.length})
-              </span>
-              <span className="text-[10px] text-slate-500">Ataque Automático</span>
-            </div>
-            <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-thin">
-              {myPlayer.pets.map((pet, idx) => {
-                const petHpPercent = Math.max(0, Math.min(100, Math.round((pet.hp / pet.maxHp) * 100)));
-                const firstAliveIndex = myPlayer.pets?.findIndex((p) => !p.isWounded && p.hp > 0);
-                const isFrontlineShield = idx === firstAliveIndex;
-                const isDamaged = damagedPetId === pet.id;
+        {myPlayer.pets && myPlayer.pets.length > 0 && (() => {
+          const displayPets = myPlayerRef.current?.pets || myPlayer.pets || [];
+          const alivePetsCount = displayPets.filter((p) => !p.isWounded && p.hp > 0).length;
+          const firstAliveIndex = displayPets.findIndex((p) => !p.isWounded && p.hp > 0);
 
-                return (
-                  <div
-                    key={pet.id}
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-mono shrink-0 transition-all ${
-                      isDamaged
-                        ? 'bg-red-950/80 border-red-500 ring-2 ring-red-400 scale-105 shadow-[0_0_12px_rgba(239,68,68,0.7)]'
-                        : isFrontlineShield
-                        ? 'bg-emerald-950/70 border-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.3)]'
-                        : pet.isWounded
-                        ? 'bg-slate-900/60 border-slate-800 opacity-50'
-                        : 'bg-emerald-950/40 border-emerald-500/40 shadow-sm'
-                    }`}
-                  >
-                    <span className="text-base">{pet.icon}</span>
-                    <div className="flex flex-col min-w-[55px]">
-                      <div className="flex items-center justify-between text-[10px] gap-1">
-                        <span className={`font-bold truncate max-w-[65px] ${pet.isWounded ? 'text-slate-400' : 'text-emerald-200'}`}>
-                          {pet.name}
-                        </span>
-                        {isFrontlineShield && (
-                          <span className="text-[8px] bg-amber-500/30 text-amber-300 border border-amber-400/60 px-1 rounded font-bold whitespace-nowrap">
-                            🛡️ ESCUDO
+          return (
+            <div className="flex flex-col gap-1.5 bg-slate-950/70 p-2 rounded-xl border border-slate-800">
+              <div className="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                <span className="flex items-center gap-1 font-bold text-emerald-300">
+                  <Heart className="w-3 h-3 text-emerald-400" />
+                  MASCOTAS DE COMBATE ({alivePetsCount}/{displayPets.length})
+                </span>
+                <span className="text-[10px] text-slate-500">Ataque Automático</span>
+              </div>
+              <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-thin">
+                {displayPets.map((pet, idx) => {
+                  const petHpPercent = Math.max(0, Math.min(100, Math.round((pet.hp / pet.maxHp) * 100)));
+                  const isFrontlineShield = idx === firstAliveIndex;
+                  const isDamaged = damagedPetId === pet.id;
+
+                  return (
+                    <div
+                      key={pet.id}
+                      className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-mono shrink-0 transition-all ${
+                        isDamaged
+                          ? 'bg-red-950/80 border-red-500 ring-2 ring-red-400 scale-105 shadow-[0_0_12px_rgba(239,68,68,0.7)]'
+                          : isFrontlineShield
+                          ? 'bg-emerald-950/70 border-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.3)]'
+                          : pet.isWounded
+                          ? 'bg-slate-900/60 border-slate-800 opacity-50'
+                          : 'bg-emerald-950/40 border-emerald-500/40 shadow-sm'
+                      }`}
+                    >
+                      <span className="text-base">{pet.icon}</span>
+                      <div className="flex flex-col min-w-[55px]">
+                        <div className="flex items-center justify-between text-[10px] gap-1">
+                          <span className={`font-bold truncate max-w-[65px] ${pet.isWounded ? 'text-slate-400' : 'text-emerald-200'}`}>
+                            {pet.name}
                           </span>
-                        )}
-                        {pet.isWounded && <span className="text-[9px]">💫</span>}
-                      </div>
-                      <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden mt-0.5">
-                        <div
-                          className={`h-full ${
-                            pet.isWounded ? 'bg-gray-600' : petHpPercent < 30 ? 'bg-red-500 animate-pulse' : 'bg-emerald-400'
-                          }`}
-                          style={{ width: `${petHpPercent}%` }}
-                        />
+                          {isFrontlineShield && (
+                            <span className="text-[8px] bg-amber-500/30 text-amber-300 border border-amber-400/60 px-1 rounded font-bold whitespace-nowrap">
+                              🛡️ ESCUDO
+                            </span>
+                          )}
+                          {pet.isWounded && <span className="text-[9px]">💫</span>}
+                        </div>
+                        <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden mt-0.5">
+                          <div
+                            className={`h-full ${
+                              pet.isWounded ? 'bg-gray-600' : petHpPercent < 30 ? 'bg-red-500 animate-pulse' : 'bg-emerald-400'
+                            }`}
+                            style={{ width: `${petHpPercent}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Arma equipada y munición */}
         <div className="flex items-center justify-between bg-slate-950/70 p-2.5 rounded-xl border border-slate-800">

@@ -113,10 +113,19 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
+    const initialCenterLng =
+      myPlayer.lng != null && !isNaN(myPlayer.lng) && myPlayer.lng !== 0
+        ? myPlayer.lng
+        : center.lng;
+    const initialCenterLat =
+      myPlayer.lat != null && !isNaN(myPlayer.lat) && myPlayer.lat !== 0
+        ? myPlayer.lat
+        : center.lat;
+
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: 'https://tiles.openfreemap.org/styles/dark',
-      center: [center.lng, center.lat],
+      center: [initialCenterLng, initialCenterLat],
       zoom: 16.5,
       pitch: 45,
       bearing: 0,
@@ -126,6 +135,17 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     map.on('load', () => {
       isMapLoadedRef.current = true;
       setMapLoaded(true);
+
+      // Centrar cámara inmediatamente sobre la coordenada restaurada del jugador
+      if (
+        myPlayer.lat != null &&
+        myPlayer.lng != null &&
+        !isNaN(myPlayer.lat) &&
+        !isNaN(myPlayer.lng) &&
+        (myPlayer.lat !== 0 || myPlayer.lng !== 0)
+      ) {
+        map.jumpTo({ center: [myPlayer.lng, myPlayer.lat], zoom: 17 });
+      }
 
       // 1. Capa estática: Área de juego
       const playAreaGeo = createGeoJsonCircle(center, playAreaRadius);
