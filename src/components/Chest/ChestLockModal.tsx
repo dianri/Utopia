@@ -106,9 +106,30 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
   const [activeFlashingLight, setActiveFlashingLight] = useState<LightColor | null>(null);
   const [isShowingSequence, setIsShowingSequence] = useState<boolean>(false);
 
+  const userFlashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sequenceIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isProcessingInputRef = useRef<boolean>(false);
+
+  // Limpiar temporizadores al desmontar
+  useEffect(() => {
+    return () => {
+      if (userFlashTimeoutRef.current) clearTimeout(userFlashTimeoutRef.current);
+      if (sequenceIntervalRef.current) clearInterval(sequenceIntervalRef.current);
+    };
+  }, []);
+
   // Iniciar o reiniciar secuencia al entrar en Fase 2 o nuevo paso
   useEffect(() => {
     if (!isOpen || currentPhase !== 2) return;
+
+    if (sequenceIntervalRef.current) {
+      clearInterval(sequenceIntervalRef.current);
+      sequenceIntervalRef.current = null;
+    }
+    if (userFlashTimeoutRef.current) {
+      clearTimeout(userFlashTimeoutRef.current);
+      userFlashTimeoutRef.current = null;
+    }
 
     const seqLength = currentStep === 0 ? 3 : 4;
     const newSeq: LightColor[] = [];
@@ -118,75 +139,111 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
     setSequence(newSeq);
     setUserSequenceIndex(0);
     setIsShowingSequence(true);
+    isProcessingInputRef.current = false;
 
     // Reproducir secuencia
     let stepIndex = 0;
-    const interval = setInterval(() => {
+    sequenceIntervalRef.current = setInterval(() => {
       if (stepIndex < newSeq.length) {
         const color = newSeq[stepIndex];
         setActiveFlashingLight(color);
-        soundEffects.playRadarPing();
+        soundEffects.playColorTone(color);
         soundEffects.vibrate(40);
         setTimeout(() => setActiveFlashingLight(null), 450);
         stepIndex++;
       } else {
-        clearInterval(interval);
+        if (sequenceIntervalRef.current) {
+          clearInterval(sequenceIntervalRef.current);
+          sequenceIntervalRef.current = null;
+        }
         setIsShowingSequence(false);
       }
     }, 750);
 
-    return () => clearInterval(interval);
+    return () => {
+      if (sequenceIntervalRef.current) {
+        clearInterval(sequenceIntervalRef.current);
+        sequenceIntervalRef.current = null;
+      }
+    };
   }, [isOpen, currentPhase, currentStep]);
 
   const handleLightPress = (color: LightColor) => {
-    if (isShowingSequence || feedback !== 'idle') return;
+    if (isShowingSequence || feedback !== 'idle' || isProcessingInputRef.current) return;
 
-    soundEffects.vibrate(30);
+    // 1. Activar iluminación visual inmediata
+    setActiveFlashingLight(color);
 
+    // 2. Reproducir el tono sonoro correspondiente al botón
+    soundEffects.playColorTone(color);
+
+    // 3. Apagar la iluminación tras un pulso breve táctico (200ms)
+    if (userFlashTimeoutRef.current) {
+      clearTimeout(userFlashTimeoutRef.current);
+    }
+    userFlashTimeoutRef.current = setTimeout(() => {
+      setActiveFlashingLight(null);
+      userFlashTimeoutRef.current = null;
+    }, 200);
+
+    // 4. Procesar la validación de la secuencia del jugador
     if (color === sequence[userSequenceIndex]) {
       const nextIdx = userSequenceIndex + 1;
       if (nextIdx >= sequence.length) {
-        // Secuencia completada exitosamente
-        setFeedback('success');
-        soundEffects.playCrateLoot();
-        soundEffects.vibrate([60, 40, 80]);
-
+        // Bloquear nuevos toques mientras se resuelve el cerrojo
+        isProcessingInputRef.current = true;
+        // Breve retardo para que el jugador aprecie la iluminación del último botón
         setTimeout(() => {
-          setFeedback('idle');
-          if (currentStep === 0) {
-            onStepSuccess(2, 1);
-          } else {
-            onStepSuccess(3, 0); // Pasa a Fase 3
-          }
-        }, 600);
+          setFeedback('success');
+          soundEffects.playCrateLoot();
+          soundEffects.vibrate([60, 40, 80]);
+
+          setTimeout(() => {
+            setFeedback('idle');
+            isProcessingInputRef.current = false;
+            if (currentStep === 0) {
+              onStepSuccess(2, 1);
+            } else {
+              onStepSuccess(3, 0); // Pasa a Fase 3
+            }
+          }, 600);
+        }, 220);
       } else {
         setUserSequenceIndex(nextIdx);
       }
     } else {
       // Error en la secuencia
-      setFeedback('fail');
-      soundEffects.playAlarm();
-      soundEffects.vibrate(200);
-
+      isProcessingInputRef.current = true;
       setTimeout(() => {
-        setFeedback('idle');
-        setUserSequenceIndex(0);
-        // Volver a mostrar secuencia
-        setIsShowingSequence(true);
-        let stepIndex = 0;
-        const interval = setInterval(() => {
-          if (stepIndex < sequence.length) {
-            const c = sequence[stepIndex];
-            setActiveFlashingLight(c);
-            soundEffects.playRadarPing();
-            setTimeout(() => setActiveFlashingLight(null), 450);
-            stepIndex++;
-          } else {
-            clearInterval(interval);
-            setIsShowingSequence(false);
-          }
-        }, 750);
-      }, 700);
+        setFeedback('fail');
+        soundEffects.playAlarm();
+        soundEffects.vibrate(200);
+
+        setTimeout(() => {
+          setFeedback('idle');
+          setUserSequenceIndex(0);
+          // Volver a mostrar secuencia
+          setIsShowingSequence(true);
+          let stepIndex = 0;
+          if (sequenceIntervalRef.current) clearInterval(sequenceIntervalRef.current);
+          sequenceIntervalRef.current = setInterval(() => {
+            if (stepIndex < sequence.length) {
+              const c = sequence[stepIndex];
+              setActiveFlashingLight(c);
+              soundEffects.playColorTone(c);
+              setTimeout(() => setActiveFlashingLight(null), 450);
+              stepIndex++;
+            } else {
+              if (sequenceIntervalRef.current) {
+                clearInterval(sequenceIntervalRef.current);
+                sequenceIntervalRef.current = null;
+              }
+              setIsShowingSequence(false);
+              isProcessingInputRef.current = false;
+            }
+          }, 750);
+        }, 700);
+      }, 220);
     }
   };
 
@@ -377,19 +434,19 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
                   const colorStyles: Record<LightColor, { base: string; active: string }> = {
                     cyan: {
                       base: 'bg-cyan-950/60 border-cyan-700 text-cyan-400',
-                      active: 'bg-cyan-400 border-white text-black shadow-[0_0_20px_#22d3ee] scale-105',
+                      active: 'bg-cyan-400 border-white text-black shadow-[0_0_25px_#22d3ee] scale-105 brightness-125 ring-2 ring-cyan-200',
                     },
                     emerald: {
                       base: 'bg-emerald-950/60 border-emerald-700 text-emerald-400',
-                      active: 'bg-emerald-400 border-white text-black shadow-[0_0_20px_#34d399] scale-105',
+                      active: 'bg-emerald-400 border-white text-black shadow-[0_0_25px_#34d399] scale-105 brightness-125 ring-2 ring-emerald-200',
                     },
                     amber: {
                       base: 'bg-amber-950/60 border-amber-700 text-amber-400',
-                      active: 'bg-amber-400 border-white text-black shadow-[0_0_20px_#fbbf24] scale-105',
+                      active: 'bg-amber-400 border-white text-black shadow-[0_0_25px_#fbbf24] scale-105 brightness-125 ring-2 ring-amber-200',
                     },
                     purple: {
                       base: 'bg-purple-950/60 border-purple-700 text-purple-400',
-                      active: 'bg-purple-400 border-white text-black shadow-[0_0_20px_#c084fc] scale-105',
+                      active: 'bg-purple-400 border-white text-black shadow-[0_0_25px_#c084fc] scale-105 brightness-125 ring-2 ring-purple-200',
                     },
                   };
 
@@ -399,7 +456,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
                       type="button"
                       disabled={isShowingSequence}
                       onClick={() => handleLightPress(col)}
-                      className={`h-16 rounded-xl border-2 font-mono font-black text-xs uppercase tracking-wider flex items-center justify-center transition-all ${
+                      className={`h-16 rounded-xl border-2 font-mono font-black text-xs uppercase tracking-wider flex items-center justify-center transition-all duration-100 ${
                         isFlashing ? colorStyles[col].active : colorStyles[col].base
                       } ${!isShowingSequence ? 'hover:brightness-125 active:scale-95 cursor-pointer' : 'cursor-not-allowed opacity-80'}`}
                     >
