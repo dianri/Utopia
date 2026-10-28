@@ -71,13 +71,13 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
   - **"EQUIPO / ARMAS":** Capacidad infinita sin restricción de slots con scroll táctico fluido, visor de estadísticas completas (daño, cadencia, munición actual y máxima), selector de equipamiento activo e interacción de soltar/recoger objetos en el terreno.
   - **"MASCOTAS":** Panel de gestión de la comitiva de acompañantes con tarjetas de estado en vivo, barras de salud, bonificaciones pasivas únicas (rastreo, apoyo aéreo, descargas eléctricas, avance veloz, evasión felina o nanobots médicos) y estadísticas de combate.
 - **Desgaste Dinámico y Auto-Fallback:** Al agotarse la munición o romperse un arma de durabilidad, el sistema equipa automáticamente la siguiente mejor arma disponible en la mochila hasta recurrir a Puños (Tier 0). Al recoger cualquier nueva arma, se auto-equipa al instante si se portaban los puños.
-- **Descarte Total en el Suelo (`DroppedItem`):** Los jugadores pueden soltar cualquier arma en el terreno (incluido el cuchillo táctico). Los objetos caen al terreno como marcadores interactivos en MapLibre GL con colores por Tier y son recolectables a menos de 20m.
+- **Descarte Total en el Suelo (`DroppedItem`):** Los jugadores pueden soltar cualquier arma en el terreno (incluido el cuchillo táctico). Los objetos caen al terreno como marcadores interactivos en MapLibre GL con colores por Tier y halo de influencia GeoJSON de 25m visible desde la carga inicial, con navegación automática hacia ellos al pulsar sobre el marcador.
 - **Curación Instantánea Aislada:** Los botiquines de primeros auxilios y suministros médicos se consumen inmediatamente al abrir cajas médicas o recoger kits del terreno, restaurando la salud sin ocupar espacio en la mochila. El armamento, munición y llaves están estrictamente aislados y no alteran los puntos de vida del jugador al ser recogidos.
 
 ---
 
 ### 🐾 4. Sistema de Mascotas de Apoyo (Pets)
-- **Adopción Táctica Ampliada (25m):** Spawneo procedural de mascotas silvestres en el mapa con marcadores animados interactivos. Se adoptan automáticamente o mediante clic en el marcador al aproximarse a menos de 25 metros (igualado al radio táctico de suministros/loot), sumándose al séquito del cazador.
+- **Adopción Táctica Ampliada (25m) y Auto-Navegación:** Spawneo procedural de mascotas silvestres en el mapa con marcadores animados interactivos y auras de rango de influencia GeoJSON de 25m visibles inmediatamente desde el inicio. Al pulsar sobre cualquier mascota lejana, el cazador camina automáticamente hacia sus coordenadas y la adopta de forma continua al entrar dentro del radio de proximidad.
 - **Órbita Constante en Píxeles de Pantalla:** Las mascotas acompañan al jugador ancladas a sus coordenadas con una corona orbital equidistante a 42px fijos de pantalla (`transform: translate(x, y)`), garantizando una distribución circular simétrica y visible sin apelotonamiento independientemente del nivel de zoom del mapa.
 - **Perfiles y Habilidades Pasivas:**
   - 🐕 **Perro Guardián (`dog`):** 60 HP, 6 DMG. Rastreo y recogida de suministros ampliada a 25m.

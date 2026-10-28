@@ -228,9 +228,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       });
 
       // 4. Capas dinámicas: Radio de interacción de suministros (40m)
+      const initialCrateFeatures = crates
+        .filter((c) => !c.opened && typeof c.lat === 'number' && typeof c.lng === 'number' && !isNaN(c.lat) && !isNaN(c.lng))
+        .map((c) => createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40));
+
       map.addSource('crates-zones', {
         type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
+        data: { type: 'FeatureCollection', features: initialCrateFeatures },
       });
 
       map.addLayer({
@@ -256,9 +260,24 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       });
 
       // 5. Capas tácticas: Zonas de estructuras (Hospital y Refugios)
+      const visibleStructures = isMeWounded ? structures.filter((s) => s.type === 'hospital') : structures;
+      const initialStructureFeatures = visibleStructures
+        .filter((s) => typeof s.lat === 'number' && typeof s.lng === 'number' && !isNaN(s.lat) && !isNaN(s.lng))
+        .map((s) => {
+          const circle = createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius);
+          return {
+            ...circle,
+            properties: {
+              ...circle.properties,
+              type: s.type,
+              id: s.id,
+            },
+          };
+        });
+
       map.addSource('structures-zones', {
         type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
+        data: { type: 'FeatureCollection', features: initialStructureFeatures },
       });
 
       map.addLayer({
@@ -283,7 +302,52 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         },
       });
 
-      // 6. Capa táctica: Línea de puntos de guía hacia el Hospital (Estado Herido de Muerte)
+      // 6. Capas tácticas de influencia de entidades: Armas/Loot y Mascotas Silvestres (25m)
+      const initialEntityFeatures = isMeWounded
+        ? []
+        : [
+            ...droppedItems
+              .filter((d) => typeof d.lat === 'number' && typeof d.lng === 'number' && !isNaN(d.lat) && !isNaN(d.lng) && (d.lat !== 0 || d.lng !== 0))
+              .map((d) => ({
+                ...createGeoJsonCircle({ lat: d.lat, lng: d.lng }, 25),
+                properties: { type: 'loot', id: d.id },
+              })),
+            ...wildPets
+              .filter((wp) => typeof wp.lat === 'number' && typeof wp.lng === 'number' && !isNaN(wp.lat) && !isNaN(wp.lng) && (wp.lat !== 0 || wp.lng !== 0))
+              .map((wp) => ({
+                ...createGeoJsonCircle({ lat: wp.lat, lng: wp.lng }, 25),
+                properties: { type: 'pet', id: wp.id },
+              })),
+          ];
+
+      map.addSource('interaction-ranges', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: initialEntityFeatures },
+      });
+
+      map.addLayer({
+        id: 'interaction-ranges-fill',
+        type: 'fill',
+        source: 'interaction-ranges',
+        paint: {
+          'fill-color': ['match', ['get', 'type'], 'pet', '#10b981', '#06b6d4'],
+          'fill-opacity': 0.08,
+        },
+      });
+
+      map.addLayer({
+        id: 'interaction-ranges-outline',
+        type: 'line',
+        source: 'interaction-ranges',
+        paint: {
+          'line-color': ['match', ['get', 'type'], 'pet', '#34d399', '#22d3ee'],
+          'line-width': 1.6,
+          'line-opacity': 0.45,
+          'line-dasharray': [2, 2],
+        },
+      });
+
+      // 7. Capa táctica: Línea de puntos de guía hacia el Hospital (Estado Herido de Muerte)
       map.addSource('hospital-guideline', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
@@ -595,6 +659,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           </span>
         `;
 
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onMapClickRef.current?.({ lat: crate.lat, lng: crate.lng });
+        });
+
         const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([crate.lng, crate.lat])
           .addTo(map);
@@ -607,7 +676,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (el) el.style.display = isMeWounded ? 'none' : 'block';
       }
     });
-  }, [crates, isMeWounded]);
+  }, [crates, isMeWounded, mapLoaded]);
 
   // ==========================================
   // 6.5. MARCADORES Y RADIOS DE ESTRUCTURAS TÁCTICAS (Hospital y Refugios)
@@ -685,7 +754,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (el) el.style.display = (isMeWounded && !isHospital) ? 'none' : 'block';
       }
     });
-  }, [structures, isMeWounded]);
+  }, [structures, isMeWounded, mapLoaded]);
 
   // ==========================================
   // 6.6. MARCADORES DE OBJETOS DESCARTADOS EN EL MAPA
@@ -749,7 +818,17 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
         el.addEventListener('click', (e) => {
           e.stopPropagation();
-          onPickDroppedItemRef.current?.(dropped);
+          const myPos = {
+            lat: myPlayer.lat ?? center.lat,
+            lng: myPlayer.lng ?? center.lng,
+          };
+          const dist = getDistanceMeters(myPos, { lat: dropped.lat, lng: dropped.lng });
+          if (dist <= 25) {
+            onPickDroppedItemRef.current?.(dropped);
+          } else {
+            onMapClickRef.current?.({ lat: dropped.lat, lng: dropped.lng });
+            onPickDroppedItemRef.current?.(dropped);
+          }
         });
 
         const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
@@ -821,7 +900,17 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
         el.addEventListener('click', (e) => {
           e.stopPropagation();
-          onAdoptWildPetRef.current?.(wp);
+          const myPos = {
+            lat: myPlayer.lat ?? center.lat,
+            lng: myPlayer.lng ?? center.lng,
+          };
+          const dist = getDistanceMeters(myPos, { lat: wp.lat, lng: wp.lng });
+          if (dist <= 25) {
+            onAdoptWildPetRef.current?.(wp);
+          } else {
+            onMapClickRef.current?.({ lat: wp.lat, lng: wp.lng });
+            onAdoptWildPetRef.current?.(wp);
+          }
         });
 
         const marker = new maplibregl.Marker({
@@ -840,6 +929,42 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       }
     });
   }, [wildPets, mapLoaded, center.lat, center.lng, isMeWounded]);
+
+  // ==========================================
+  // 6.8. RADIOS DE INTERACCIÓN DE ENTIDADES (LOOT Y MASCOTAS, 25M)
+  // ==========================================
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapLoadedRef.current) return;
+
+    const source = map.getSource('interaction-ranges') as maplibregl.GeoJSONSource;
+    if (!source) return;
+
+    if (isMeWounded) {
+      source.setData({ type: 'FeatureCollection', features: [] });
+      return;
+    }
+
+    const features = [
+      ...droppedItems
+        .filter((d) => typeof d.lat === 'number' && typeof d.lng === 'number' && !isNaN(d.lat) && !isNaN(d.lng) && (d.lat !== 0 || d.lng !== 0))
+        .map((d) => ({
+          ...createGeoJsonCircle({ lat: d.lat, lng: d.lng }, 25),
+          properties: { type: 'loot', id: d.id },
+        })),
+      ...wildPets
+        .filter((wp) => typeof wp.lat === 'number' && typeof wp.lng === 'number' && !isNaN(wp.lat) && !isNaN(wp.lng) && (wp.lat !== 0 || wp.lng !== 0))
+        .map((wp) => ({
+          ...createGeoJsonCircle({ lat: wp.lat, lng: wp.lng }, 25),
+          properties: { type: 'pet', id: wp.id },
+        })),
+    ];
+
+    source.setData({
+      type: 'FeatureCollection',
+      features,
+    });
+  }, [droppedItems, wildPets, isMeWounded, mapLoaded]);
 
   // ==========================================
   // 7. MARCADOR DEL MONSTRUO (Anclaje nativo MapLibre GL y niebla de guerra)
@@ -1167,6 +1292,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       'treasure-zone-outline',
       'crates-zones-fill',
       'crates-zones-outline',
+      'interaction-ranges-fill',
+      'interaction-ranges-outline',
     ];
     areaLayers.forEach((layerId) => {
       if (map.getLayer(layerId)) {
