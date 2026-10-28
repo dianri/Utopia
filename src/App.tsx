@@ -166,6 +166,8 @@ export const App: React.FC = () => {
 
   // MODO ARENA DE COMBATE TÁCTICO Y HUIDA
   const [isCombatArenaOpen, setIsCombatArenaOpen] = useState<boolean>(false);
+  const isCombatArenaOpenRef = useRef<boolean>(false);
+  isCombatArenaOpenRef.current = isCombatArenaOpen;
   const [fleeImmunityUntil, setFleeImmunityUntil] = useState<number>(0);
   const fleeImmunityUntilRef = useRef<number>(0);
   fleeImmunityUntilRef.current = fleeImmunityUntil;
@@ -1024,12 +1026,43 @@ export const App: React.FC = () => {
         const victim = playersRef.current.find((p) => p.id === result.attackedPlayerId);
         if (victim) {
           // Si el jugador local está en la arena de combate, la arena ya ejecuta su propio bucle de daño periódico
-          if (victim.id === myPlayerRef.current?.id && isCombatArenaOpen) {
+          if (victim.id === myPlayerRef.current?.id && isCombatArenaOpenRef.current) {
             return;
           }
 
           const isShielded = isRoleSkillActiveRef.current && victim.id === myPlayerRef.current?.id && myPlayerRef.current?.role === 'tank';
           const damageApplied = isShielded ? Math.round(result.attackDamage * 0.5) : result.attackDamage;
+
+          // Protección secuencial de mascotas en el mapa
+          const victimPets = (victim.id === myPlayerRef.current?.id ? myPlayerRef.current?.pets : victim.pets) || [];
+          const activePetIndex = victimPets.findIndex((p) => !p.isWounded && p.hp > 0);
+
+          if (activePetIndex !== -1) {
+            const targetPet = victimPets[activePetIndex];
+            const petRemainingHp = Math.max(0, targetPet.hp - damageApplied);
+            const petIsWounded = petRemainingHp <= 0;
+            const updatedPets = victimPets.map((p, idx) =>
+              idx === activePetIndex ? { ...p, hp: petRemainingHp, isWounded: petIsWounded } : p
+            );
+
+            if (victim.id === myPlayerRef.current?.id) {
+              setMyPlayer((prev) => (prev ? { ...prev, pets: updatedPets } : null));
+              if (myPlayerRef.current) {
+                myPlayerRef.current = { ...myPlayerRef.current, pets: updatedPets };
+              }
+              soundEffects.triggerDamageHaptics();
+              soundEffects.playAlarm();
+              addLogRef.current?.(`¡El monstruo atacó a tu mascota ${targetPet.name}! (-${damageApplied} HP)`, 'combat');
+              if (petIsWounded) {
+                addLogRef.current?.(`¡${targetPet.name} ha caído herida! 💫 El escudo táctico pasa a la siguiente mascota.`, 'warning');
+              }
+            }
+
+            setPlayers((prev) =>
+              prev.map((p) => (p.id === victim.id ? { ...p, pets: updatedPets } : p))
+            );
+            return;
+          }
           const currentVictimHp = victim.id === myPlayerRef.current?.id && myPlayerRef.current ? myPlayerRef.current.hp : victim.hp;
           const calculatedHp = Math.max(0, currentVictimHp - damageApplied);
           const isWounded = calculatedHp <= 0 || calculatedHp === 1;
@@ -3377,6 +3410,9 @@ export const App: React.FC = () => {
           onPlayerDamaged={handleArenaPlayerDamaged}
           onPetDamaged={(updatedPets) => {
             setMyPlayer((prev) => (prev ? { ...prev, pets: updatedPets } : null));
+            if (myPlayerRef.current) {
+              myPlayerRef.current = { ...myPlayerRef.current, pets: updatedPets };
+            }
             setPlayers((prev) =>
               prev.map((p) => (p.id === myPlayer.id ? { ...p, pets: updatedPets } : p))
             );
