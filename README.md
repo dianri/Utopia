@@ -142,10 +142,13 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
   - **Tap-to-Move:** Navegación táctil configurable al crear la partida con 4 niveles de velocidad de desplazamiento: Lento (0.8 m/s ~3 km/h), Normal (1.4 m/s ~5 km/h), Rápido (2.8 m/s ~10 km/h) y Muy Rápido (27.8 m/s ~100 km/h), con reajuste perimetral automático si pulsas fuera del radio de juego.
 - **Lobby y Explorador de Operaciones en Vivo:**
   - Creación de partidas **Públicas** (visibles en el radar del lobby) o **Privadas** (acceso mediante código de 6 letras o enlace `/?room=CODIGO`).
-  - Incorporación a partidas ya iniciadas (**Late Join / Reconnect**) con spawn seguro y sincronización inmediata vía Supabase Realtime.
+  - Incorporación y reconexión completa (**Late Join / Reconnect / F5**):
+    - Al recargar la página o presionar "Reanudar Misión en Curso", el jugador restaura de inmediato su última posición geográfica en el mapa, su salud, su estado vital (`active` / `critically_wounded`), todo su inventario con su arma principal equipada y sus mascotas adoptadas orbitando a su alrededor.
+    - Mecanismo de persistencia dual: Snapshot sincrónico local (`sessionStorage` y `localStorage` bajo `utopia_player_session_${gameId}`) combinado con persistencia periódica y en eventos clave hacia las columnas `inventory`, `pets` y `status` de la tabla `players` en Supabase.
+    - Centrado automático e inmediato de la cámara de MapLibre GL en la coordenada exacta recuperada del jugador.
 - **Protocolo de Cancelación y Abandono:**
-  - Cancelación global por el anfitrión con confirmación y redirección ordenada de la escuadra.
-  - Abandono seguro individual sin romper la sesión de los demás compañeros.
+  - Cancelación global por el anfitrión con confirmación, limpieza de snapshots y redirección ordenada de la escuadra.
+  - Abandono seguro individual desvinculando al jugador de la base de datos y limpiando la sesión local sin romper la partida de los compañeros.
 
 ---
 
