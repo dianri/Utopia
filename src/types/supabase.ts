@@ -31,6 +31,8 @@ export type Database = {
           movement_mode: string
           name: string
           play_area_radius: number
+          player_speed: string
+          settings: Json | null
           started_at: string | null
           status: string
           treasure_lat: number
@@ -52,6 +54,8 @@ export type Database = {
           movement_mode?: string
           name?: string
           play_area_radius?: number
+          player_speed?: string
+          settings?: Json | null
           started_at?: string | null
           status?: string
           treasure_lat: number
@@ -73,6 +77,8 @@ export type Database = {
           movement_mode?: string
           name?: string
           play_area_radius?: number
+          player_speed?: string
+          settings?: Json | null
           started_at?: string | null
           status?: string
           treasure_lat?: number
