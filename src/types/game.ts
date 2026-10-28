@@ -188,6 +188,7 @@ export interface SupplyCrate {
   weaponReward?: Weapon;
   healReward: number;
   ammoReward: number;
+  isAirdrop?: boolean;
 }
 
 export interface GhostPing {

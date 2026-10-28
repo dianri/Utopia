@@ -1,5 +1,6 @@
-import type { Pet, PetType, WildPet, Coordinates } from '../types/game';
+import type { Pet, PetType, WildPet, Coordinates, SupplyCrate, CrateType, Weapon } from '../types/game';
 import { getRandomPointInCircle } from './geoUtils';
+import { WEAPON_REGISTRY } from './combatEngine';
 
 /**
  * Radio de proximidad táctico para adopción/recolección de mascotas silvestres en el mapa (igualado al botín, 25m)
@@ -107,12 +108,12 @@ export function createPet(type: PetType): Pet {
 }
 
 /**
- * Spawnea aleatoriamente entre 4 y 6 mascotas silvestres en el área operativa del juego
+ * Spawnea mascotas silvestres en el área operativa del juego
  */
 export function generateWildPets(
   center: Coordinates,
   playAreaRadius: number,
-  count: number = 5
+  count: number = 1
 ): WildPet[] {
   const petTypes: PetType[] = ['dog', 'drone', 'electric_mouse', 'rabbit', 'cat', 'med_bot'];
   const wildPets: WildPet[] = [];
@@ -120,7 +121,7 @@ export function generateWildPets(
   // Barajar tipos para máxima variedad
   const shuffledTypes = [...petTypes].sort(() => 0.5 - Math.random());
 
-  const spawnCount = Math.max(4, Math.min(6, count));
+  const spawnCount = Math.max(1, count);
 
   for (let i = 0; i < spawnCount; i++) {
     const type = shuffledTypes[i % shuffledTypes.length];
@@ -129,7 +130,7 @@ export function generateWildPets(
     const pet = createPet(type);
 
     wildPets.push({
-      id: crypto.randomUUID(),
+      id: `pet_${crypto.randomUUID()}`,
       pet,
       lat: point.lat,
       lng: point.lng,
@@ -138,4 +139,102 @@ export function generateWildPets(
   }
 
   return wildPets;
+}
+
+/**
+ * Genera una única mascota silvestre aleatoria para los ciclos periódicos progresivos
+ */
+export function generateSingleWildPet(
+  center: Coordinates,
+  playAreaRadius: number,
+  existingTypes: PetType[] = []
+): WildPet {
+  const petTypes: PetType[] = ['dog', 'drone', 'electric_mouse', 'rabbit', 'cat', 'med_bot'];
+  const availableTypes = petTypes.filter((t) => !existingTypes.includes(t));
+  const selectedType =
+    availableTypes.length > 0
+      ? availableTypes[Math.floor(Math.random() * availableTypes.length)]
+      : petTypes[Math.floor(Math.random() * petTypes.length)];
+
+  const point = getRandomPointInCircle(center, playAreaRadius * 0.75);
+  return {
+    id: `pet_${crypto.randomUUID()}`,
+    pet: createPet(selectedType),
+    lat: point.lat,
+    lng: point.lng,
+    spawnedAt: Date.now(),
+  };
+}
+
+/**
+ * Plantillas tácticas para cajas de suministros y airdrops
+ */
+export const CRATE_TEMPLATES: {
+  type: CrateType;
+  weapon?: Weapon;
+  heal: number;
+  ammo: number;
+}[] = [
+  { type: 'rocket_launcher', weapon: WEAPON_REGISTRY.rocket_launcher, heal: 0, ammo: 3 },
+  { type: 'rifle', weapon: WEAPON_REGISTRY.rifle, heal: 0, ammo: 60 },
+  { type: 'shotgun', weapon: WEAPON_REGISTRY.shotgun, heal: 0, ammo: 20 },
+  { type: 'grenade', weapon: WEAPON_REGISTRY.grenade, heal: 0, ammo: 5 },
+  { type: 'medkit', weapon: undefined, heal: 100, ammo: 0 },
+  { type: 'ammo', weapon: undefined, heal: 0, ammo: 90 },
+  { type: 'melee', weapon: WEAPON_REGISTRY.axe, heal: 0, ammo: 15 },
+];
+
+/**
+ * Crea una nueva caja de suministros airdrop que desciende con paracaídas
+ */
+export function createAirdropCrate(
+  center: Coordinates,
+  playAreaRadius: number,
+  forcedType?: CrateType
+): SupplyCrate {
+  const dropPoint = getRandomPointInCircle(center, playAreaRadius * 0.75);
+  const template = forcedType
+    ? CRATE_TEMPLATES.find((t) => t.type === forcedType) || CRATE_TEMPLATES[0]
+    : CRATE_TEMPLATES[Math.floor(Math.random() * CRATE_TEMPLATES.length)];
+
+  return {
+    id: `crate_${crypto.randomUUID()}`,
+    lat: dropPoint.lat,
+    lng: dropPoint.lng,
+    opened: false,
+    droppedAt: Date.now(),
+    crateType: template.type,
+    weaponReward: template.weapon,
+    healReward: template.heal,
+    ammoReward: template.ammo,
+    isAirdrop: true,
+  };
+}
+
+/**
+ * Genera el lote base mínimo inicial de cajas de suministros (ya sobre el terreno)
+ */
+export function generateInitialCrates(
+  center: Coordinates,
+  playAreaRadius: number,
+  count: number = 3
+): SupplyCrate[] {
+  const crates: SupplyCrate[] = [];
+  for (let i = 0; i < count; i++) {
+    const template = CRATE_TEMPLATES[i % CRATE_TEMPLATES.length];
+    const dropPoint = getRandomPointInCircle(center, playAreaRadius * 0.75);
+    crates.push({
+      id: `crate_${crypto.randomUUID()}`,
+      lat: dropPoint.lat,
+      lng: dropPoint.lng,
+      opened: false,
+      droppedAt: Date.now() - 15000, // Marcadas como ya aterrizadas para no animar el lote inicial
+      crateType: template.type,
+      weaponReward: template.weapon,
+      healReward: template.heal,
+      ammoReward: template.ammo,
+      isAirdrop: false,
+    });
+  }
+  return crates;
 }

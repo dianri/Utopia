@@ -49,7 +49,13 @@ import {
   getDestinationPoint,
 } from './services/geoUtils';
 import { generateMapStructures } from './services/mapStructures';
-import { generateWildPets, PET_ADOPTION_RADIUS_METERS } from './services/mapEntities';
+import {
+  generateWildPets,
+  generateSingleWildPet,
+  createAirdropCrate,
+  generateInitialCrates,
+  PET_ADOPTION_RADIUS_METERS,
+} from './services/mapEntities';
 import { soundEffects } from './services/soundEffects';
 import { MonsterAIController } from './services/monsterAI';
 import { useGameRealtime } from './hooks/useGameRealtime';

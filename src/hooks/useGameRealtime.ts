@@ -402,6 +402,24 @@ export function useGameRealtime(
     });
   }, [myPlayerId]);
 
+  const broadcastNewAirdrop = useCallback((crate: SupplyCrate) => {
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'new_airdrop',
+      payload: { crate },
+    });
+  }, []);
+
+  const broadcastNewWildPet = useCallback((wildPet: WildPet) => {
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'new_wild_pet',
+      payload: { wildPet },
+    });
+  }, []);
+
   const broadcastRequestStateSync = useCallback(() => {
     if (!channelRef.current || !isSubscribedRef.current) return;
     channelRef.current.send({
@@ -465,6 +483,8 @@ export function useGameRealtime(
     broadcastItemDropped,
     broadcastItemPicked,
     broadcastPetAdopted,
+    broadcastNewAirdrop,
+    broadcastNewWildPet,
     broadcastRequestStateSync,
     broadcastFullStateSync,
     broadcastGameCancelled,
