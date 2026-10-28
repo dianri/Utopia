@@ -337,6 +337,56 @@ class SoundEffectsService {
   }
 
   /**
+   * Tono sintetizado para minijuego de secuencias / Simón Dice
+   * @param frequency Frecuencia en Hz
+   * @param duration Duración en segundos (por defecto 0.2s)
+   * @param type Tipo de onda de oscilador
+   */
+  public playTone(frequency: number = 440, duration: number = 0.2, type: OscillatorType = 'sine') {
+    this.vibrate(30);
+    if (this.stealthMode || this.isMuted) return;
+    const ctx = this.initContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(frequency, now);
+
+    gain.gain.setValueAtTime(0.35, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+
+  /**
+   * Tono melódico específico según el color táctico de la cerradura (Simón Dice)
+   */
+  public playColorTone(color: 'cyan' | 'emerald' | 'amber' | 'purple' | number) {
+    const COLOR_FREQS: Record<string, number> = {
+      cyan: 523.25,   // C5
+      emerald: 659.25, // E5
+      amber: 783.99,   // G5
+      purple: 987.77,  // B5
+    };
+
+    let freq = 523.25;
+    if (typeof color === 'number') {
+      const freqs = [523.25, 659.25, 783.99, 987.77];
+      freq = freqs[color % freqs.length];
+    } else if (COLOR_FREQS[color]) {
+      freq = COLOR_FREQS[color];
+    }
+
+    this.playTone(freq, 0.22, 'sine');
+  }
+
+  /**
    * Apertura de caja de suministros / loot
    */
   public playCrateLoot() {

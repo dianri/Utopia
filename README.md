@@ -119,7 +119,7 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 ### 🗝️ 7. Apertura Cooperativa del Cofre por Fases
 - Sustituida la cuenta regresiva estática por un sistema cooperativo de **3 fases con 2 cerrojos cada una** (6 desafíos en total):
   1. **Fase 1 (Sincronización QTE):** Puntería temporal sobre zonas verdes oscilantes.
-  2. **Fase 2 (Código Lumínico):** Secuencia de memoria táctica tipo Simón Dice de 3 a 4 colores.
+  2. **Fase 2 (Código Lumínico / Simón Dice):** Secuencia de memoria táctica de 3 a 4 colores con feedback audiovisual inmediato bidireccional (tanto en la demostración automática como en la pulsación táctil del jugador: destello de 200ms con halo perimetral brillante, vibración táctica y tonos armónicos sintetizados dedicados para cyan, emerald, amber y purple mediante Web Audio API).
   3. **Fase 3 (Frecuencia Magnética):** Dial rotatorio sintonizador con respuesta háptica.
 - **Resolución Atómica del Sexto Cerrojo y Transición a Victoria:** Al resolver el segundo reto de la Fase 3, el cofre confirma el estado atómico en 6/6 cerrojos superados (100%), actualiza Supabase (`status: 'victory'`, `chest_opened: true`), emite broadcast Realtime `game_victory` para toda la escuadra, transforma el marcador del mapa a "Cofre Abierto / Saqueado" (`🔓`) y presenta de forma inmediata el modal de "¡TESORO ASEGURADO!".
 - **Furia Defensiva del Monstruo:** Cuando cualquier agente inicia el desbloqueo del cofre, el monstruo entra en modo `defend_chest` y realiza un sprint a 3.8 m/s directamente hacia las coordenadas del cofre.
@@ -144,7 +144,8 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
   - Creación de partidas **Públicas** (visibles en el radar del lobby) o **Privadas** (acceso mediante código de 6 letras o enlace `/?room=CODIGO`).
   - Incorporación y reconexión completa (**Late Join / Reconnect / F5**):
     - Al recargar la página o presionar "Reanudar Misión en Curso", el jugador restaura de inmediato su última posición geográfica en el mapa, su salud, su estado vital (`active` / `critically_wounded`), todo su inventario con su arma principal equipada y sus mascotas adoptadas orbitando a su alrededor.
-    - Mecanismo de persistencia dual: Snapshot sincrónico local (`sessionStorage` y `localStorage` bajo `utopia_player_session_${gameId}`) combinado con persistencia periódica y en eventos clave hacia las columnas `inventory`, `pets` y `status` de la tabla `players` en Supabase.
+    - **Preservación Autoritativa de la Velocidad de Sala:** El motor de movimiento recupera de forma estricta la velocidad configurada en los parámetros de la partida (`game.settings.player_speed` / `game.player_speed`), asegurando que cazadores reconectados mantengan el ritmo de desplazamiento exacto (incluyendo 27.8 m/s ~100 km/h en modo Muy Rápido) sin degradarse a la velocidad base por defecto.
+    - Mecanismo de persistencia dual: Snapshot sincrónico local (`sessionStorage` y `localStorage` bajo `utopia_player_session_${gameId}`) combinado con persistencia periódica y en eventos clave hacia las columnas `inventory`, `pets` y `status` de la tabla `players` y `player_speed` / `settings` de `games` en Supabase.
     - Centrado automático e inmediato de la cámara de MapLibre GL en la coordenada exacta recuperada del jugador.
 - **Protocolo de Cancelación y Abandono:**
   - Cancelación global por el anfitrión con confirmación, limpieza de snapshots y redirección ordenada de la escuadra.
