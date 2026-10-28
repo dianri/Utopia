@@ -121,6 +121,7 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
   1. **Fase 1 (Sincronización QTE):** Puntería temporal sobre zonas verdes oscilantes.
   2. **Fase 2 (Código Lumínico):** Secuencia de memoria táctica tipo Simón Dice de 3 a 4 colores.
   3. **Fase 3 (Frecuencia Magnética):** Dial rotatorio sintonizador con respuesta háptica.
+- **Resolución Atómica del Sexto Cerrojo y Transición a Victoria:** Al resolver el segundo reto de la Fase 3, el cofre confirma el estado atómico en 6/6 cerrojos superados (100%), actualiza Supabase (`status: 'victory'`, `chest_opened: true`), emite broadcast Realtime `game_victory` para toda la escuadra, transforma el marcador del mapa a "Cofre Abierto / Saqueado" (`🔓`) y presenta de forma inmediata el modal de "¡TESORO ASEGURADO!".
 - **Furia Defensiva del Monstruo:** Cuando cualquier agente inicia el desbloqueo del cofre, el monstruo entra en modo `defend_chest` y realiza un sprint a 3.8 m/s directamente hacia las coordenadas del cofre.
 - **Aislamiento por Partida:** Estado de desbloqueo estricto por ID único de sala (`game.id`), evitando que nuevas partidas hereden progreso residual.
 

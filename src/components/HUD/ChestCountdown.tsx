@@ -88,7 +88,11 @@ export const ChestCountdown: React.FC<ChestCountdownProps> = ({
         </div>
 
         {/* ACCIÓN SEGÚN UBICACIÓN DEL JUGADOR Y DEL MONSTRUO */}
-        {isInChestZone ? (
+        {totalCompleted >= 6 ? (
+          <div className="flex items-center justify-center gap-1.5 text-xs font-mono font-black text-emerald-300 bg-emerald-950/80 p-2 rounded-xl border border-emerald-400 shadow-md">
+            <span>🎉 ¡COFRE TOTALMENTE DESENCRIPTADO (6/6)!</span>
+          </div>
+        ) : isInChestZone ? (
           isMonsterBlocking ? (
             <div className="flex items-center gap-1.5 text-[10px] font-mono text-red-300 bg-red-950/70 p-1.5 rounded border border-red-500/50 animate-pulse">
               <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />

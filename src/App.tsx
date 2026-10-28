@@ -634,6 +634,27 @@ export const App: React.FC = () => {
       onGameCancelled: (payload) => {
         handleRemoteGameCancelled(payload?.reason || 'Misión abortada por el anfitrión');
       },
+      onGameVictory: ({ unlockedBy }) => {
+        setChestPhase(3);
+        setChestStep(2);
+        chestPhaseRef.current = 3;
+        chestStepRef.current = 2;
+        setIsChestLockModalOpen(false);
+        isChestLockModalOpenRef.current = false;
+        setIsChestInteractedGlobally(false);
+        if (room?.id) {
+          try {
+            localStorage.removeItem(`utopia_chest_progress_${room.id}`);
+          } catch {
+            // Ignorar
+          }
+        }
+        localStorage.removeItem('utopia_active_room');
+        setSavedActiveRoomCode(null);
+        setRoom((prev) => (prev ? { ...prev, status: 'victory' } : null));
+        addLog(`¡${unlockedBy || 'La escuadra'} ha desbloqueado el sexto cerrojo! ¡TESORO ASEGURADO!`, 'victory');
+        soundEffects.playVictoryFanfare();
+      },
     },
     !!myPlayer?.isHost,
     room?.id ?? null,
@@ -1307,12 +1328,73 @@ export const App: React.FC = () => {
     [room?.id, addLog]
   );
 
-  const handleChestVictory = useCallback(() => {
+  const handleChestVictory = useCallback(async () => {
+    // 1. Asegurar estado local en 6/6 y cerrar modal de cofre
+    setChestPhase(3);
+    setChestStep(2);
+    chestPhaseRef.current = 3;
+    chestStepRef.current = 2;
     setIsChestLockModalOpen(false);
     isChestLockModalOpenRef.current = false;
-    realtimeRef.current.broadcastChestInteracting(false);
-    handleGameEnd('victory');
-  }, []);
+    setIsChestInteractedGlobally(false);
+
+    if (room?.id) {
+      try {
+        localStorage.removeItem(`utopia_chest_progress_${room.id}`);
+      } catch {
+        // Ignorar
+      }
+    }
+    localStorage.removeItem('utopia_active_room');
+    setSavedActiveRoomCode(null);
+
+    // 2. Transición inmediata de estado de sala a 'victory'
+    setRoom((prev) => (prev ? { ...prev, status: 'victory' } : null));
+
+    // 3. Emitir broadcast a todos los jugadores conectados
+    const unlockedByNickname = myPlayerRef.current?.nickname || 'Escuadra';
+    realtimeRef.current.broadcastGameVictory(true, unlockedByNickname);
+    addLog(`¡${unlockedByNickname} ha desbloqueado el sexto cerrojo! ¡TESORO ASEGURADO!`, 'victory');
+    soundEffects.playVictoryFanfare();
+
+    // 4. Actualizar base de datos de forma atómica y explícita
+    if (room?.id) {
+      try {
+        const endedAt = new Date().toISOString();
+        await (supabase.from('games') as any)
+          .update({
+            status: 'victory',
+            chest_unlocked_steps: 6,
+            chest_current_phase: 3,
+            chest_progress_pct: 100,
+            chest_opened: true,
+            ended_at: endedAt,
+          })
+          .eq('id', room.id);
+      } catch (err) {
+        console.warn('Error al actualizar victoria en games:', err);
+      }
+
+      // Inserción de estadísticas personales en match_stats
+      if (myPlayerRef.current) {
+        try {
+          await (supabase.from('match_stats') as any).insert({
+            game_id: room.id,
+            nickname: myPlayerRef.current.nickname,
+            role: myPlayerRef.current.role,
+            damage_dealt: myPlayerRef.current.damageDealt,
+            revives_done: myPlayerRef.current.revivesDone,
+            crates_opened: myPlayerRef.current.cratesOpened,
+            monster_kills: myPlayerRef.current.monsterKills,
+            won: true,
+            score: myPlayerRef.current.damageDealt + myPlayerRef.current.revivesDone * 100,
+          });
+        } catch (err) {
+          console.warn('Error al guardar match_stats de victoria:', err);
+        }
+      }
+    }
+  }, [room?.id, addLog]);
 
   // ==========================================
   // ESTADO DE PARTIDA CONTINUO (SIN DERROTA GLOBAL)
@@ -2597,6 +2679,8 @@ export const App: React.FC = () => {
           droppedItems={droppedItems}
           wildPets={wildPets}
           inCombat={isCombatArenaOpen}
+          isChestOpened={(chestPhase >= 3 && chestStep >= 2) || room.status === 'victory'}
+          isVictory={room.status === 'victory'}
           onMapClick={handleMapClick}
           onPickDroppedItem={handlePickDroppedItem}
         />
@@ -2856,26 +2940,28 @@ export const App: React.FC = () => {
               </div>
             )}
 
-            <ChestCountdown
-              currentPhase={chestPhase}
-              currentStep={chestStep}
-              isInChestZone={
-                getDistanceMeters(
-                  { lat: myPlayer.lat ?? room.centerLat, lng: myPlayer.lng ?? room.centerLng },
-                  { lat: room.treasureLat, lng: room.treasureLng }
-                ) <= 20
-              }
-              isMonsterDefending={
-                isMonsterAlive(monster) &&
-                getDistanceMeters(
-                  { lat: room.treasureLat, lng: room.treasureLng },
-                  monster
-                ) <= 20
-              }
-              isMonsterAlive={isMonsterAlive(monster)}
-              isChestInteracted={isChestInteractedGlobally || isChestLockModalOpen}
-              onOpenChestModal={handleOpenChestModal}
-            />
+            {room.status === 'playing' && (chestPhase < 3 || chestStep < 2) && (
+              <ChestCountdown
+                currentPhase={chestPhase}
+                currentStep={chestStep}
+                isInChestZone={
+                  getDistanceMeters(
+                    { lat: myPlayer.lat ?? room.centerLat, lng: myPlayer.lng ?? room.centerLng },
+                    { lat: room.treasureLat, lng: room.treasureLng }
+                  ) <= 20
+                }
+                isMonsterDefending={
+                  isMonsterAlive(monster) &&
+                  getDistanceMeters(
+                    { lat: room.treasureLat, lng: room.treasureLng },
+                    monster
+                  ) <= 20
+                }
+                isMonsterAlive={isMonsterAlive(monster)}
+                isChestInteracted={isChestInteractedGlobally || isChestLockModalOpen}
+                onOpenChestModal={handleOpenChestModal}
+              />
+            )}
 
             <RespawnTimer secondsRemaining={monster.respawnTimeRemaining} />
           </div>
@@ -2911,10 +2997,27 @@ export const App: React.FC = () => {
       {room && room.status === 'victory' && (
         <VictoryModal
           players={players}
+          startedAt={room.startedAt}
           onRestart={() => {
+            if (room?.id) {
+              try {
+                localStorage.removeItem(`utopia_chest_progress_${room.id}`);
+              } catch {
+                // Ignorar
+              }
+            }
+            localStorage.removeItem('utopia_active_room');
+            setSavedActiveRoomCode(null);
             setRoom(null);
             setMyPlayer(null);
             setPlayers([]);
+            setCrates([]);
+            setDroppedItems([]);
+            setWildPets([]);
+            setChestPhase(1);
+            setChestStep(0);
+            setIsChestLockModalOpen(false);
+            setIsChestInteractedGlobally(false);
           }}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
         />

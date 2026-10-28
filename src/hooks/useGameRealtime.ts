@@ -52,6 +52,7 @@ interface RealtimeCallbacks {
     wildPets?: WildPet[];
   }) => void;
   onGameCancelled?: (payload: { reason?: string }) => void;
+  onGameVictory?: (payload: { winnerTeam: boolean; unlockedBy: string }) => void;
   onPresenceSync?: (activeUserIds: string[]) => void;
 }
 
@@ -202,6 +203,11 @@ export function useGameRealtime(
     // 12. CANCELACIÓN / ABORTO DE PARTIDA POR EL HOST
     channel.on('broadcast', { event: 'game_cancelled' }, ({ payload }) => {
       callbacksRef.current.onGameCancelled?.(payload);
+    });
+
+    // 12.1. VICTORIA DEFINITIVA (COFRE DESBLOQUEADO)
+    channel.on('broadcast', { event: 'game_victory' }, ({ payload }) => {
+      callbacksRef.current.onGameVictory?.(payload);
     });
 
     // 13. PRESENCE (QUIÉN ESTÁ ONLINE)
@@ -430,6 +436,15 @@ export function useGameRealtime(
     });
   }, []);
 
+  const broadcastGameVictory = useCallback((winnerTeam: boolean = true, unlockedBy: string = 'Escuadra') => {
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'game_victory',
+      payload: { winnerTeam, unlockedBy },
+    });
+  }, []);
+
   return {
     isConnected,
     onlineUsers,
@@ -450,5 +465,6 @@ export function useGameRealtime(
     broadcastRequestStateSync,
     broadcastFullStateSync,
     broadcastGameCancelled,
+    broadcastGameVictory,
   };
 }

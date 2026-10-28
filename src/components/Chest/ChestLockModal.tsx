@@ -25,6 +25,13 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
 }) => {
   // Estado local para mensajes de acierto/fallo
   const [feedback, setFeedback] = useState<'idle' | 'success' | 'fail'>('idle');
+  const [isVictorious, setIsVictorious] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsVictorious(false);
+    }
+  }, [isOpen]);
 
   // ==========================================
   // FASE 1: CERRADURA DE TIEMPO / QTE OSCILANTE
@@ -206,15 +213,19 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
       soundEffects.playCrateLoot();
       soundEffects.vibrate([80, 50, 120]);
 
-      setTimeout(() => {
-        setFeedback('idle');
-        if (currentStep === 0) {
+      if (currentStep === 0) {
+        setTimeout(() => {
+          setFeedback('idle');
           onStepSuccess(3, 1);
-        } else {
-          // ¡VICTORIA DEFINITIVA!
+        }, 700);
+      } else {
+        // ¡PASO 6 COMPLETADO / SEXTO CERROJO RESUELTO!
+        setIsVictorious(true);
+        setTimeout(() => {
+          setFeedback('idle');
           onVictory();
-        }
-      }, 700);
+        }, 700);
+      }
     } else {
       setFeedback('fail');
       soundEffects.playAlarm();
@@ -225,7 +236,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
 
   if (!isOpen) return null;
 
-  const totalLocksCompleted = (currentPhase - 1) * 2 + currentStep;
+  const totalLocksCompleted = isVictorious ? 6 : (currentPhase - 1) * 2 + currentStep;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md select-none">
@@ -255,7 +266,9 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
                 Desencriptando Cofre
               </span>
               <span className="text-[11px] font-mono text-amber-400">
-                Fase {currentPhase} de 3 • Cerrojo {currentStep + 1}/2
+                {isVictorious
+                  ? 'Fase 3 de 3 • ¡Cerrojo 2/2 Superado (6/6)!'
+                  : `Fase ${currentPhase} de 3 • Cerrojo ${currentStep + 1}/2`}
               </span>
             </div>
           </div>
@@ -476,9 +489,14 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
                 {feedback === 'success' ? (
                   <>
                     <CheckCircle2 className="w-12 h-12 text-emerald-400 animate-bounce" />
-                    <span className="font-mono font-black text-base uppercase tracking-wider">
-                      ¡CERROJO SUPERADO!
+                    <span className="font-mono font-black text-base uppercase tracking-wider text-center">
+                      {isVictorious ? '¡TESORO ASEGURADO! ¡MISIÓN CUMPLIDA!' : '¡CERROJO SUPERADO!'}
                     </span>
+                    {isVictorious && (
+                      <span className="text-xs font-mono text-emerald-200">
+                        Cerrojos 6/6 completados • Abriendo cofre...
+                      </span>
+                    )}
                   </>
                 ) : (
                   <>
