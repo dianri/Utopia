@@ -10,9 +10,9 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - **Mascotas como escudo táctico de primera línea en combate:** El bucle de ataque periódico del monstruo (`CombatArena.tsx`) concentra secuencialmente todo el daño en la primera mascota viva (`!p.isWounded && p.hp > 0`). Mientras el jugador cuente con al menos una mascota viva, su salud permanece 100% intacta.
   - **Transición secuencial y feedback táctico:** Al reducirse los HP de una mascota a 0, queda incapacitada (`isWounded = true`, `💫`) y el escudo pasa a la siguiente mascota viva. Solo cuando todas las mascotas caen o si el jugador no tiene mascotas, el monstruo daña directamente la salud del cazador.
   - **HUD de combate enriquecido:** Tarjeta de la mascota activa como escudo destacada con badge `🛡️ ESCUDO` y aura esmeralda, vibración y destello rojo al recibir daño, indicador flotante `🛡️ [Nombre]: -[DMG] HP` y registros específicos en el log de combate.
-- **Ajuste de velocidad "Muy Rápido" a 40 km/h al crear la partida (`types/game.ts`, `CreateRoomModal.tsx`, `README.md`):**
-  - Modificado el valor de la opción de velocidad de movimiento `very_fast` de 4.5 m/s (~16 km/h) a **11.1 m/s (~40 km/h)** (`PLAYER_SPEED_MPS.very_fast = 11.1`).
-  - Actualizada la interfaz de selección en `CreateRoomModal.tsx` reflejando "Muy Rápido: 40 km/h (Turbo)" y su indicador dinámico "11.1 m/s (~40 km/h)".
+- **Ajuste de velocidad "Muy Rápido" a 100 km/h al crear la partida (`types/game.ts`, `CreateRoomModal.tsx`, `README.md`):**
+  - Modificado el valor de la opción de velocidad de movimiento `very_fast` de 11.1 m/s (~40 km/h) a **27.8 m/s (~100 km/h)** (`PLAYER_SPEED_MPS.very_fast = 27.8`).
+  - Actualizada la interfaz de selección en `CreateRoomModal.tsx` reflejando "Muy Rápido: 100 km/h (Turbo)" y su indicador dinámico "27.8 m/s (~100 km/h)".
   - El motor de interpolación Tap-to-Move (`useGeolocation.ts`) y el HUD del mapa (`GameMap.tsx`) aplican automáticamente la nueva velocidad seleccionada en la sala.
 
 ### Added
