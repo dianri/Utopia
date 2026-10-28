@@ -408,6 +408,8 @@ export const App: React.FC = () => {
     () => structures.find((s) => s.type === 'hospital') || null,
     [structures]
   );
+  const hospitalStructureRef = useRef<MapStructure | null>(hospitalStructure);
+  hospitalStructureRef.current = hospitalStructure;
 
   const currentBuilding = useMemo(
     () => structures.find((s) => s.id === myPlayer?.insideBuildingId) || null,
@@ -892,8 +894,9 @@ export const App: React.FC = () => {
             );
 
             if (playerNeedsHealing || petsNeedHealing) {
-              setIsHospitalModalOpen(true);
               cancelMovementRef.current();
+              setIsHospitalModalOpen(true);
+              isHospitalModalOpenRef.current = true;
               addLog('Has entrado al Hospital de Campaña. Iniciando regeneración táctica.', 'info');
             } else {
               addLog('INSTALACIÓN MÉDICA: Todos los signos vitales se encuentran al 100%', 'info');
@@ -904,6 +907,25 @@ export const App: React.FC = () => {
         } else if (myPlayerRef.current.insideBuildingId) {
           addLog('Has salido a la intemperie. Vuelves a ser visible.', 'info');
           setIsHospitalModalOpen(false);
+          isHospitalModalOpenRef.current = false;
+        }
+      }
+
+      // Verificación directa e inmediata en hospital si necesita curación
+      if (insideType === 'hospital') {
+        const playerNeedsHealing =
+          myPlayerRef.current.hp < (myPlayerRef.current.maxHp || 100) ||
+          myPlayerRef.current.isCriticallyWounded ||
+          myPlayerRef.current.status === 'critically_wounded';
+
+        const petsNeedHealing = (myPlayerRef.current.pets || []).some(
+          (p) => p.hp < (p.maxHp || 100) || p.isWounded
+        );
+
+        if ((playerNeedsHealing || petsNeedHealing) && !isHospitalModalOpenRef.current) {
+          cancelMovementRef.current();
+          setIsHospitalModalOpen(true);
+          isHospitalModalOpenRef.current = true;
         }
       }
 
@@ -1801,95 +1823,59 @@ export const App: React.FC = () => {
   // consiga descifrar y abrir el cofre del tesoro para alcanzar 'victory'.
 
   // ==========================================
-  // CURACIÓN PROGRESIVA EN EL HOSPITAL (+10 HP/S Y RECUPERACIÓN DE HERIDO DE MUERTE)
+  // HOSPITAL DE CAMPAÑA: DETECCIÓN CONTINUA Y APERTURA DE BAHÍA MÉDICA (< 18M)
+  // Toda la curación hospitalaria ocurre exclusivamente a través de HospitalModal
   // ==========================================
   useEffect(() => {
-    if (room?.status !== 'playing' || !myPlayer) return;
-    if (myPlayer.insideBuildingType !== 'hospital') return;
-    if (isHospitalModalOpen) return; // Si la bahía médica táctica está activa, gestiona la regeneración
+    if (room?.status !== 'playing' || !myPlayer?.isAlive) return;
 
     const interval = setInterval(() => {
-      setMyPlayer((prev) => {
-        if (!prev || prev.insideBuildingType !== 'hospital') return prev;
-        const newHp = Math.min(prev.maxHp, prev.hp + 10);
-        const wasWounded = prev.isCriticallyWounded || prev.status === 'critically_wounded';
-        const cured = wasWounded && newHp >= 20;
-        const updatedStatus = cured ? 'active' : (prev.status || 'active');
+      const player = myPlayerRef.current;
+      const hospital = hospitalStructureRef.current;
+      if (!player || !hospital) return;
 
-        if (cured) {
-          addLog('¡Atendido en el Hospital de Campaña! Has sido estabilizado y vuelves al combate.', 'info');
-        }
+      const pCoord: Coordinates = {
+        lat: player.lat ?? room.centerLat,
+        lng: player.lng ?? room.centerLng,
+      };
+      const hospitalCoord: Coordinates = {
+        lat: hospital.lat,
+        lng: hospital.lng,
+      };
 
-        // Recuperación en el Hospital: reactivar y curar al máximo a todas las mascotas
-        const currentPets = prev.pets || [];
-        let anyPetRevived = false;
-        const recoveredPets = currentPets.map((pet) => {
-          if (pet.hp < pet.maxHp || pet.isWounded) {
-            anyPetRevived = true;
-            return {
-              ...pet,
-              hp: pet.maxHp,
-              isWounded: false,
-            };
-          }
-          return pet;
-        });
+      const hospitalDistance = getDistanceMeters(pCoord, hospitalCoord);
+      const hospitalRadius = hospital.radius || 18;
 
-        if (anyPetRevived) {
-          addLog('¡Tus mascotas han sido atendidas y revitalizadas en el Hospital!', 'info');
-        }
+      const playerNeedsHealing =
+        player.hp < (player.maxHp || 100) ||
+        player.status === 'critically_wounded' ||
+        player.isCriticallyWounded;
 
-        const updated = {
-          ...prev,
-          hp: newHp,
-          isCriticallyWounded: cured ? false : prev.isCriticallyWounded,
-          status: updatedStatus,
-          pets: recoveredPets,
-        };
-
-        if (prev.lat && prev.lng) {
-          realtime.broadcastPlayerMove(
-            prev.lat,
-            prev.lng,
-            newHp,
-            true,
-            updatedStatus,
-            updated.isCriticallyWounded,
-            prev.insideBuildingId,
-            prev.insideBuildingType,
-            recoveredPets
-          );
-        }
-
-        return updated;
-      });
-
-      setPlayers((prev) =>
-        prev.map((p) => {
-          if (p.id === myPlayerRef.current?.id) {
-            const newHp = Math.min(p.maxHp, p.hp + 10);
-            const wasWounded = p.isCriticallyWounded || p.status === 'critically_wounded';
-            const cured = wasWounded && newHp >= 20;
-            const updatedPets = (p.pets || []).map((pet) => ({
-              ...pet,
-              hp: pet.maxHp,
-              isWounded: false,
-            }));
-            return {
-              ...p,
-              hp: newHp,
-              isCriticallyWounded: cured ? false : p.isCriticallyWounded,
-              status: cured ? 'active' : p.status,
-              pets: updatedPets,
-            };
-          }
-          return p;
-        })
+      const petsNeedHealing = (player.pets || []).some(
+        (p) => p.hp < (p.maxHp || 100) || p.isWounded
       );
-    }, 1000);
+
+      const needsHealing = playerNeedsHealing || petsNeedHealing;
+
+      if (hospitalDistance <= hospitalRadius) {
+        if (needsHealing && !isHospitalModalOpenRef.current) {
+          // Detener movimiento y abrir de inmediato la interfaz táctica del hospital
+          cancelMovementRef.current();
+          setIsHospitalModalOpen(true);
+          isHospitalModalOpenRef.current = true;
+          addLogRef.current?.('Has entrado al Hospital de Campaña. Iniciando regeneración táctica.', 'info');
+        }
+      } else {
+        // Al alejarse más allá del radio de la instalación
+        if (isHospitalModalOpenRef.current) {
+          setIsHospitalModalOpen(false);
+          isHospitalModalOpenRef.current = false;
+        }
+      }
+    }, 250);
 
     return () => clearInterval(interval);
-  }, [room?.status, myPlayer?.insideBuildingType, isHospitalModalOpen, realtime, addLog]);
+  }, [room?.status, room?.centerLat, room?.centerLng]);
 
   // ==========================================
   // SAQUEO DE AIRDROPS (CAJAS DE SUMINISTROS A 40 METROS)
@@ -2542,6 +2528,19 @@ export const App: React.FC = () => {
       0.7
     );
 
+    // Generar lote base mínimo inicial autoritativo (3 cajas de suministros y 1 mascota silvestre)
+    const initialCrates = generateInitialCrates(
+      config.center,
+      config.radiusMeters,
+      3
+    );
+
+    const initialPets = generateWildPets(
+      { lat: config.center.lat, lng: config.center.lng },
+      config.radiusMeters,
+      1
+    );
+
     // Insertar partida en Supabase con tolerancia a columnas opcionales
     const hostRoomSpeed: PlayerSpeed = config.playerSpeed || DEFAULT_PLAYER_SPEED;
     const basePayload = {
@@ -2551,7 +2550,16 @@ export const App: React.FC = () => {
       status: 'lobby',
       movement_mode: config.movementMode,
       player_speed: hostRoomSpeed,
-      settings: { player_speed: hostRoomSpeed },
+      active_crates: initialCrates,
+      active_wild_pets: initialPets,
+      active_dropped_items: [],
+      active_loot: initialCrates,
+      settings: {
+        player_speed: hostRoomSpeed,
+        active_crates: initialCrates,
+        active_wild_pets: initialPets,
+        active_dropped_items: [],
+      },
       play_area_radius: config.radiusMeters,
       center_lat: config.center.lat,
       center_lng: config.center.lng,
@@ -2654,6 +2662,7 @@ export const App: React.FC = () => {
       chestCurrentPhase: gameData.chest_current_phase ?? 1,
       chestProgressPct: gameData.chest_progress_pct ?? 0,
       createdAt: gameData.created_at,
+      startedAt: gameData.started_at,
     };
 
     const hostPlayer: Player = {
@@ -2692,46 +2701,6 @@ export const App: React.FC = () => {
       isEnraged: false,
     });
 
-    // Generar airdrops iniciales con variedad táctica y recompensas visibles
-    const generatedCrates: SupplyCrate[] = [];
-    const crateTemplates: {
-      type: CrateType;
-      weapon?: typeof WEAPON_REGISTRY[keyof typeof WEAPON_REGISTRY];
-      heal: number;
-      ammo: number;
-    }[] = [
-      { type: 'rocket_launcher', weapon: WEAPON_REGISTRY.rocket_launcher, heal: 0, ammo: 3 },
-      { type: 'rifle', weapon: WEAPON_REGISTRY.rifle, heal: 0, ammo: 60 },
-      { type: 'shotgun', weapon: WEAPON_REGISTRY.shotgun, heal: 0, ammo: 20 },
-      { type: 'grenade', weapon: WEAPON_REGISTRY.grenade, heal: 0, ammo: 5 },
-      { type: 'medkit', weapon: undefined, heal: 100, ammo: 0 },
-      { type: 'ammo', weapon: undefined, heal: 0, ammo: 90 },
-      { type: 'melee', weapon: WEAPON_REGISTRY.axe, heal: 0, ammo: 15 },
-    ];
-
-    for (let i = 0; i < 5; i++) {
-      const dropPoint = getRandomPointInCircle(config.center, config.radiusMeters * 0.7);
-      const template = crateTemplates[i % crateTemplates.length];
-      generatedCrates.push({
-        id: crypto.randomUUID(),
-        lat: dropPoint.lat,
-        lng: dropPoint.lng,
-        opened: false,
-        droppedAt: Date.now(),
-        crateType: template.type,
-        weaponReward: template.weapon,
-        healReward: template.heal,
-        ammoReward: template.ammo,
-      });
-    }
-
-    // Generar mascotas silvestres en el mapa (4 a 6 mascotas distribuidas en el área de juego)
-    const initialWildPets = generateWildPets(
-      { lat: config.center.lat, lng: config.center.lng },
-      config.radiusMeters,
-      5
-    );
-
     // Resetear explícitamente el progreso del cofre a 0 cerrojos y Fase 1 al crear una sala nueva
     setChestPhase(1);
     setChestStep(0);
@@ -2750,8 +2719,9 @@ export const App: React.FC = () => {
     setMyPlayer(hostPlayer);
     savePlayerSessionSnapshot(gameData.id, hostPlayer, resolvedHostSpeed);
     setPlayers([hostPlayer]);
-    setCrates(generatedCrates);
-    setWildPets(initialWildPets);
+    setCrates(initialCrates);
+    setWildPets(initialPets);
+    setDroppedItems([]);
     resetPosition(hostSpawnPoint);
     localStorage.setItem('utopia_active_room', gameData.code);
     setSavedActiveRoomCode(gameData.code);
@@ -2939,6 +2909,7 @@ export const App: React.FC = () => {
       chestCurrentPhase: gameData.chest_current_phase ?? 1,
       chestProgressPct: gameData.chest_progress_pct ?? 0,
       createdAt: gameData.created_at,
+      startedAt: gameData.started_at,
     };
 
     const finalRole = (playerData.role as PlayerRole) || config.role || 'medic';
@@ -3706,13 +3677,18 @@ export const App: React.FC = () => {
       )}
 
       {/* 5. MODAL TÁCTICO DEL HOSPITAL DE CAMPAÑA */}
-      {room && myPlayer && isHospitalModalOpen && (
+      {room && myPlayer && (
         <HospitalModal
           isOpen={isHospitalModalOpen}
+          player={myPlayer}
           myPlayer={myPlayer}
-          onClose={() => setIsHospitalModalOpen(false)}
+          onClose={() => {
+            setIsHospitalModalOpen(false);
+            isHospitalModalOpenRef.current = false;
+          }}
           onHealTick={handleHospitalHealTick}
           onDischargeComplete={handleHospitalDischargeComplete}
+          onUpdatePlayer={setMyPlayer}
           onAddLog={addLog}
         />
       )}
