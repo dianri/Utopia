@@ -21,7 +21,7 @@ import type {
   Pet,
   WildPet,
 } from './types/game';
-import { PLAYER_SPEED_MPS, MAX_INVENTORY_SLOTS, isMonsterAlive } from './types/game';
+import { PLAYER_SPEED_MPS, isMonsterAlive } from './types/game';
 import {
   DEFAULT_WEAPONS_BY_ROLE,
   WEAPON_REGISTRY,
@@ -1427,55 +1427,24 @@ export const App: React.FC = () => {
             ? prev.inventory
             : getDefaultInventoryForRole(prev.role);
 
-          let updatedInv = [...currentInv];
+          const updatedInv = [...currentInv, newInventoryItem];
           let updatedEquippedWeapon = prev.equippedWeapon;
           let updatedEquippedItemId = prev.equippedItemId;
 
-          if (currentInv.length < MAX_INVENTORY_SLOTS) {
-            // Espacio disponible en la mochila
-            updatedInv.push(newInventoryItem);
-            const currentTier = prev.equippedWeapon?.tier ?? 1;
-            if (newInventoryItem.tier > currentTier) {
-              updatedEquippedWeapon = inventoryItemToWeapon(newInventoryItem);
-              updatedEquippedItemId = newInventoryItem.id;
-              addLogRef.current(
-                `¡Has obtenido ${newInventoryItem.name} (Tier ${newInventoryItem.tier})! Auto-equipada.`,
-                'loot'
-              );
-            } else {
-              addLogRef.current(
-                `¡${newInventoryItem.name} (Tier ${newInventoryItem.tier}) guardada en la mochila!`,
-                'loot'
-              );
-            }
+          const currentTier = prev.equippedWeapon?.tier ?? 0;
+          const isCurrentlyFists = prev.equippedWeapon?.weaponType === 'fists' || currentTier === 0;
+          if (isCurrentlyFists || newInventoryItem.tier > currentTier) {
+            updatedEquippedWeapon = inventoryItemToWeapon(newInventoryItem);
+            updatedEquippedItemId = newInventoryItem.id;
+            addLogRef.current(
+              `¡Has obtenido ${newInventoryItem.name} (Tier ${newInventoryItem.tier})! Auto-equipada.`,
+              'loot'
+            );
           } else {
-            // Mochila llena: intercambio automático con el arma en mano
-            const itemToSwap =
-              currentInv.find((it) => it.id === prev.equippedItemId && !it.isInfinite) ||
-              currentInv.find((it) => !it.isInfinite) ||
-              null;
-
-            if (itemToSwap) {
-              const droppedSwap: DroppedItem = {
-                id: crypto.randomUUID(),
-                item: itemToSwap,
-                lat: myCoord.lat,
-                lng: myCoord.lng,
-                droppedAt: Date.now(),
-                droppedBy: prev.nickname,
-              };
-              setDroppedItems((prevDrop) => [...prevDrop, droppedSwap]);
-              realtimeRef.current.broadcastItemDropped(droppedSwap);
-
-              updatedInv = [...currentInv.filter((it) => it.id !== itemToSwap.id), newInventoryItem];
-              updatedEquippedWeapon = inventoryItemToWeapon(newInventoryItem);
-              updatedEquippedItemId = newInventoryItem.id;
-
-              addLogRef.current(
-                `Mochila llena. Has intercambiado ${itemToSwap.name} por ${newInventoryItem.name} (Tier ${newInventoryItem.tier}).`,
-                'loot'
-              );
-            }
+            addLogRef.current(
+              `¡${newInventoryItem.name} (Tier ${newInventoryItem.tier}) guardada en la mochila!`,
+              'loot'
+            );
           }
 
           return {
@@ -1670,26 +1639,24 @@ export const App: React.FC = () => {
             ? prev.inventory
             : getDefaultInventoryForRole(prev.role);
 
-          let updatedInv = [...currentInv];
+          const updatedInv = [...currentInv, newInventoryItem];
           let updatedEquippedWeapon = prev.equippedWeapon;
           let updatedEquippedItemId = prev.equippedItemId;
 
-          if (currentInv.length < MAX_INVENTORY_SLOTS) {
-            updatedInv.push(newInventoryItem);
-            const currentTier = prev.equippedWeapon?.tier ?? 1;
-            if (newInventoryItem.tier > currentTier) {
-              updatedEquippedWeapon = inventoryItemToWeapon(newInventoryItem);
-              updatedEquippedItemId = newInventoryItem.id;
-              addLogRef.current(
-                `🐾 ${fetchingPet.name} trajo ${newInventoryItem.name} (Tier ${newInventoryItem.tier})! Auto-equipada.`,
-                'loot'
-              );
-            } else {
-              addLogRef.current(
-                `🐾 ${fetchingPet.name} guardó ${newInventoryItem.name} (Tier ${newInventoryItem.tier}) en tu mochila!`,
-                'loot'
-              );
-            }
+          const currentTier = prev.equippedWeapon?.tier ?? 0;
+          const isCurrentlyFists = prev.equippedWeapon?.weaponType === 'fists' || currentTier === 0;
+          if (isCurrentlyFists || newInventoryItem.tier > currentTier) {
+            updatedEquippedWeapon = inventoryItemToWeapon(newInventoryItem);
+            updatedEquippedItemId = newInventoryItem.id;
+            addLogRef.current(
+              `🐾 ${fetchingPet.name} trajo ${newInventoryItem.name} (Tier ${newInventoryItem.tier})! Auto-equipada.`,
+              'loot'
+            );
+          } else {
+            addLogRef.current(
+              `🐾 ${fetchingPet.name} guardó ${newInventoryItem.name} (Tier ${newInventoryItem.tier}) en tu mochila!`,
+              'loot'
+            );
           }
 
           return {
@@ -2044,11 +2011,6 @@ export const App: React.FC = () => {
   }, [addLog]);
 
   const handleDropItem = useCallback((itemToDrop: InventoryItem) => {
-    if (itemToDrop.isInfinite) {
-      addLog('El cuchillo básico de supervivencia no se puede descartar.', 'warning');
-      return;
-    }
-
     if (!myPlayerRef.current) return;
     const player = myPlayerRef.current;
     const myPos = {
@@ -2076,13 +2038,16 @@ export const App: React.FC = () => {
       let nextWeapon = prev.equippedWeapon;
       let nextItemId = prev.equippedItemId;
 
-      if (prev.equippedItemId === itemToDrop.id) {
+      if (prev.equippedItemId === itemToDrop.id || updatedInv.length === 0) {
         const nextBest = getBestWeaponInInventory(updatedInv);
         nextWeapon = inventoryItemToWeapon(nextBest);
         nextItemId = nextBest.id;
       }
 
       addLog(`Has soltado ${itemToDrop.name} (Tier ${itemToDrop.tier}) en el terreno.`, 'info');
+      if (updatedInv.length === 0) {
+        addLog('Mochila vacía. ¡Combatiendo con Puños (Tier 0)!', 'warning');
+      }
       soundEffects.playCrateLoot();
 
       return {
@@ -2114,63 +2079,25 @@ export const App: React.FC = () => {
     setMyPlayer((prev) => {
       if (!prev) return null;
       const currentInv = prev.inventory || getDefaultInventoryForRole(prev.role);
+      const updatedInv = [...currentInv, dropped.item];
+      const currentTier = prev.equippedWeapon?.tier ?? 0;
+      const isCurrentlyFists = prev.equippedWeapon?.weaponType === 'fists' || currentTier === 0;
+      const shouldAutoEquip = isCurrentlyFists || dropped.item.tier > currentTier;
 
-      if (currentInv.length < MAX_INVENTORY_SLOTS) {
-        const updatedInv = [...currentInv, dropped.item];
-        const currentTier = prev.equippedWeapon?.tier ?? 1;
-        const shouldAutoEquip = dropped.item.tier > currentTier;
+      addLog(
+        `¡Has recogido ${dropped.item.name} (Tier ${dropped.item.tier})! ${
+          shouldAutoEquip ? 'Auto-equipada.' : 'Guardada en la mochila.'
+        }`,
+        'loot'
+      );
+      soundEffects.playCrateLoot();
 
-        addLog(
-          `¡Has recogido ${dropped.item.name} (Tier ${dropped.item.tier})! ${
-            shouldAutoEquip ? 'Auto-equipada.' : 'Guardada en la mochila.'
-          }`,
-          'loot'
-        );
-        soundEffects.playCrateLoot();
-
-        return {
-          ...prev,
-          inventory: updatedInv,
-          equippedWeapon: shouldAutoEquip ? inventoryItemToWeapon(dropped.item) : prev.equippedWeapon,
-          equippedItemId: shouldAutoEquip ? dropped.item.id : prev.equippedItemId,
-        };
-      } else {
-        // Mochila llena: intercambiar con arma equipada actual (o la de menor tier no infinita)
-        const itemToSwap =
-          currentInv.find((it) => it.id === prev.equippedItemId && !it.isInfinite) ||
-          currentInv.find((it) => !it.isInfinite) ||
-          null;
-
-        if (itemToSwap) {
-          const droppedSwap: DroppedItem = {
-            id: crypto.randomUUID(),
-            item: itemToSwap,
-            lat: myPos.lat,
-            lng: myPos.lng,
-            droppedAt: Date.now(),
-            droppedBy: prev.nickname,
-          };
-          setDroppedItems((prevDrop) => [...prevDrop, droppedSwap]);
-          realtimeRef.current.broadcastItemDropped(droppedSwap);
-
-          const updatedInv = [...currentInv.filter((it) => it.id !== itemToSwap.id), dropped.item];
-          addLog(
-            `Mochila llena. Has intercambiado ${itemToSwap.name} por ${dropped.item.name} (Tier ${dropped.item.tier}).`,
-            'loot'
-          );
-          soundEffects.playCrateLoot();
-
-          return {
-            ...prev,
-            inventory: updatedInv,
-            equippedWeapon: inventoryItemToWeapon(dropped.item),
-            equippedItemId: dropped.item.id,
-          };
-        } else {
-          addLog('Mochila llena y solo portas armas básicas indestructibles.', 'warning');
-          return prev;
-        }
-      }
+      return {
+        ...prev,
+        inventory: updatedInv,
+        equippedWeapon: shouldAutoEquip ? inventoryItemToWeapon(dropped.item) : prev.equippedWeapon,
+        equippedItemId: shouldAutoEquip ? dropped.item.id : prev.equippedItemId,
+      };
     });
   }, [addLog]);
 

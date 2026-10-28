@@ -35,7 +35,8 @@ export type WeaponType =
   | 'shotgun'         // Nivel 4
   | 'pistol'          // Nivel 3
   | 'axe'             // Nivel 2 (Melé fuerte)
-  | 'knife';          // Nivel 1 (Melé básico / infinito)
+  | 'knife'           // Nivel 1 (Melé básico / infinito)
+  | 'fists';          // Nivel 0 (Puños / recurso final)
 
 export type ItemCategory = 'weapon' | 'key_item';
 
@@ -44,13 +45,13 @@ export interface InventoryItem {
   type: WeaponType | string;
   name: string;
   category: ItemCategory;
-  tier: number;           // 1 (menor fuerza) a 7 (mayor fuerza)
+  tier: number;           // 0 (puños) a 7 (mayor fuerza)
   damage: number;         // Daño por impacto
   cadenceMs: number;      // Tiempo entre disparos/golpes
-  ammo: number;           // Munición actual (-1 para infinito como cuchillo)
+  ammo: number;           // Munición actual (-1 para infinito)
   maxAmmo: number;        // Capacidad por unidad
   durability?: number;    // -1 para infinito
-  isInfinite?: boolean;   // true para cuchillo
+  isInfinite?: boolean;   // true para armas infinitas (cuchillo, puños)
   rangeMeters?: number;   // Alcance efectivo en metros
   iconName?: string;      // Nombre de icono
 }
@@ -64,7 +65,7 @@ export interface DroppedItem {
   droppedBy?: string;
 }
 
-export const MAX_INVENTORY_SLOTS = 4;
+export const MAX_INVENTORY_SLOTS = Infinity; // Mochila infinita sin límite de capacidad
 
 export type PetType = 
   | 'dog'            // Perro Guardián

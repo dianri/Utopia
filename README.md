@@ -31,17 +31,19 @@ En **Las Meriendas: Monster Hunt**, una escuadra de cazadores debe coordinarse e
   3. **Tier 5 — Fusil Táctico M4:** Ráfagas automáticas de alta cadencia (28 DMG, 45 balas).
   4. **Tier 4 — Escopeta de Postas:** Dispersión letal a corta distancia (55 DMG, 12 cartuchos).
   5. **Tier 3 — Pistola 9mm:** Arma de fuego equilibrada (22 DMG, 30 balas).
-  6. **Tier 2 — Hacha Táctica:** Arma cuerpo a cuerpo avanzada con **15 usos de durabilidad** (35 DMG).
-  7. **Tier 1 — Cuchillo de Supervivencia:** Arma básica permanente, indestructible e infinita (12 DMG).
-- **Desgaste Dinámico y Auto-Fallback:** Al agotarse la munición o romperse un arma de durabilidad, el sistema equipa automáticamente la siguiente mejor arma disponible en la mochila.
-- **Descarte e Intercambio en el Suelo (`DroppedItem`):** Los jugadores pueden soltar armas o intercambiarlas al tener la mochila llena. Los objetos caen al terreno como marcadores interactivos en MapLibre GL con colores por Tier y son recolectables a menos de 20m.
-- **Curación Instantánea:** Los botiquines de primeros auxilios y raciones se consumen inmediatamente al abrir cajas de suministros, curando la salud sin ocupar slots de mochila.
+  6. **Tier 2 — Hacha Táctica:** Arma cuerpo a cuerpo avanzada con **15 usos de durabilidad** (55 DMG).
+  7. **Tier 1 — Cuchillo de Supervivencia:** Arma básica cuerpo a cuerpo (22 DMG).
+  8. **Tier 0 — Puños (Recurso Final):** Ataque cuerpo a cuerpo desarmado ilimitado (5 DMG, cadencia 350ms). No ocupa espacio en la mochila y se auto-equipa si no queda ningún arma usable.
+- **Mochila Ilimitada:** Capacidad infinita sin restricción de slots y con scroll táctico fluido en el modal de mochila, permitiendo acumular todo el arsenal y suministros recogidos sin descarte forzado.
+- **Desgaste Dinámico y Auto-Fallback:** Al agotarse la munición o romperse un arma de durabilidad, el sistema equipa automáticamente la siguiente mejor arma disponible en la mochila hasta recurrir a Puños (Tier 0). Al recoger cualquier nueva arma, se auto-equipa al instante si se portaban los puños.
+- **Descarte Total en el Suelo (`DroppedItem`):** Los jugadores pueden soltar cualquier arma en el terreno (incluido el cuchillo táctico). Los objetos caen al terreno como marcadores interactivos en MapLibre GL con colores por Tier y son recolectables a menos de 20m.
+- **Curación Instantánea:** Los botiquines de primeros auxilios y raciones se consumen inmediatamente al abrir cajas de suministros, curando la salud sin ocupar espacio en la mochila.
 
 ---
 
 ### 🐾 3. Sistema de Mascotas de Apoyo (Pets)
 - **Adopción Ilimitada:** Spawneo procedural de mascotas silvestres en el mapa con marcadores animados. Se adoptan automáticamente al aproximarse a menos de 12 metros, sumándose al séquito del cazador.
-- **Órbita en Mapa en Tiempo Real:** Las mascotas acompañan al jugador con renderizado cosmético y visualización de avatares orbitales a 2.5m en MapLibre GL.
+- **Órbita en Mapa con Anclaje Geoespacial Estricto:** Las mascotas acompañan al jugador con renderizado nativo proyectado a 2.5m en MapLibre GL, perfectamente fijas al terreno sin deslizamientos ni retardo durante paneos o zoom de la cámara.
 - **Perfiles y Habilidades Pasivas:**
   - 🐕 **Perro Guardián (`dog`):** 60 HP, 6 DMG. Rastreo y recogida de suministros ampliada a 25m.
   - 🛸 **Dron Táctico (`drone`):** 45 HP, 10 DMG. Fuego a distancia y +15m de radio de visión en la niebla de guerra.
@@ -184,4 +186,5 @@ El repositorio incluye [`vercel.json`](./vercel.json) con la regla de reescritur
 Cumpliendo las directrices de [`AGENTS.md`](./AGENTS.md):
 - Todas las características se desarrollan en ramas aisladas (`feature/agent-<id>-<tarea>`).
 - El comando `npm run build` debe finalizar con **0 errores y 0 advertencias** antes de cualquier commit o merge.
-- Sincronización continua de `CHANGELOG.md` bajo la sección `[Unreleased]` y actualización de documentación de arquitectura.
+- **Revisión y actualización obligatoria de `README.md` y `AGENTS.md` con cada nueva feature o cambio arquitectónico.**
+- Sincronización continua de `CHANGELOG.md` bajo la sección `[Unreleased]`.
