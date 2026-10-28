@@ -49,7 +49,7 @@ import {
   getDestinationPoint,
 } from './services/geoUtils';
 import { generateMapStructures } from './services/mapStructures';
-import { generateWildPets } from './services/mapEntities';
+import { generateWildPets, PET_ADOPTION_RADIUS_METERS } from './services/mapEntities';
 import { soundEffects } from './services/soundEffects';
 import { MonsterAIController } from './services/monsterAI';
 import { useGameRealtime } from './hooks/useGameRealtime';
@@ -1556,7 +1556,7 @@ export const App: React.FC = () => {
 
     wildPets.forEach((wp) => {
       const dist = getDistanceMeters(myCoord, { lat: wp.lat, lng: wp.lng });
-      if (dist <= 12) {
+      if (dist <= PET_ADOPTION_RADIUS_METERS) {
         // Adoptar mascota
         setWildPets((prev) => prev.filter((p) => p.id !== wp.id));
 
@@ -2049,6 +2049,56 @@ export const App: React.FC = () => {
       addLog(result.logMessage, result.logType);
       soundEffects.playCrateLoot();
       return result.updatedPlayer;
+    });
+  }, [addLog]);
+
+  const handleAdoptWildPet = useCallback((wp: WildPet) => {
+    if (!myPlayerRef.current) return;
+    const player = myPlayerRef.current;
+    if (!player.isAlive || player.isCriticallyWounded || player.status === 'critically_wounded') return;
+
+    const myPos = {
+      lat: player.lat ?? roomRef.current?.centerLat ?? 0,
+      lng: player.lng ?? roomRef.current?.centerLng ?? 0,
+    };
+
+    const dist = getDistanceMeters(myPos, { lat: wp.lat, lng: wp.lng });
+    if (dist > PET_ADOPTION_RADIUS_METERS) {
+      addLog(`Demasiado lejos para adoptar a ${wp.pet.name} (${Math.round(dist)}m). Acércate a <${PET_ADOPTION_RADIUS_METERS}m.`, 'warning');
+      return;
+    }
+
+    setWildPets((prev) => prev.filter((p) => p.id !== wp.id));
+
+    setMyPlayer((prev) => {
+      if (!prev) return null;
+      const currentPets = prev.pets || [];
+      if (currentPets.some((p) => p.id === wp.pet.id)) return prev;
+
+      const updatedPets = [...currentPets, wp.pet];
+      addLog(`¡Has adoptado a ${wp.pet.name} ${wp.pet.icon}! Te acompañará fielmente en la misión.`, 'loot');
+      soundEffects.playCrateLoot();
+
+      realtimeRef.current.broadcastPetAdopted(wp.id, prev.nickname, wp.pet);
+
+      if (prev.lat && prev.lng) {
+        realtimeRef.current.broadcastPlayerMove(
+          prev.lat,
+          prev.lng,
+          prev.hp,
+          true,
+          prev.status,
+          prev.isCriticallyWounded,
+          prev.insideBuildingId,
+          prev.insideBuildingType,
+          updatedPets
+        );
+      }
+
+      return {
+        ...prev,
+        pets: updatedPets,
+      };
     });
   }, [addLog]);
 
@@ -2683,6 +2733,7 @@ export const App: React.FC = () => {
           isVictory={room.status === 'victory'}
           onMapClick={handleMapClick}
           onPickDroppedItem={handlePickDroppedItem}
+          onAdoptWildPet={handleAdoptWildPet}
         />
       ) : (
         /* PANTALLA DE INICIO / LOBBY PRINCIPAL */
@@ -3074,7 +3125,21 @@ export const App: React.FC = () => {
             setPlayers((prev) =>
               prev.map((p) => (p.id === myPlayer.id ? { ...p, pets: updatedPets } : p))
             );
+            if (myPlayer.lat && myPlayer.lng) {
+              realtimeRef.current.broadcastPlayerMove(
+                myPlayer.lat,
+                myPlayer.lng,
+                myPlayer.hp,
+                true,
+                myPlayer.status,
+                myPlayer.isCriticallyWounded,
+                myPlayer.insideBuildingId,
+                myPlayer.insideBuildingType,
+                updatedPets
+              );
+            }
           }}
+          onAddLog={addLog}
           onFlee={handleArenaFlee}
           onClose={() => setIsCombatArenaOpen(false)}
         />

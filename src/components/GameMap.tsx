@@ -40,6 +40,7 @@ interface GameMapProps {
   onMapClick: (coords: Coordinates) => void;
   onReviveAttempt?: (targetPlayer: Player) => void;
   onPickDroppedItem?: (dropped: DroppedItem) => void;
+  onAdoptWildPet?: (wildPet: WildPet) => void;
 }
 
 const GameMapComponent: React.FC<GameMapProps> = ({
@@ -62,6 +63,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   isVictory = false,
   onMapClick,
   onPickDroppedItem,
+  onAdoptWildPet,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -83,6 +85,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
   const onPickDroppedItemRef = useRef(onPickDroppedItem);
   onPickDroppedItemRef.current = onPickDroppedItem;
+
+  const onAdoptWildPetRef = useRef(onAdoptWildPet);
+  onAdoptWildPetRef.current = onAdoptWildPet;
 
   // Refs para desacoplar arrastre de cámara (drag) de clic de movimiento (tap-to-move)
   const isDraggingRef = useRef<boolean>(false);
@@ -774,7 +779,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!wildPetMarkersRef.current.has(wp.id)) {
         const el = document.createElement('div');
         // NO añadir clases absolute ni fixed aquí; MapLibre gestiona la posición mediante transform
-        el.className = 'pet-marker-container pointer-events-auto select-none';
+        el.className = 'pet-marker-container pointer-events-auto select-none cursor-pointer';
         el.style.zIndex = '35'; // Visible por encima del canvas
         el.style.display = isMeWounded ? 'none' : 'block';
 
@@ -793,6 +798,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             </div>
           </div>
         `;
+
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onAdoptWildPetRef.current?.(wp);
+        });
 
         const marker = new maplibregl.Marker({
           element: el,
@@ -1018,26 +1028,27 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const markerKey = `${p.id}_${pet.id}`;
         activeCompanionPetKeys.add(markerKey);
 
-        // Órbita geoespacial estricta anclada al jugador (2.5 metros de offset)
+        // Órbita en píxeles de pantalla constante (independiente del nivel de zoom)
         const totalPets = Math.max(1, pPets.length);
-        const angleRad = index * (2 * Math.PI / totalPets);
-        const offsetMeters = 2.5;
-        const petLat = pLat + (offsetMeters / 111111) * Math.cos(angleRad);
-        const petLng = pLng + (offsetMeters / (111111 * Math.cos((pLat * Math.PI) / 180))) * Math.sin(angleRad);
+        const angleRad = index * ((2 * Math.PI) / totalPets) - (Math.PI / 2); // Empezar arriba
+        const orbitRadiusPx = 42; // Radio constante visible a cualquier nivel de zoom
 
-        if (isNaN(petLat) || isNaN(petLng) || (petLat === 0 && petLng === 0)) {
-          return;
-        }
+        const offsetX = Math.round(Math.cos(angleRad) * orbitRadiusPx);
+        const offsetY = Math.round(Math.sin(angleRad) * orbitRadiusPx);
 
         if (!companionPetMarkersRef.current.has(markerKey)) {
           const el = document.createElement('div');
           // NO añadir clases absolute ni fixed; MapLibre gestiona la posición mediante transform
           el.className = 'companion-pet-container pointer-events-none select-none';
-          el.style.zIndex = '35';
+          el.style.zIndex = '36';
           el.style.display = (isInside || isMeWounded) ? 'none' : 'block';
 
           el.innerHTML = `
-            <div class="relative flex flex-col items-center justify-center">
+            <div 
+              id="pet-orbit-${markerKey}"
+              class="relative flex flex-col items-center justify-center transition-transform duration-300 ease-out"
+              style="transform: translate(${offsetX}px, ${offsetY}px);"
+            >
               <div id="pet-avatar-${markerKey}" class="w-6 h-6 rounded-full bg-slate-950/90 border ${
                 pet.isWounded ? 'border-gray-500 grayscale opacity-60' : 'border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
               } flex items-center justify-center text-xs">
@@ -1048,16 +1059,20 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           `;
 
           const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
-            .setLngLat([petLng, petLat])
+            .setLngLat([pLng, pLat])
             .addTo(map);
 
           companionPetMarkersRef.current.set(markerKey, marker);
         } else {
           const marker = companionPetMarkersRef.current.get(markerKey);
-          marker?.setLngLat([petLng, petLat]);
+          marker?.setLngLat([pLng, pLat]);
           const el = marker?.getElement();
           if (el) {
             el.style.display = (isInside || isMeWounded) ? 'none' : 'block';
+            const orbitEl = el.querySelector(`#pet-orbit-${markerKey}`) as HTMLElement;
+            if (orbitEl) {
+              orbitEl.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
+            }
             const avatar = el.querySelector(`#pet-avatar-${markerKey}`);
             if (avatar) {
               avatar.className = `w-6 h-6 rounded-full bg-slate-950/90 border ${

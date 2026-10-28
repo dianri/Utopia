@@ -1,6 +1,11 @@
 import type { Pet, PetType, WildPet, Coordinates } from '../types/game';
 import { getRandomPointInCircle } from './geoUtils';
 
+/**
+ * Radio de proximidad táctico para adopción/recolección de mascotas silvestres en el mapa (igualado al botín, 25m)
+ */
+export const PET_ADOPTION_RADIUS_METERS = 25;
+
 export interface PetConfig {
   type: PetType;
   name: string;
