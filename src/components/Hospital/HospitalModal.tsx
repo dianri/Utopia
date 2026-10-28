@@ -16,7 +16,8 @@ import {
 
 interface HospitalModalProps {
   isOpen: boolean;
-  myPlayer: Player;
+  myPlayer?: Player;
+  player?: Player;
   onClose: () => void;
   onHealTick?: (
     newHp: number,
@@ -29,6 +30,8 @@ interface HospitalModalProps {
     finalStatus: PlayerStatus,
     finalPets: Pet[]
   ) => void;
+  onUpdatePlayer?: (player: Player | ((prev: Player | null) => Player | null)) => void;
+  onUpdatePets?: (pets: Pet[]) => void;
   onAddLog?: (message: string, type?: 'info' | 'combat' | 'warning' | 'loot') => void;
 }
 
@@ -41,26 +44,31 @@ interface FloatingHeal {
 export const HospitalModal: React.FC<HospitalModalProps> = ({
   isOpen,
   myPlayer,
+  player,
   onClose,
   onHealTick,
   onDischargeComplete,
+  onUpdatePlayer,
+  onUpdatePets,
   onAddLog,
 }) => {
+  const activePlayer = player || myPlayer;
+
   // Estado local para animación continua e interpolación
-  const [currentHp, setCurrentHp] = useState<number>(myPlayer.hp);
-  const [currentStatus, setCurrentStatus] = useState<PlayerStatus>(myPlayer.status || 'active');
+  const [currentHp, setCurrentHp] = useState<number>(activePlayer?.hp ?? 100);
+  const [currentStatus, setCurrentStatus] = useState<PlayerStatus>(activePlayer?.status || 'active');
   const [isWounded, setIsWounded] = useState<boolean>(
-    Boolean(myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded')
+    Boolean(activePlayer?.isCriticallyWounded || activePlayer?.status === 'critically_wounded')
   );
-  const [pets, setPets] = useState<Pet[]>(myPlayer.pets || []);
+  const [pets, setPets] = useState<Pet[]>(activePlayer?.pets || []);
   const [floatingHeals, setFloatingHeals] = useState<FloatingHeal[]>([]);
   const [pulseVignette, setPulseVignette] = useState<boolean>(false);
   const [justRecoveredPetIds, setJustRecoveredPetIds] = useState<string[]>([]);
   const [isDischarged, setIsDischarged] = useState<boolean>(false);
 
   // Referencias mutables para el bucle de curación por segundo
-  const myPlayerRef = useRef<Player>(myPlayer);
-  myPlayerRef.current = myPlayer;
+  const activePlayerRef = useRef<Player | undefined>(activePlayer);
+  activePlayerRef.current = activePlayer;
 
   const currentHpRef = useRef<number>(currentHp);
   currentHpRef.current = currentHp;
@@ -80,6 +88,12 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
   const onDischargeCompleteRef = useRef(onDischargeComplete);
   onDischargeCompleteRef.current = onDischargeComplete;
 
+  const onUpdatePlayerRef = useRef(onUpdatePlayer);
+  onUpdatePlayerRef.current = onUpdatePlayer;
+
+  const onUpdatePetsRef = useRef(onUpdatePets);
+  onUpdatePetsRef.current = onUpdatePets;
+
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -89,20 +103,30 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
   const isDischargedRef = useRef<boolean>(isDischarged);
   isDischargedRef.current = isDischarged;
 
-  // Sincronizar props entrantes si cambian externamente (ej: reconexión)
+  // Sincronizar props entrantes si cambian externamente o cuando se abre el modal
   useEffect(() => {
-    setCurrentHp(myPlayer.hp);
-    setCurrentStatus(myPlayer.status || 'active');
-    setIsWounded(Boolean(myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded'));
-    setPets(myPlayer.pets || []);
-  }, [myPlayer.hp, myPlayer.status, myPlayer.isCriticallyWounded, myPlayer.pets]);
+    if (!activePlayer) return;
+    setCurrentHp(activePlayer.hp);
+    setCurrentStatus(activePlayer.status || 'active');
+    setIsWounded(Boolean(activePlayer.isCriticallyWounded || activePlayer.status === 'critically_wounded'));
+    setPets(activePlayer.pets || []);
+    if (isOpen) {
+      setIsDischarged(false);
+      isDischargedRef.current = false;
+      setJustRecoveredPetIds([]);
+    }
+  }, [isOpen, activePlayer?.hp, activePlayer?.status, activePlayer?.isCriticallyWounded, activePlayer?.pets]);
 
   // ==========================================
   // CICLO DE REGENERACIÓN PROGRESIVA (TICKS MÉDICOS)
   // Cada 1s: +15 HP al jugador, +20 HP a mascotas dañadas/caídas
   // ==========================================
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !activePlayerRef.current) return;
+
+    // Resetear explícitamente bandera de alta médica al abrir
+    setIsDischarged(false);
+    isDischargedRef.current = false;
 
     // Tick inicial inmediato de feedback de entrada
     soundEffects.playHeartbeat();
@@ -111,9 +135,11 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
     const interval = window.setInterval(() => {
       if (isDischargedRef.current) return;
 
-      const player = myPlayerRef.current;
+      const p = activePlayerRef.current;
+      if (!p) return;
+
       const prevHp = currentHpRef.current;
-      const maxHp = player.maxHp || 100;
+      const maxHp = p.maxHp || 100;
       const prevWounded = isWoundedRef.current;
       const prevStatus = currentStatusRef.current;
 
@@ -198,10 +224,22 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
 
       // Propagar al padre para sincronizar en Supabase & Realtime
       onHealTickRef.current?.(nextHp, nextStatus, nextWounded, nextPets);
+      onUpdatePlayerRef.current?.((prev) =>
+        prev
+          ? {
+              ...prev,
+              hp: nextHp,
+              status: nextStatus,
+              isCriticallyWounded: nextWounded,
+              pets: nextPets,
+            }
+          : null
+      );
+      onUpdatePetsRef.current?.(nextPets);
 
       // 8. Comprobación de Alta Médica Automática (Salida Exitosa)
       const isPlayerFull = nextHp >= maxHp && !nextWounded;
-      const arePetsFull = nextPets.every((p) => !p.isWounded && p.hp >= (p.maxHp || 100));
+      const arePetsFull = nextPets.every((pet) => !pet.isWounded && pet.hp >= (pet.maxHp || 100));
 
       if (isPlayerFull && arePetsFull && !isDischargedRef.current) {
         setIsDischarged(true);
@@ -222,14 +260,14 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
     };
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !activePlayer) return null;
 
-  const playerMaxHp = myPlayer.maxHp || 100;
+  const playerMaxHp = activePlayer.maxHp || 100;
   const playerHpPercent = Math.max(0, Math.min(100, Math.round((currentHp / playerMaxHp) * 100)));
   const alivePetsCount = pets.filter((p) => !p.isWounded && p.hp > 0).length;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-between p-3 sm:p-6 bg-slate-950/95 backdrop-blur-md overflow-hidden select-none">
+    <div className="fixed inset-0 z-50 pointer-events-auto flex flex-col items-center justify-between p-3 sm:p-6 bg-slate-950/95 backdrop-blur-md overflow-hidden select-none">
       {/* 1. RESPLANDOR / VIÑETA ESMERALDA PERIMETRAL AL RITMO DE LA CURACIÓN */}
       <div
         className={`fixed inset-0 pointer-events-none transition-all duration-700 ease-out z-10 ${
@@ -307,11 +345,11 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
             <div className="flex items-center gap-2">
               <Shield className="w-4 h-4 text-emerald-400" />
               <span className="font-mono font-black text-sm text-emerald-100 uppercase tracking-wider">
-                PACIENTE: {myPlayer.nickname}
+                PACIENTE: {activePlayer.nickname}
               </span>
             </div>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-900/50 text-emerald-300 font-bold border border-emerald-600/50 uppercase">
-              ROL: {myPlayer.role}
+              ROL: {activePlayer.role}
             </span>
           </div>
 
@@ -324,11 +362,11 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
               <div className="absolute w-28 h-28 sm:w-32 sm:h-32 rounded-full border border-dashed border-emerald-400/40 animate-spin [animation-duration:12s]" />
               <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-emerald-400/80 bg-slate-900/90 shadow-[0_0_30px_rgba(16,185,129,0.5)] flex flex-col items-center justify-center relative overflow-hidden">
                 <span className="text-3xl sm:text-4xl filter drop-shadow">
-                  {myPlayer.role === 'tank'
+                  {activePlayer.role === 'tank'
                     ? '🛡️'
-                    : myPlayer.role === 'medic'
+                    : activePlayer.role === 'medic'
                     ? '💉'
-                    : myPlayer.role === 'scout'
+                    : activePlayer.role === 'scout'
                     ? '👁️'
                     : '🎯'}
                 </span>
