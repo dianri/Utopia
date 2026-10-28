@@ -88,6 +88,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   onMapClickRef.current = onMapClick;
 
   const [followPlayer, setFollowPlayer] = useState<boolean>(true);
+  const [mapLoaded, setMapLoaded] = useState<boolean>(false);
   const followPlayerRef = useRef<boolean>(true);
   followPlayerRef.current = followPlayer;
 
@@ -112,6 +113,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     map.on('load', () => {
       isMapLoadedRef.current = true;
+      setMapLoaded(true);
 
       // 1. Capa estática: Área de juego
       const playAreaGeo = createGeoJsonCircle(center, playAreaRadius);
@@ -327,10 +329,15 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       structureMarkersRef.current.clear();
       droppedItemMarkersRef.current.forEach((m) => m.remove());
       droppedItemMarkersRef.current.clear();
+      wildPetMarkersRef.current.forEach((m) => m.remove());
+      wildPetMarkersRef.current.clear();
+      companionPetMarkersRef.current.forEach((m) => m.remove());
+      companionPetMarkersRef.current.clear();
 
       map.remove();
       mapRef.current = null;
       isMapLoadedRef.current = false;
+      setMapLoaded(false);
     };
   }, []);
 
@@ -661,7 +668,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !isMapLoadedRef.current) return;
+    if (!center.lat || !center.lng || (center.lat === 0 && center.lng === 0)) return;
 
     const currentWildPetIds = new Set(wildPets.map((wp) => wp.id));
 
@@ -688,6 +696,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!wildPetMarkersRef.current.has(wp.id)) {
         const el = document.createElement('div');
         el.className = `wild-pet-marker-${wp.id} flex flex-col items-center select-none cursor-pointer animate-bounce`;
+        el.style.opacity = '0';
+        el.style.transition = 'opacity 0.25s ease-out';
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
             <div class="w-10 h-10 rounded-full bg-emerald-400/20 animate-ping absolute"></div>
@@ -704,12 +714,18 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           .setLngLat([wp.lng, wp.lat])
           .addTo(map);
 
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            el.style.opacity = '1';
+          });
+        });
+
         wildPetMarkersRef.current.set(wp.id, marker);
       } else {
         wildPetMarkersRef.current.get(wp.id)?.setLngLat([wp.lng, wp.lat]);
       }
     });
-  }, [wildPets]);
+  }, [wildPets, mapLoaded, center.lat, center.lng]);
 
   // ==========================================
   // 7. MARCADOR DEL MONSTRUO (Anclaje nativo MapLibre GL y niebla de guerra)
@@ -770,7 +786,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !isMapLoadedRef.current) return;
+    if (!center.lat || !center.lng || (center.lat === 0 && center.lng === 0)) return;
 
     const allPlayers = players.map((p) => (p.id === myPlayer.id ? myPlayer : p));
     const activePlayerIds = new Set(allPlayers.map((p) => p.id));
@@ -882,8 +899,17 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }
       }
     });
+  }, [players, myPlayer, mapLoaded, center.lat, center.lng]);
 
-    // 8.5. MARCADORES DE MASCOTAS ACOMPAÑANTES (ORBITANDO ALREDEDOR DE SUS DUEÑOS)
+  // ==========================================
+  // 8.5. MARCADORES DE MASCOTAS ACOMPAÑANTES (ORBITANDO ALREDEDOR DE SUS DUEÑOS)
+  // ==========================================
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !isMapLoadedRef.current) return;
+    if (!center.lat || !center.lng || (center.lat === 0 && center.lng === 0)) return;
+
+    const allPlayers = players.map((p) => (p.id === myPlayer.id ? myPlayer : p));
     const activeCompanionPetKeys = new Set<string>();
 
     allPlayers.forEach((p) => {
@@ -919,6 +945,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (!companionPetMarkersRef.current.has(markerKey)) {
           const el = document.createElement('div');
           el.className = `companion-pet-${markerKey} flex flex-col items-center select-none pointer-events-none transition-all duration-300`;
+          el.style.opacity = '0';
+          el.style.transition = 'opacity 0.25s ease-out';
           if (isInside) {
             el.style.display = 'none';
           }
@@ -935,6 +963,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
             .setLngLat([petLng, petLat])
             .addTo(map);
+
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              el.style.opacity = '1';
+            });
+          });
 
           companionPetMarkersRef.current.set(markerKey, marker);
         } else {
@@ -961,7 +995,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         companionPetMarkersRef.current.delete(key);
       }
     });
-  }, [players, myPlayer, center.lat, center.lng]);
+  }, [players, myPlayer, mapLoaded, center.lat, center.lng]);
 
   // ==========================================
   // 9. MARCADORES DE PINGS DE FANTASMA

@@ -4,6 +4,13 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Unreleased]
+### Fixed
+- **Marcadores de mascotas silvestres y de acompañamiento fijados en la esquina superior izquierda (0,0) (`GameMap.tsx`):**
+  - Añadida guardia estricta de ciclo de vida del mapa WebGL (`!map || !isMapLoadedRef.current`) y estado de carga reactivo (`mapLoaded`) en los efectos de mascotas silvestres y mascotas acompañantes, evitando instanciar marcadores HTML antes de que el motor de proyección de MapLibre GL esté activo.
+  - Añadida guardia estricta de coordenadas reales del centro del mapa (`center.lat`, `center.lng` no nulos ni en `0,0`) previa al renderizado de entidades para prevenir proyecciones en Null Island.
+  - Implementado estilo inicial oculto (`opacity: 0`, `transition: opacity 0.25s ease-out`) y revelación diferida mediante `requestAnimationFrame` anidado tras añadir el marcador al mapa (`marker.addTo(map)`), asegurando que el navegador solo haga visible el marcador una vez aplicada la matriz de transformación CSS `translate(x, y)`.
+  - Añadida limpieza explícita de `wildPetMarkersRef` y `companionPetMarkersRef` al desmontar el mapa.
+
 ### Changed
 - **Removed passive map-based auto-combat; attacks strictly limited to manual clicks within the combat arena (`useCombatLoop.ts`, `CombatArena.tsx`):**
   - Desactivado por completo el temporizador y el bucle de daño automático en segundo plano en el mapa táctico (`useCombatLoop.ts`). El mapa táctico ahora solo gestiona navegación, recogida de airdrops, interacción con estructuras y detección de colisión/proximidad para iniciar el combate.
