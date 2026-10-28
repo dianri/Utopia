@@ -18,13 +18,45 @@ En **Las Meriendas: Monster Hunt**, una escuadra de cazadores debe coordinarse e
   - Barra de vida global y compartida del monstruo sincronizada por Supabase Realtime.
   - Ataque manual con cadencia estricta (`cadenceMs`), consumo de munición/usos y feedback háptico.
   - Asistencia en combate de las mascotas activas que infligen daño continuo.
-  - **Bucle Continuo de Contraataque del Monstruo:** El monstruo ataca periódica y sostenidamente cada 2.5s (24 DMG), acelerándose a 1.8s con daño potenciado (34 DMG) al entrar en modo furia (`isEnraged`), con sacudida de pantalla, viñeta roja e impacto auditivo/háptico.
+  - **Bucle Continuo de Contraataque del Monstruo:** El monstruo ataca periódica y sostenidamente cada 2.5s (20-24 DMG), acelerándose a 1.8s con daño potenciado (28-34 DMG) al entrar en modo furia (`isEnraged`), con sacudida de pantalla, viñeta roja e impacto auditivo/háptico.
+  - **Mitigación y Evasión:** Escudo del Tanque reduce el daño en un 50%; pasiva del Gato Callejero otorga un 10% de probabilidad de esquivar el golpe por completo; las mascotas activas absorben un 20% de daño residual de área.
   - **Daño Monotónico y Umbral de Muerte:** La salud del jugador se reduce de forma estricta y decreciente sin oscilaciones ni sobrescrituras por sincronización en red; al llegar a <= 0 HP, pasa inmediatamente a "Herido de Muerte" (1 HP), cerrando el combate para iniciar el repliegue al Hospital.
   - **Opción de Huida Táctica:** Botón "HUIR" que otorga un sprint de emergencia (+30% de velocidad durante 5s) e inmunidad temporal de combate.
 
 ---
 
-### 🎒 2. Sistema Integral de Mochila, Jerarquía y Desgaste de Armamento
+### 👹 2. Comportamiento e Inteligencia Artificial del Monstruo
+Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/services/monsterAI.ts) en el cliente anfitrión (Host-Driven AI) con sincronización en tiempo real vía Supabase Realtime:
+- **Patrulla Circular Táctica (`patrol`):**
+  - Órbita fija a **55 metros** del cofre del tesoro con avance continuo de $+2^\circ$ por segundo a **1.1 m/s** (~4.0 km/h).
+  - Los cazadores a pie (1.4 m/s) son más veloces que su patrulla, permitiendo maniobras tácticas de flanqueo y sigilo.
+- **Persecución Selectiva y Jerarquía de Aggro (`chase`):**
+  - **Radio de Detección:** 85 metros (ampliado a 120m en Fase 2).
+  - **Velocidad de Persecución:** 3.2 m/s (~11.5 km/h).
+  - **Prioridad de Objetivos:**
+    1. **Venganza Prioritaria:** Persigue con máxima prioridad al jugador que le disparó recientemente (`forcedTargetPlayerId`).
+    2. **Atracción del Tanque:** Si no hay agresor directo, prioriza atacar al jugador de rol **Tanque** (`role === 'tank'`).
+    3. **Proximidad:** Jugador vivo más cercano al aire libre.
+  - **Pérdida de Rastro:** El monstruo pierde inmediatamente el aggro si el objetivo entra a un **Refugio / Casa Táctica (`🏠`)** o al **Hospital de Campaña (`🏥`)**, y descarta a combatientes en estado "Herido de Muerte".
+  - **Ataque en Mapa:** A distancia $\le 15\text{m}$, inflige 24 DMG cada 1.2s (35 DMG en Fase 2).
+- **Fase 2: Modo Enfurecimiento (`enraged` al $\le 30\%$ HP / 150 HP):**
+  - **Rugido Sísmico:** Reproduce alerta y rugido procedural en toda la escuadra.
+  - **Onda de Ralentización:** Ralentiza a todos los cazadores al aire libre a $\le 35\text{m}$ durante 5 segundos.
+  - **Aceleración Drástica:** Incrementa su velocidad un **+40% (4.5 m/s / ~16.2 km/h)**, superando el sprint de los jugadores.
+  - **Aggro Ampliado:** Radio de detección incrementado a 120 metros.
+- **Furia Defensiva del Cofre (`defend_chest`):**
+  - Se activa en el instante en que cualquier cazador abre el minijuego de cerrojos del cofre.
+  - Cancela la patrulla y corre en **sprint directo hacia el cofre a 3.8 m/s** (4.2 m/s enfurecido).
+  - Al llegar a $\le 30\text{m}$, ataca a los defensores en el radio de 25m del tesoro, forzando la apertura de la Arena de Combate e interrumpiendo el minijuego.
+- **Muerte Temporal y Reaparición (`dead` / `respawning`):**
+  - Al caer a 0 HP, desaparece del mapa y activa un temporizador visible de **60 segundos** en el HUD.
+  - Al expirar los 60s, resucita con **500 HP** en las coordenadas exactas del cofre del tesoro con rugido de alerta, reiniciando su estado a `patrol`.
+- **Niebla de Guerra y Radar:**
+  - El monstruo permanece oculto en el mapa exterior a menos que esté dentro del radio de visión (70m base, 85m con dron, 105m/120m explorador) o que el Explorador active el **Radar Táctico**.
+
+---
+
+### 🎒 3. Sistema Integral de Mochila, Jerarquía y Desgaste de Armamento
 - **Mochila Táctica Ilimitada (`BackpackModal.tsx`):** Capacidad sin límite de slots con scroll fluido vertical, visor de estadísticas tácticas, nivel de daño, cadencia y munición.
 - **Jerarquía de Armas (7 Tiers):**
   1. **Tier 7 — Lanzacohetes RPG:** Daño masivo de área (120 DMG, 2 cohetes).
@@ -42,7 +74,7 @@ En **Las Meriendas: Monster Hunt**, una escuadra de cazadores debe coordinarse e
 
 ---
 
-### 🐾 3. Sistema de Mascotas de Apoyo (Pets)
+### 🐾 4. Sistema de Mascotas de Apoyo (Pets)
 - **Adopción Ilimitada:** Spawneo procedural de mascotas silvestres en el mapa con marcadores animados. Se adoptan automáticamente al aproximarse a menos de 12 metros, sumándose al séquito del cazador.
 - **Órbita en Mapa con Anclaje Geoespacial Estricto:** Las mascotas acompañan al jugador con renderizado nativo proyectado a 2.5m en MapLibre GL, perfectamente fijas al terreno sin deslizamientos ni retardo durante paneos o zoom de la cámara.
 - **Perfiles y Habilidades Pasivas:**
@@ -57,7 +89,7 @@ En **Las Meriendas: Monster Hunt**, una escuadra de cazadores debe coordinarse e
 
 ---
 
-### 🏥 4. Estructuras Tácticas en el Mapa
+### 🏥 5. Estructuras Tácticas en el Mapa
 - **Hospital de Campaña (`🏥`):**
   - Radio de interacción de 18 metros.
   - Curación médica continua (+10 HP/segundo) para jugadores en su interior.
@@ -70,15 +102,15 @@ En **Las Meriendas: Monster Hunt**, una escuadra de cazadores debe coordinarse e
 
 ---
 
-### 🩸 5. Rediseño del Ciclo de Vida: Estado "Herido de Muerte"
+### 🩸 6. Rediseño del Ciclo de Vida: Estado "Herido de Muerte"
 - **Sustitución de la Muerte Instantánea:** Al recibir daño letal, el HP se ancla en 1 y el jugador pasa al estado `critically_wounded`.
 - **Restricciones de Combate:** Armas bloqueadas, habilidades deshabilitadas e imposibilidad de saquear cajas. La única acción disponible es replegarse hacia el Hospital de Campaña.
 - **HUD Crítico y Brújula Médica:** Viñeta roja pulsante en pantalla y compás direccional interactivo (`CriticallyWoundedOverlay.tsx`) que señala con precisión de rumbo y distancia hacia el Hospital más cercano.
-- **Recuperación y Supervivencia Colectiva:** Al alcanzar >= 20 HP dentro del Hospital, el combatiente se estabiliza y reanuda el combate activo. La partida solo se pierde si **todos** los miembros de la escuadra caen heridos de muerte simultáneamente.
+- **Recuperación Infinita en Hospital (Sin Derrota Global):** Al alcanzar >= 20 HP dentro del Hospital, el combatiente se estabiliza y reanuda el combate activo. La partida no tiene condición de derrota global (`defeat`); se mantiene en bucle continuo en estado `'playing'` permitiendo reapariciones y curaciones infinitas en el Hospital hasta que la escuadra consiga abrir el cofre del tesoro y alcance la victoria.
 
 ---
 
-### 🗝️ 6. Apertura Cooperativa del Cofre por Fases
+### 🗝️ 7. Apertura Cooperativa del Cofre por Fases
 - Sustituida la cuenta regresiva estática por un sistema cooperativo de **3 fases con 2 cerrojos cada una** (6 desafíos en total):
   1. **Fase 1 (Sincronización QTE):** Puntería temporal sobre zonas verdes oscilantes.
   2. **Fase 2 (Código Lumínico):** Secuencia de memoria táctica tipo Simón Dice de 3 a 4 colores.
@@ -88,7 +120,7 @@ En **Las Meriendas: Monster Hunt**, una escuadra de cazadores debe coordinarse e
 
 ---
 
-### 📱 7. Optimización Mobile-First y HUD Táctico
+### 📱 8. Optimización Mobile-First y HUD Táctico
 - **Soporte para Safe Area:** Separación inferior del panel de armas (`bottom-6` / `bottom-8` y `pb-[env(safe-area-inset-bottom)]`) evitando colisiones con la barra de navegación del sistema operativo móvil.
 - **Contenedor Flex Vertical de Alertas:** Notificaciones de respawn y alertas de cofre apiladas en columna (`top-20 flex-col gap-2`) sin solapamiento entre tarjetas.
 - **Autocierre de Mensajes de Bitácora:** Desvanecimiento temporal del log de combate (`CombatLog.tsx`) tras 5 segundos de inactividad para mantener despejada la vista de mapa.
