@@ -233,6 +233,7 @@ export const App: React.FC = () => {
   });
 
   const handleJoinRoomRef = useRef<((config: { code: string; nickname?: string; role?: PlayerRole }) => Promise<void>) | null>(null);
+  const handleMapClickRef = useRef<((coords: Coordinates) => void) | null>(null);
 
   // REF DE LA IA DEL MONSTRUO (HOST)
   const monsterAIRef = useRef<MonsterAIController | null>(null);
@@ -2209,8 +2210,9 @@ export const App: React.FC = () => {
     };
 
     const dist = getDistanceMeters(myPos, { lat: dropped.lat, lng: dropped.lng });
-    if (dist > 20) {
-      addLog(`Demasiado lejos para recoger ${dropped.item.name} (${Math.round(dist)}m). Acércate a <20m.`, 'warning');
+    if (dist > 25) {
+      handleMapClickRef.current?.({ lat: dropped.lat, lng: dropped.lng });
+      addLog(`Desplazándose hacia ${dropped.item.name}...`, 'info');
       return;
     }
 
@@ -2238,7 +2240,8 @@ export const App: React.FC = () => {
 
     const dist = getDistanceMeters(myPos, { lat: wp.lat, lng: wp.lng });
     if (dist > PET_ADOPTION_RADIUS_METERS) {
-      addLog(`Demasiado lejos para adoptar a ${wp.pet.name} (${Math.round(dist)}m). Acércate a <${PET_ADOPTION_RADIUS_METERS}m.`, 'warning');
+      handleMapClickRef.current?.({ lat: wp.lat, lng: wp.lng });
+      addLog(`Desplazándose hacia ${wp.pet.name}...`, 'info');
       return;
     }
 
@@ -2952,6 +2955,7 @@ export const App: React.FC = () => {
       }
     }
   }, [room, myPlayer, addLog, realtime]);
+  handleMapClickRef.current = handleMapClick;
 
   const handleGhostPing = (type: GhostPing['type']) => {
     if (!myPlayer) return;
