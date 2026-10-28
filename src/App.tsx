@@ -22,7 +22,7 @@ import type {
   WildPet,
   PlayerStatus,
 } from './types/game';
-import { PLAYER_SPEED_MPS, isMonsterAlive } from './types/game';
+import { PLAYER_SPEED_MPS, DEFAULT_PLAYER_SPEED, isMonsterAlive } from './types/game';
 import {
   DEFAULT_WEAPONS_BY_ROLE,
   WEAPON_REGISTRY,
@@ -83,8 +83,27 @@ import { ChestLockModal } from './components/Chest/ChestLockModal';
 
 import { Play, Users, Trophy, Footprints } from 'lucide-react';
 
-export const savePlayerSessionSnapshot = (gameId: string, player: Player) => {
+export const savePlayerSessionSnapshot = (
+  gameId: string,
+  player: Player,
+  playerSpeed?: PlayerSpeed
+) => {
   try {
+    let resolvedSpeed: PlayerSpeed = playerSpeed || DEFAULT_PLAYER_SPEED;
+    if (!playerSpeed) {
+      const prevRaw =
+        sessionStorage.getItem(`utopia_player_session_${gameId}`) ||
+        localStorage.getItem(`utopia_player_session_${gameId}`);
+      if (prevRaw) {
+        try {
+          const parsed = JSON.parse(prevRaw);
+          if (parsed.playerSpeed) {
+            resolvedSpeed = parsed.playerSpeed;
+          }
+        } catch {}
+      }
+    }
+
     const snapshot = {
       id: player.id,
       userId: player.userId,
@@ -95,13 +114,22 @@ export const savePlayerSessionSnapshot = (gameId: string, player: Player) => {
       lng: player.lng,
       hp: player.hp,
       maxHp: player.maxHp,
-      status: player.status || (player.hp <= 0 || player.isCriticallyWounded ? 'critically_wounded' : 'active'),
-      isCriticallyWounded: !!(player.isCriticallyWounded || player.status === 'critically_wounded' || player.hp <= 0),
+      status:
+        player.status ||
+        (player.hp <= 0 || player.isCriticallyWounded
+          ? 'critically_wounded'
+          : 'active'),
+      isCriticallyWounded: !!(
+        player.isCriticallyWounded ||
+        player.status === 'critically_wounded' ||
+        player.hp <= 0
+      ),
       isAlive: player.isAlive,
       inventory: player.inventory,
       pets: player.pets,
       equippedWeapon: player.equippedWeapon,
       equippedItemId: player.equippedItemId || player.equippedWeapon?.id,
+      playerSpeed: resolvedSpeed,
       updatedAt: Date.now(),
     };
     sessionStorage.setItem(`utopia_player_session_${gameId}`, JSON.stringify(snapshot));
@@ -328,15 +356,19 @@ export const App: React.FC = () => {
   // Guardar snapshot local inmediato ante cualquier cambio de estado del jugador
   useEffect(() => {
     if (myPlayer && room?.id) {
-      savePlayerSessionSnapshot(room.id, myPlayer);
+      savePlayerSessionSnapshot(room.id, myPlayer, room.playerSpeed);
     }
-  }, [myPlayer, room?.id]);
+  }, [myPlayer, room?.id, room?.playerSpeed]);
 
   // Asegurar persistencia sincrónica ante cierre de pestaña o F5
   useEffect(() => {
     const handleBeforeUnload = () => {
       if (myPlayerRef.current && roomRef.current?.id) {
-        savePlayerSessionSnapshot(roomRef.current.id, myPlayerRef.current);
+        savePlayerSessionSnapshot(
+          roomRef.current.id,
+          myPlayerRef.current,
+          roomRef.current.playerSpeed
+        );
       }
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
@@ -718,12 +750,16 @@ export const App: React.FC = () => {
             chestStep: chestStepRef.current,
             droppedItems: droppedItemsRef.current,
             wildPets: wildPetsRef.current,
+            playerSpeed: roomRef.current?.playerSpeed,
           });
         }
       },
       onFullStateSync: (payload) => {
         // Jugador que se une en partida empezada recibe el estado completo del juego
         if (!myPlayerRef.current?.isHost) {
+          if (payload.playerSpeed) {
+            setRoom((prev) => (prev ? { ...prev, playerSpeed: payload.playerSpeed } : null));
+          }
           if (payload.monster) {
             setMonster(payload.monster);
           }
@@ -895,9 +931,34 @@ export const App: React.FC = () => {
     [realtime, addLog, syncPlayerToSupabase]
   );
 
+  // Determinar velocidad de sala autoritativa con soporte inmediato para reconexión temprana
+  const effectiveBaseSpeedMps = useMemo(() => {
+    if (room?.playerSpeed && PLAYER_SPEED_MPS[room.playerSpeed]) {
+      return PLAYER_SPEED_MPS[room.playerSpeed];
+    }
+    // Si la sala está hidratándose tras recarga o reconexión, recuperar velocidad guardada en snapshot local
+    if (savedActiveRoomCode) {
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith('utopia_player_session_')) {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+              const snap = JSON.parse(raw);
+              if (snap.playerSpeed && PLAYER_SPEED_MPS[snap.playerSpeed as PlayerSpeed]) {
+                return PLAYER_SPEED_MPS[snap.playerSpeed as PlayerSpeed];
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+    return PLAYER_SPEED_MPS[DEFAULT_PLAYER_SPEED];
+  }, [room?.playerSpeed, savedActiveRoomCode]);
+
   const { setManualDestination, resetPosition, cancelMovement } = useGeolocation({
     mode: room?.movementMode ?? 'manual',
-    baseSpeedMps: room?.playerSpeed ? PLAYER_SPEED_MPS[room.playerSpeed] : 1.4,
+    baseSpeedMps: effectiveBaseSpeedMps,
     initialPosition:
       myPlayer?.lat != null && myPlayer?.lng != null
         ? { lat: myPlayer.lat, lng: myPlayer.lng }
@@ -925,8 +986,20 @@ export const App: React.FC = () => {
         { event: '*', schema: 'public', table: 'games', filter: `id=eq.${room.id}` },
         (payload) => {
           if (payload.new) {
-            const updated = payload.new as GameRoom;
-            setRoom((prev) => (prev ? { ...prev, status: updated.status } : null));
+            const updated = payload.new as any;
+            const updatedSpeed: PlayerSpeed | undefined =
+              (updated?.settings?.player_speed as PlayerSpeed) ??
+              (updated?.player_speed as PlayerSpeed) ??
+              undefined;
+            setRoom((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    status: updated.status,
+                    ...(updatedSpeed ? { playerSpeed: updatedSpeed } : {}),
+                  }
+                : null
+            );
             if (updated.status === 'cancelled') {
               handleRemoteGameCancelled('Misión abortada por el anfitrión');
             } else if (updated.status === 'victory' || updated.status === 'defeat') {
@@ -2319,13 +2392,15 @@ export const App: React.FC = () => {
     );
 
     // Insertar partida en Supabase con tolerancia a columnas opcionales
+    const hostRoomSpeed: PlayerSpeed = config.playerSpeed || DEFAULT_PLAYER_SPEED;
     const basePayload = {
       code: roomCode,
       name: config.roomName,
       host_id: userId,
       status: 'lobby',
       movement_mode: config.movementMode,
-      player_speed: config.playerSpeed || 'normal',
+      player_speed: hostRoomSpeed,
+      settings: { player_speed: hostRoomSpeed },
       play_area_radius: config.radiusMeters,
       center_lat: config.center.lat,
       center_lng: config.center.lng,
@@ -2347,7 +2422,7 @@ export const App: React.FC = () => {
 
     if (resFull.error) {
       // Fallback defensivo si player_speed no existe aún en la tabla remota
-      const { player_speed, ...legacyPayload } = basePayload;
+      const { player_speed, settings, ...legacyPayload } = basePayload;
       const resWithPublic = await (supabase.from('games') as any)
         .insert({ ...legacyPayload, is_public: config.isPublic })
         .select()
@@ -2403,6 +2478,11 @@ export const App: React.FC = () => {
       return;
     }
 
+    const resolvedHostSpeed: PlayerSpeed =
+      (gameData?.settings?.player_speed as PlayerSpeed) ??
+      (gameData?.player_speed as PlayerSpeed) ??
+      hostRoomSpeed;
+
     const newRoom: GameRoom = {
       id: gameData.id,
       code: gameData.code,
@@ -2411,7 +2491,7 @@ export const App: React.FC = () => {
       status: gameData.status,
       isPublic: gameData.is_public ?? config.isPublic ?? true,
       movementMode: gameData.movement_mode,
-      playerSpeed: (gameData.player_speed as PlayerSpeed) ?? config.playerSpeed ?? 'normal',
+      playerSpeed: resolvedHostSpeed,
       playAreaRadius: gameData.play_area_radius,
       centerLat: gameData.center_lat,
       centerLng: gameData.center_lng,
@@ -2517,7 +2597,7 @@ export const App: React.FC = () => {
 
     setRoom(newRoom);
     setMyPlayer(hostPlayer);
-    savePlayerSessionSnapshot(gameData.id, hostPlayer);
+    savePlayerSessionSnapshot(gameData.id, hostPlayer, resolvedHostSpeed);
     setPlayers([hostPlayer]);
     setCrates(generatedCrates);
     setWildPets(initialWildPets);
@@ -2681,6 +2761,13 @@ export const App: React.FC = () => {
       addLog(`¡Bienvenido de vuelta, ${playerData.nickname}! Reconectando a la misión...`, 'info');
     }
 
+    // Determinar la velocidad autoritativa de la partida respetando los ajustes de la sala
+    const roomPlayerSpeed: PlayerSpeed =
+      (gameData?.settings?.player_speed as PlayerSpeed) ??
+      (gameData?.player_speed as PlayerSpeed) ??
+      (localSnapshot?.playerSpeed as PlayerSpeed) ??
+      DEFAULT_PLAYER_SPEED;
+
     const currentRoom: GameRoom = {
       id: gameData.id,
       code: gameData.code,
@@ -2689,7 +2776,7 @@ export const App: React.FC = () => {
       status: gameData.status,
       isPublic: gameData.is_public ?? true,
       movementMode: gameData.movement_mode,
-      playerSpeed: (gameData.player_speed as PlayerSpeed) ?? 'normal',
+      playerSpeed: roomPlayerSpeed,
       playAreaRadius: gameData.play_area_radius,
       centerLat: gameData.center_lat,
       centerLng: gameData.center_lng,
@@ -2784,7 +2871,7 @@ export const App: React.FC = () => {
     };
 
     // Guardar snapshot local actualizado de la sesión
-    savePlayerSessionSnapshot(gameData.id, player);
+    savePlayerSessionSnapshot(gameData.id, player, roomPlayerSpeed);
 
     // Guardar sala activa en localStorage para reconexiones futuras
     localStorage.setItem('utopia_active_room', gameData.code);

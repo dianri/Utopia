@@ -37,6 +37,9 @@ export function useGeolocation({
   const currentPosRef = useRef<Coordinates | null>(currentPosition);
   currentPosRef.current = currentPosition;
 
+  const baseSpeedMpsRef = useRef<number>(baseSpeedMps);
+  baseSpeedMpsRef.current = baseSpeedMps;
+
   const lastKeyRef = useRef<string | null | undefined>(positionKey);
 
   // Sincronizar posición inicial cuando cambia de sala o cuando se recibe posición de spawn válida
@@ -134,19 +137,21 @@ export function useGeolocation({
     let animFrame: number;
     let lastTime = performance.now();
 
-    const effectiveBaseSpeed = (baseSpeedMps && baseSpeedMps > 0 ? baseSpeedMps : 1.4) * (speedMultiplier || 1);
-    const speedMps = isSlowed ? effectiveBaseSpeed * 0.5 : effectiveBaseSpeed;
-
     const loop = (time: number) => {
       if (!currentPosRef.current || isMovingBlocked) return;
 
       const deltaMs = Math.min(time - lastTime, 100);
       lastTime = time;
 
+      // Calcular velocidad efectiva dinámicamente en cada frame para reflejar cambios autoritativos inmediatos
+      const activeBase = (baseSpeedMpsRef.current && baseSpeedMpsRef.current > 0 ? baseSpeedMpsRef.current : 1.4);
+      const effectiveBaseSpeed = activeBase * (speedMultiplier || 1);
+      const currentSpeedMps = isSlowed ? effectiveBaseSpeed * 0.5 : effectiveBaseSpeed;
+
       const { position, arrived } = stepTowards(
         currentPosRef.current,
         targetPosition,
-        speedMps,
+        currentSpeedMps,
         deltaMs
       );
 

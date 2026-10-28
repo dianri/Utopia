@@ -19,6 +19,8 @@ export interface MapStructure {
 
 export type PlayerStatus = 'active' | 'critically_wounded' | 'dead';
 
+export const DEFAULT_PLAYER_SPEED: PlayerSpeed = 'normal';
+
 export const PLAYER_SPEED_MPS: Record<PlayerSpeed, number> = {
   slow: 0.8,       // ~3 km/h (paso relajado / sigilo)
   normal: 1.4,     // ~5 km/h (paso humano estándar)

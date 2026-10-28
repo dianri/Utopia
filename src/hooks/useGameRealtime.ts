@@ -10,6 +10,7 @@ import type {
   DroppedItem,
   Pet,
   WildPet,
+  PlayerSpeed,
 } from '../types/game';
 import { soundEffects } from '../services/soundEffects';
 
@@ -50,6 +51,7 @@ interface RealtimeCallbacks {
     chestStep?: number;
     droppedItems?: DroppedItem[];
     wildPets?: WildPet[];
+    playerSpeed?: PlayerSpeed;
   }) => void;
   onGameCancelled?: (payload: { reason?: string }) => void;
   onGameVictory?: (payload: { winnerTeam: boolean; unlockedBy: string }) => void;
@@ -418,6 +420,7 @@ export function useGameRealtime(
     chestStep?: number;
     droppedItems?: DroppedItem[];
     wildPets?: WildPet[];
+    playerSpeed?: PlayerSpeed;
   }) => {
     if (!channelRef.current || !isSubscribedRef.current) return;
     channelRef.current.send({
