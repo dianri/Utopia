@@ -4,6 +4,12 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Unreleased]
+### Changed
+- **Ajuste de velocidad "Muy Rápido" a 40 km/h al crear la partida (`types/game.ts`, `CreateRoomModal.tsx`, `README.md`):**
+  - Modificado el valor de la opción de velocidad de movimiento `very_fast` de 4.5 m/s (~16 km/h) a **11.1 m/s (~40 km/h)** (`PLAYER_SPEED_MPS.very_fast = 11.1`).
+  - Actualizada la interfaz de selección en `CreateRoomModal.tsx` reflejando "Muy Rápido: 40 km/h (Turbo)" y su indicador dinámico "11.1 m/s (~40 km/h)".
+  - El motor de interpolación Tap-to-Move (`useGeolocation.ts`) y el HUD del mapa (`GameMap.tsx`) aplican automáticamente la nueva velocidad seleccionada en la sala.
+
 ### Added
 - **Aislamiento táctico del mapa y guía al Hospital en Estado Herido de Muerte (`GameMap.tsx`, `README.md`):**
   - Al caer un jugador en estado "Herido de Muerte" (`isCriticallyWounded` / `status === 'critically_wounded'`), se ocultan inmediatamente todos los elementos y marcadores del mapa (monstruo, cofre del tesoro, cajas de suministros, armas y botiquines en el suelo, mascotas silvestres y acompañantes, pings de fantasma, otros jugadores y áreas tácticas poligonales), dejando visible únicamente la estructura del Hospital de Campaña (`🏥`) y el marcador del propio jugador.
