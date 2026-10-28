@@ -37,6 +37,10 @@ export type Database = {
           status: string
           treasure_lat: number
           treasure_lng: number
+          active_crates?: Json | null
+          active_wild_pets?: Json | null
+          active_dropped_items?: Json | null
+          active_loot?: Json | null
         }
         Insert: {
           center_lat: number
@@ -60,6 +64,10 @@ export type Database = {
           status?: string
           treasure_lat: number
           treasure_lng: number
+          active_crates?: Json | null
+          active_wild_pets?: Json | null
+          active_dropped_items?: Json | null
+          active_loot?: Json | null
         }
         Update: {
           center_lat?: number
@@ -83,6 +91,10 @@ export type Database = {
           status?: string
           treasure_lat?: number
           treasure_lng?: number
+          active_crates?: Json | null
+          active_wild_pets?: Json | null
+          active_dropped_items?: Json | null
+          active_loot?: Json | null
         }
         Relationships: []
       }

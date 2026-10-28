@@ -41,6 +41,8 @@ interface RealtimeCallbacks {
   onItemDropped?: (dropped: DroppedItem) => void;
   onItemPicked?: (payload: { droppedItemId: string; playerId: string }) => void;
   onPetAdopted?: (payload: { wildPetId: string; playerId: string; playerNickname: string; pet: Pet }) => void;
+  onNewAirdrop?: (payload: { crate: SupplyCrate }) => void;
+  onNewWildPet?: (payload: { wildPet: WildPet }) => void;
   onRequestStateSync?: () => void;
   onFullStateSync?: (payload: {
     monster: Monster;
@@ -190,6 +192,16 @@ export function useGameRealtime(
     // 9.5. ADOPCIÓN DE MASCOTA SILVESTRE EN EL MAPA
     channel.on('broadcast', { event: 'pet_adopted' }, ({ payload }) => {
       callbacksRef.current.onPetAdopted?.(payload);
+    });
+
+    // 9.6. NUEVO AIRDROP DINÁMICO
+    channel.on('broadcast', { event: 'new_airdrop' }, ({ payload }) => {
+      callbacksRef.current.onNewAirdrop?.(payload);
+    });
+
+    // 9.7. NUEVA MASCOTA SILVESTRE DINÁMICA
+    channel.on('broadcast', { event: 'new_wild_pet' }, ({ payload }) => {
+      callbacksRef.current.onNewWildPet?.(payload);
     });
 
     // 10. PETICIÓN DE SINCRONIZACIÓN DE ESTADO (LATE JOIN)
