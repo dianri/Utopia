@@ -281,7 +281,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
                 {playerSpeed === 'slow' && '0.8 m/s (~3 km/h)'}
                 {playerSpeed === 'normal' && '1.4 m/s (~5 km/h)'}
                 {playerSpeed === 'fast' && '2.8 m/s (~10 km/h)'}
-                {playerSpeed === 'very_fast' && '4.5 m/s (~16 km/h)'}
+                {playerSpeed === 'very_fast' && '11.1 m/s (~40 km/h)'}
               </span>
             </div>
 
@@ -335,7 +335,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
                 }`}
               >
                 <span className="font-bold">Muy Rápido</span>
-                <span className="text-[10px] opacity-75">16 km/h (Sprint)</span>
+                <span className="text-[10px] opacity-75">40 km/h (Turbo)</span>
               </button>
             </div>
           </div>

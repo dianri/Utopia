@@ -136,7 +136,7 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 
 - **Movimiento Dual:**
   - **GPS Real:** Geolocalización de alta precisión en vivo (`navigator.geolocation.watchPosition`). Indicador de distancia si te encuentras fuera del área sin teletransporte forzado.
-  - **Tap-to-Move:** Navegación táctil con velocidad humana de 1.4 m/s (~5 km/h) y reajuste perimetral automático si pulsas fuera del radio de juego.
+  - **Tap-to-Move:** Navegación táctil configurable al crear la partida con 4 niveles de velocidad de desplazamiento: Lento (0.8 m/s ~3 km/h), Normal (1.4 m/s ~5 km/h), Rápido (2.8 m/s ~10 km/h) y Muy Rápido (11.1 m/s ~40 km/h), con reajuste perimetral automático si pulsas fuera del radio de juego.
 - **Lobby y Explorador de Operaciones en Vivo:**
   - Creación de partidas **Públicas** (visibles en el radar del lobby) o **Privadas** (acceso mediante código de 6 letras o enlace `/?room=CODIGO`).
   - Incorporación a partidas ya iniciadas (**Late Join / Reconnect**) con spawn seguro y sincronización inmediata vía Supabase Realtime.

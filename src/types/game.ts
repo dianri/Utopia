@@ -20,10 +20,10 @@ export interface MapStructure {
 export type PlayerStatus = 'active' | 'critically_wounded' | 'dead';
 
 export const PLAYER_SPEED_MPS: Record<PlayerSpeed, number> = {
-  slow: 0.8,      // ~3 km/h (paso relajado / sigilo)
-  normal: 1.4,    // ~5 km/h (paso humano estándar)
-  fast: 2.8,      // ~10 km/h (trote ligero)
-  very_fast: 4.5, // ~16 km/h (sprint)
+  slow: 0.8,       // ~3 km/h (paso relajado / sigilo)
+  normal: 1.4,     // ~5 km/h (paso humano estándar)
+  fast: 2.8,       // ~10 km/h (trote ligero)
+  very_fast: 11.1, // ~40 km/h (ultra rápido / vehículo)
 };
 
 export type CrateType = 'medkit' | 'ammo' | 'rifle' | 'shotgun' | 'melee' | 'rocket_launcher' | 'grenade';
