@@ -106,7 +106,28 @@ export const WEAPON_TIER_CONFIG: Record<WeaponType, Omit<InventoryItem, 'id'>> =
     rangeMeters: 12,
     iconName: 'Crosshair',
   },
+  fists: {
+    type: 'fists',
+    name: 'Puños',
+    category: 'weapon',
+    tier: 0,
+    damage: 5,
+    cadenceMs: 350,
+    ammo: -1,
+    maxAmmo: -1,
+    durability: -1,
+    isInfinite: true,
+    rangeMeters: 10,
+    iconName: 'ShieldAlert',
+  },
 };
+
+export const FISTS_ITEM: InventoryItem = {
+  ...WEAPON_TIER_CONFIG.fists,
+  id: 'fists_base',
+};
+
+export const FISTS_WEAPON: Weapon = inventoryItemToWeapon(FISTS_ITEM);
 
 /**
  * Crea una nueva instancia única de un objeto para el inventario
@@ -163,7 +184,8 @@ export function getDefaultInventoryForRole(role: PlayerRole): InventoryItem[] {
 }
 
 /**
- * Obtiene el arma de mayor tier disponible con munición o infinita en el inventario
+ * Obtiene el arma de mayor tier disponible con munición o infinita en el inventario.
+ * Si no quedan armas utilizables en la mochila, recurre a Puños (Tier 0).
  */
 export function getBestWeaponInInventory(inventory: InventoryItem[]): InventoryItem {
   const usable = inventory
@@ -171,7 +193,7 @@ export function getBestWeaponInInventory(inventory: InventoryItem[]): InventoryI
     .filter((it) => it.isInfinite || it.ammo > 0);
 
   if (usable.length === 0) {
-    return createInventoryItem('knife');
+    return { ...FISTS_ITEM };
   }
 
   // Ordenar de mayor a menor tier
@@ -180,6 +202,7 @@ export function getBestWeaponInInventory(inventory: InventoryItem[]): InventoryI
 }
 
 export const WEAPON_REGISTRY: Record<string, Weapon> = {
+  fists: FISTS_WEAPON,
   rocket_launcher: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.rocket_launcher, id: 'rocket_launcher' }),
   grenade: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.grenade, id: 'grenade' }),
   assault_rifle: inventoryItemToWeapon({ ...WEAPON_TIER_CONFIG.rifle, id: 'assault_rifle' }),

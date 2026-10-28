@@ -930,13 +930,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const markerKey = `${p.id}_${pet.id}`;
         activeCompanionPetKeys.add(markerKey);
 
-        // Dispersión cosmética alrededor del jugador (2 a 3 metros de offset)
-        // 1 metro de latitud ~ 0.000009 grados
-        const angle = (index * (360 / Math.max(1, pPets.length))) * (Math.PI / 180);
+        // Órbita geoespacial estricta anclada al jugador (2.5 metros de offset)
+        const totalPets = Math.max(1, pPets.length);
+        const angleRad = index * (2 * Math.PI / totalPets);
         const offsetMeters = 2.5;
-        const petLat = pLat + (Math.sin(angle) * offsetMeters * 0.000009);
-        const cosLat = Math.cos((pLat * Math.PI) / 180);
-        const petLng = pLng + (Math.cos(angle) * offsetMeters * 0.000009) / (cosLat !== 0 ? cosLat : 1);
+        const petLat = pLat + (offsetMeters / 111111) * Math.cos(angleRad);
+        const petLng = pLng + (offsetMeters / (111111 * Math.cos((pLat * Math.PI) / 180))) * Math.sin(angleRad);
 
         if (isNaN(petLat) || isNaN(petLng) || (petLat === 0 && petLng === 0)) {
           return;
@@ -944,7 +943,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
         if (!companionPetMarkersRef.current.has(markerKey)) {
           const el = document.createElement('div');
-          el.className = `companion-pet-${markerKey} flex flex-col items-center select-none pointer-events-none transition-all duration-300`;
+          // Sin transition-all para evitar deslizamientos/lag en el ciclo de proyección de MapLibre
+          el.className = `companion-pet-${markerKey} flex flex-col items-center select-none pointer-events-none`;
           el.style.opacity = '0';
           el.style.transition = 'opacity 0.25s ease-out';
           if (isInside) {

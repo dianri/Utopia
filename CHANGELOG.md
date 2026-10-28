@@ -9,6 +9,17 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - Documentadas todas las mecánicas incorporadas en los últimos sprints: Arena de Combate táctica interactiva (`CombatArena.tsx`), sistema de mascotas de apoyo con habilidades pasivas y asistencia de combate (`Pet[]`), estructuras tácticas en el mapa (Hospital de Campaña y Casas/Refugios), rediseño del ciclo de vida con estado "Herido de Muerte" (`critically_wounded`) y brújula de emergencia, sistema de mochila de 4 slots con jerarquía de 7 tiers de armamento y desgaste de durabilidad, apertura cooperativa del cofre por fases de minijuegos con sprint de furia del monstruo, y optimizaciones visuales y mobile-first para el HUD.
 
 ### Fixed
+- **Mochila verdaderamente infinita y sin descarte forzado (`BackpackModal.tsx`, `App.tsx`, `types/game.ts`):**
+  - Eliminado cualquier límite de slots numéricos (`MAX_INVENTORY_SLOTS = Infinity`). Los jugadores ahora acumulan todos los objetos recogidos de airdrops, cajas y terreno de forma indefinida en `items: InventoryItem[]`.
+  - Adaptada la vista de `BackpackModal` con scroll vertical táctico fluido (`overflow-y-auto max-h-[60vh]`) y contador visual ilimitado.
+  - Las mascotas compañeras recogen cajas de suministros de forma pasiva transfiriendo el botín directamente a la mochila sin restricciones de capacidad.
+- **Descarte libre de armamento e integración de Puños (Tier 0) como recurso final (`combatEngine.ts`, `App.tsx`, `BackpackModal.tsx`):**
+  - Permitido el descarte total de cualquier arma en el terreno, incluido el cuchillo de supervivencia.
+  - Al quedarse sin armas utilizables o vaciarse la mochila, el combatiente equipa automáticamente el arma base "Puños" (Tier 0, 5 de daño, cadencia 350ms, munición infinita y alcance de 10m).
+  - Puños es un arma virtual de recurso final que no ocupa espacio en la mochila ni se puede soltar; al recoger cualquier arma de mayor nivel, el sistema la auto-equipa de inmediato.
+- **Anclaje dinámico y proyección nativa de mascotas acompañantes en MapLibre (`GameMap.tsx`):**
+  - Corregido el deslizamiento/patinado de los compañeros de escuadra durante el paneo y zoom del mapa calculando y fijando estrictamente coordenadas geoespaciales en `maplibregl.Marker({ element, anchor: 'center' })` mediante la fórmula orbital con factor de latitud y longitud.
+  - Eliminada la clase CSS `transition-all duration-300` de los marcadores DOM para evitar interpolaciones artificiales que retrasaban la proyección sobre el lienzo de MapLibre GL.
 - **Marcadores de mascotas silvestres y de acompañamiento fijados en la esquina superior izquierda (0,0) (`GameMap.tsx`):**
   - Añadida guardia estricta de ciclo de vida del mapa WebGL (`!map || !isMapLoadedRef.current`) y estado de carga reactivo (`mapLoaded`) en los efectos de mascotas silvestres y mascotas acompañantes, evitando instanciar marcadores HTML antes de que el motor de proyección de MapLibre GL esté activo.
   - Añadida guardia estricta de coordenadas reales del centro del mapa (`center.lat`, `center.lng` no nulos ni en `0,0`) previa al renderizado de entidades para prevenir proyecciones en Null Island.
