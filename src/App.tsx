@@ -85,6 +85,7 @@ import { DefeatModal } from './components/PostGame/DefeatModal';
 import { LeaderboardModal } from './components/PostGame/LeaderboardModal';
 
 import { CombatArena } from './components/Combat/CombatArena';
+import { HospitalModal } from './components/Hospital/HospitalModal';
 import { ChestLockModal } from './components/Chest/ChestLockModal';
 
 import { Play, Users, Trophy, Footprints } from 'lucide-react';
@@ -205,6 +206,11 @@ export const App: React.FC = () => {
   const [fleeImmunityUntil, setFleeImmunityUntil] = useState<number>(0);
   const fleeImmunityUntilRef = useRef<number>(0);
   fleeImmunityUntilRef.current = fleeImmunityUntil;
+
+  // MODAL TÁCTICO DEL HOSPITAL DE CAMPAÑA
+  const [isHospitalModalOpen, setIsHospitalModalOpen] = useState<boolean>(false);
+  const isHospitalModalOpenRef = useRef<boolean>(false);
+  isHospitalModalOpenRef.current = isHospitalModalOpen;
 
   // COFRE MULTI-FASE COOPERATIVO (3 FASES, 2 PASOS C/U = 6 CERROJOS)
   const [chestPhase, setChestPhase] = useState<number>(1);
@@ -853,6 +859,7 @@ export const App: React.FC = () => {
   // GEOLOCALIZACIÓN Y MOVIMIENTO (GPS O MANUAL)
   // ==========================================
   const lastMoveBroadcastTimeRef = useRef<number>(0);
+  const cancelMovementRef = useRef<() => void>(() => {});
 
   const handlePositionChange = useCallback(
     (coords: Coordinates, isFinal?: boolean) => {
@@ -875,12 +882,28 @@ export const App: React.FC = () => {
         if (insideId) {
           const st = structuresRef.current.find((s) => s.id === insideId);
           if (st?.type === 'hospital') {
-            addLog('Has entrado al Hospital de Campaña (+10 HP/s). A cubierto.', 'info');
+            const playerNeedsHealing =
+              myPlayerRef.current.hp < (myPlayerRef.current.maxHp || 100) ||
+              myPlayerRef.current.isCriticallyWounded ||
+              myPlayerRef.current.status === 'critically_wounded';
+
+            const petsNeedHealing = (myPlayerRef.current.pets || []).some(
+              (p) => p.hp < (p.maxHp || 100) || p.isWounded
+            );
+
+            if (playerNeedsHealing || petsNeedHealing) {
+              setIsHospitalModalOpen(true);
+              cancelMovementRef.current();
+              addLog('Has entrado al Hospital de Campaña. Iniciando regeneración táctica.', 'info');
+            } else {
+              addLog('INSTALACIÓN MÉDICA: Todos los signos vitales se encuentran al 100%', 'info');
+            }
           } else {
             addLog(`Has entrado a ${st?.name || 'un refugio'}. El monstruo pierde tu rastro.`, 'info');
           }
         } else if (myPlayerRef.current.insideBuildingId) {
           addLog('Has salido a la intemperie. Vuelves a ser visible.', 'info');
+          setIsHospitalModalOpen(false);
         }
       }
 
@@ -976,8 +999,9 @@ export const App: React.FC = () => {
     isAlive: myPlayer?.isAlive ?? true,
     isSlowed: myPlayer?.isSlowed ?? false,
     speedMultiplier: fleeImmunityUntil > Date.now() ? 1.3 : 1,
-    isMovingBlocked: isCombatArenaOpen,
+    isMovingBlocked: isCombatArenaOpen || isHospitalModalOpen,
   });
+  cancelMovementRef.current = cancelMovement;
 
   // ==========================================
   // ESCUCHAR CAMBIOS EN BASE DE DATOS (SUPABASE REALTIME POSTGRES CHANGES)
@@ -1502,6 +1526,126 @@ export const App: React.FC = () => {
     addLog('¡HUIDA ACTIVA! Aléjate del monstruo (Sprint +30% durante 5 segundos)', 'warning');
   }, [addLog]);
 
+  // Manejadores del Hospital de Campaña Táctico
+  const handleHospitalHealTick = useCallback(
+    (
+      newHp: number,
+      newStatus: PlayerStatus,
+      isCriticallyWounded: boolean,
+      newPets: Pet[]
+    ) => {
+      setMyPlayer((prev) => {
+        if (!prev) return null;
+        const updated = {
+          ...prev,
+          hp: newHp,
+          status: newStatus,
+          isCriticallyWounded,
+          pets: newPets,
+        };
+        if (prev.lat && prev.lng) {
+          realtimeRef.current.broadcastPlayerMove(
+            prev.lat,
+            prev.lng,
+            newHp,
+            true,
+            newStatus,
+            isCriticallyWounded,
+            prev.insideBuildingId,
+            prev.insideBuildingType,
+            newPets
+          );
+        }
+        return updated;
+      });
+
+      setPlayers((prev) =>
+        prev.map((p) =>
+          p.id === myPlayerRef.current?.id
+            ? {
+                ...p,
+                hp: newHp,
+                status: newStatus,
+                isCriticallyWounded,
+                pets: newPets,
+              }
+            : p
+        )
+      );
+
+      if (myPlayerRef.current) {
+        syncPlayerToSupabase(
+          {
+            ...myPlayerRef.current,
+            hp: newHp,
+            status: newStatus,
+            isCriticallyWounded,
+            pets: newPets,
+          },
+          false
+        );
+      }
+    },
+    [syncPlayerToSupabase]
+  );
+
+  const handleHospitalDischargeComplete = useCallback(
+    (finalHp: number, finalStatus: PlayerStatus, finalPets: Pet[]) => {
+      setMyPlayer((prev) => {
+        if (!prev) return null;
+        const updated = {
+          ...prev,
+          hp: finalHp,
+          status: finalStatus,
+          isCriticallyWounded: false,
+          pets: finalPets,
+        };
+        if (prev.lat && prev.lng) {
+          realtimeRef.current.broadcastPlayerMove(
+            prev.lat,
+            prev.lng,
+            finalHp,
+            true,
+            finalStatus,
+            false,
+            prev.insideBuildingId,
+            prev.insideBuildingType,
+            finalPets
+          );
+        }
+        return updated;
+      });
+
+      setPlayers((prev) =>
+        prev.map((p) =>
+          p.id === myPlayerRef.current?.id
+            ? {
+                ...p,
+                hp: finalHp,
+                status: finalStatus,
+                isCriticallyWounded: false,
+                pets: finalPets,
+              }
+            : p
+        )
+      );
+
+      if (myPlayerRef.current) {
+        syncPlayerToSupabase(
+          {
+            ...myPlayerRef.current,
+            hp: finalHp,
+            status: finalStatus,
+            isCriticallyWounded: false,
+            pets: finalPets,
+          },
+          true
+        );
+      }
+    },
+    [syncPlayerToSupabase]
+  );
+
   // Manejadores del Cofre Cooperativo
   const handleOpenChestModal = useCallback(() => {
     if (!room || !myPlayer) return;
@@ -1662,6 +1806,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (room?.status !== 'playing' || !myPlayer) return;
     if (myPlayer.insideBuildingType !== 'hospital') return;
+    if (isHospitalModalOpen) return; // Si la bahía médica táctica está activa, gestiona la regeneración
 
     const interval = setInterval(() => {
       setMyPlayer((prev) => {
@@ -1744,7 +1889,7 @@ export const App: React.FC = () => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [room?.status, myPlayer?.insideBuildingType, realtime, addLog]);
+  }, [room?.status, myPlayer?.insideBuildingType, isHospitalModalOpen, realtime, addLog]);
 
   // ==========================================
   // SAQUEO DE AIRDROPS (CAJAS DE SUMINISTROS A 40 METROS)
@@ -3015,7 +3160,7 @@ export const App: React.FC = () => {
   };
 
   const handleMapClick = useCallback((coords: Coordinates) => {
-    if (!room || isCombatArenaOpen) return;
+    if (!room || isCombatArenaOpen || isHospitalModalOpen) return;
 
     if (myPlayer && !myPlayer.isAlive) {
       // MODO FANTASMA: EMITIR PING TÁCTICO
@@ -3376,6 +3521,33 @@ export const App: React.FC = () => {
               </div>
             )}
 
+            {/* AVISO / BOTÓN TÁCTICO: HOSPITAL DE CAMPAÑA (BAHÍA MÉDICA) */}
+            {myPlayer.insideBuildingType === 'hospital' && !isHospitalModalOpen && !isCombatArenaOpen && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsHospitalModalOpen(true);
+                  cancelMovementRef.current();
+                }}
+                className="pointer-events-auto w-full bg-emerald-950/90 border-2 border-emerald-400 text-emerald-200 px-3 py-2 rounded-xl shadow-2xl backdrop-blur-md flex items-center justify-between gap-2.5 animate-pulse hover:bg-emerald-900/90 active:scale-95 transition-all"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xl">🏥</span>
+                  <div className="text-left">
+                    <span className="font-mono font-black text-xs text-emerald-300 block uppercase tracking-wider">
+                      BAHÍA MÉDICA ACTIVA
+                    </span>
+                    <span className="font-mono text-[10px] text-cyan-300">
+                      Toca para acceder al Pod de Regeneración (+15 HP/s)
+                    </span>
+                  </div>
+                </div>
+                <span className="font-mono font-bold text-xs bg-emerald-800/80 px-2.5 py-1 rounded-lg text-white border border-emerald-400/50 shadow-sm">
+                  INGRESAR
+                </span>
+              </button>
+            )}
+
             {room.status === 'playing' && (chestPhase < 3 || chestStep < 2) && (
               <ChestCountdown
                 currentPhase={chestPhase}
@@ -3530,6 +3702,18 @@ export const App: React.FC = () => {
           onAddLog={addLog}
           onFlee={handleArenaFlee}
           onClose={() => setIsCombatArenaOpen(false)}
+        />
+      )}
+
+      {/* 5. MODAL TÁCTICO DEL HOSPITAL DE CAMPAÑA */}
+      {room && myPlayer && isHospitalModalOpen && (
+        <HospitalModal
+          isOpen={isHospitalModalOpen}
+          myPlayer={myPlayer}
+          onClose={() => setIsHospitalModalOpen(false)}
+          onHealTick={handleHospitalHealTick}
+          onDischargeComplete={handleHospitalDischargeComplete}
+          onAddLog={addLog}
         />
       )}
 

@@ -97,11 +97,19 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 ---
 
 ### 🏥 5. Estructuras Tácticas en el Mapa
-- **Hospital de Campaña (`🏥`):**
-  - Radio de interacción de 18 metros.
-  - Curación médica continua (+10 HP/segundo) para jugadores en su interior.
-  - Revive y restaura automáticamente al 100% de salud a todas las mascotas desmayadas de la comitiva.
-  - Centro de estabilización clínica para jugadores en estado crítico.
+- **Hospital de Campaña (`🏥`) // Bahía Táctica de Bio-Regeneración (`HospitalModal.tsx`):**
+  - **Radio de Influencia:** 18 metros con detección automática al ingresar.
+  - **Desencadenante Inteligente de Entrada:** Si el jugador o alguna de sus mascotas tienen < 100% de HP o sufren estado crítico/herido (`critically_wounded` / `isWounded`), se activa automáticamente la **Bahía de Regeneración Táctica** y se detiene el movimiento del personaje (`cancelMovement()`) mientras dure el tratamiento médico. Si la escuadra ya se encuentra sana al 100%, se emite el aviso: *"INSTALACIÓN MÉDICA: Todos los signos vitales se encuentran al 100%"*.
+  - **Interfaz Ciberpunk / Bio-Médica Militar:** Inspirada en la arquitectura visual de la Arena de Combate (`CombatArena.tsx`), adaptando la ambientación a tonos verde esmeralda (`#10b981`), cian bio-médico (`#06b6d4`), tramas de escáner y cruces de auxilio pulsantes (`🏥` / `➕`):
+    - **Cabecera Táctica:** Título *"UNIDAD MÉDICA AVANZADA // BAHÍA DE REGENERACIÓN"*, frecuencia de soporte vital y botón voluntario *"SALIR DE LA BAHÍA"*.
+    - **Pod Central del Paciente:** Avatar del jugador con halo bio-regenerativo esmeralda, indicador dinámico (*"REANIMANDO CONSTANTES VITALES..."* si estaba en estado crítico o *"ESTABILIZANDO CONSTANTES..."*), y barra de vida de gran tamaño con incremento numérico visible en tiempo real `HP / MaxHP (+15 HP/s)`.
+    - **Bahía Médica de Mascotas (Reactivación de Escudos):** Despliegue de los compañeros adoptados con barras individuales (+20 HP/s), alertas de desfibrilación para mascotas caídas (`💫`), y destello esmeralda triunfal con *"¡REPARADA / LISTA PARA COMBATE!"* al reactivar sus escudos al 100%.
+  - **Ciclo de Ticks Médicos y Audio Procedural:**
+    - Recarga periódica continua cada 1 segundo: **+15 HP/s** para el jugador y **+20 HP/s** para las mascotas dañadas o noqueadas.
+    - Latidos cardíacos y tonos bio-sintetizados en Web Audio API (`soundEffects.playHeartbeat()`, `soundEffects.playMedicalTick()`), números flotantes animados (`+15 HP`, `+20 HP ESCUADRA`) y viñeta perimetral esmeralda que pulsa al compás de la regeneración.
+  - **Alta Médica Automática y Persistencia:**
+    - Al alcanzar el 100% de salud tanto el jugador como todas sus mascotas, se proyecta el overlay triunfal *"TRATAMIENTO COMPLETADO: ESCUADRA 100% OPERATIVA"*, suena el acorde de alta médica (`soundEffects.playMedicalSuccess()`), se actualiza y persiste el estado en Supabase y Realtime (`status: 'active'`, `isCriticallyWounded: false`), y el modal se auto-cierra a los 1.5s devolviendo el control al mapa.
+    - Si el jugador sale voluntariamente antes de completar la curación permaneciendo dentro del radio, el HUD ofrece un acceso táctico directo *"BAHÍA MÉDICA ACTIVA"* para reingresar al pod en cualquier momento.
 - **Casas / Refugios Tácticos (`🏠`):**
   - De 3 a 5 búnkeres distribuidos en el área operativa con radio de 14 metros.
   - **Mecánica de Cobertura Total:** Al entrar, el avatar se oculta visualmente del mapa exterior (`style.display = 'none'`), los aliados lo visualizan con etiqueta `[A CUBIERTO]`, y el monstruo pierde inmediatamente el aggro.

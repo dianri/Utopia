@@ -43,7 +43,7 @@ export const IndoorStatusBanner: React.FC<IndoorStatusBannerProps> = ({ building
           </span>
           <span className="block text-[10px] font-mono text-slate-200">
             {isHospital
-              ? 'Recuperando salud (+10 HP/s)'
+              ? 'Recuperando salud (+15 HP/s)'
               : 'A cubierto: El monstruo no puede verte'}
           </span>
         </div>
