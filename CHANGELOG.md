@@ -5,6 +5,8 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ## [Unreleased]
 ### Documentation
+- **Documentación exhaustiva de la IA y comportamiento del monstruo en `README.md` (`README.md`):**
+  - Añadida sección dedicada detallando la máquina de estados de `MonsterAIController` (patrulla circular lenta a 1.1 m/s en radio de 55m, persecución con jerarquía de aggro y pérdida de rastro en refugios/hospital, sprint de furia defensiva a 3.8 m/s hacia el cofre, modo enfurecido en Fase 2 al <= 30% HP con ralentización en área y aceleración a 4.5 m/s, ciclo de respawn en 60s y reglas de combate en la arena táctica).
 - **Establecida la regla obligatoria de sincronización de `README.md` y `AGENTS.md` con cada feature (`AGENTS.md`, `README.md`):**
   - Añadida directriz explícita (Sección 3.C) y casillas de verificación obligatorias en el checklist de validación previa (Sección 4 de `AGENTS.md`) para exigir la revisión y actualización de `README.md` y `AGENTS.md` en cada intervención.
 - **Actualización integral de `README.md`:**
@@ -45,6 +47,10 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - Añadida limpieza explícita de `wildPetMarkersRef` y `companionPetMarkersRef` al desmontar el mapa.
 
 ### Changed
+- **Removed team defeat condition; game runs continuously until chest victory, allowing infinite hospital respawns (`App.tsx`):**
+  - Eliminada la comprobación global que disparaba `handleGameEnd('defeat')` cuando todos los jugadores pasaban a `critically_wounded`.
+  - La partida permanece indefinidamente en estado `'playing'` hasta que la escuadra consiga descifrar y abrir el cofre del tesoro para alcanzar el estado `'victory'`.
+  - Incluso si todos los miembros caen heridos de muerte de forma simultánea, todos conservan la capacidad de desplazarse al Hospital de Campaña para reanimarse, restaurar salud al 100% y reincorporarse a la misión en un bucle continuo de juego.
 - **Removed passive map-based auto-combat; attacks strictly limited to manual clicks within the combat arena (`useCombatLoop.ts`, `CombatArena.tsx`):**
   - Desactivado por completo el temporizador y el bucle de daño automático en segundo plano en el mapa táctico (`useCombatLoop.ts`). El mapa táctico ahora solo gestiona navegación, recogida de airdrops, interacción con estructuras y detección de colisión/proximidad para iniciar el combate.
   - El daño hacia el monstruo se centraliza y ejecuta exclusivamente de forma manual desde el modo combate (`CombatArena.tsx`), al presionar el botón "ATACAR" o al tocar directamente sobre la carta del monstruo.
