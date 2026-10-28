@@ -11,6 +11,11 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - Documentadas todas las mecánicas incorporadas en los últimos sprints: Arena de Combate táctica interactiva (`CombatArena.tsx`), sistema de mascotas de apoyo con habilidades pasivas y asistencia de combate (`Pet[]`), estructuras tácticas en el mapa (Hospital de Campaña y Casas/Refugios), rediseño del ciclo de vida con estado "Herido de Muerte" (`critically_wounded`) y brújula de emergencia, sistema de mochila de 4 slots con jerarquía de 7 tiers de armamento y desgaste de durabilidad, apertura cooperativa del cofre por fases de minijuegos con sprint de furia del monstruo, y optimizaciones visuales y mobile-first para el HUD.
 
 ### Fixed
+- **Aislamiento estricto de fuentes de curación al saquear suministros y objetos del suelo (`lootService.ts`, `App.tsx`, `GameMap.tsx`, `types/game.ts`):**
+  - Creado el servicio modular `lootService.ts` (`applyCratePickup`, `applyPetCratePickup`, `applyDroppedItemPickup`, `isHealthLoot`, `isAmmoLoot`, `isWeaponOrKeyLoot`).
+  - Corregido el efecto secundario donde recoger armas, munición o llaves restauraba involuntariamente la salud del jugador: la curación (`hp`) queda estrictamente limitada a suministros médicos (`crateType === 'medkit'` o `category === 'health'`).
+  - Reconfiguradas las plantillas de airdrops en sala y reconexión: cajas de armas (`rocket_launcher`, `rifle`, `shotgun`, `grenade`, `melee`) y de munición (`ammo`) configuradas con `healReward: 0`.
+  - Recolección pasiva por mascotas y recogida manual de objetos en el terreno ajustadas para no alterar la salud si el objeto es un arma o munición.
 - **Mochila verdaderamente infinita y sin descarte forzado (`BackpackModal.tsx`, `App.tsx`, `types/game.ts`):**
   - Eliminado cualquier límite de slots numéricos (`MAX_INVENTORY_SLOTS = Infinity`). Los jugadores ahora acumulan todos los objetos recogidos de airdrops, cajas y terreno de forma indefinida en `items: InventoryItem[]`.
   - Adaptada la vista de `BackpackModal` con scroll vertical táctico fluido (`overflow-y-auto max-h-[60vh]`) y contador visual ilimitado.

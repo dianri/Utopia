@@ -38,7 +38,7 @@ export type WeaponType =
   | 'knife'           // Nivel 1 (Melé básico / infinito)
   | 'fists';          // Nivel 0 (Puños / recurso final)
 
-export type ItemCategory = 'weapon' | 'key_item';
+export type ItemCategory = 'weapon' | 'key_item' | 'health' | 'ammo';
 
 export interface InventoryItem {
   id: string;             // UUID único de la instancia
@@ -54,6 +54,7 @@ export interface InventoryItem {
   isInfinite?: boolean;   // true para armas infinitas (cuchillo, puños)
   rangeMeters?: number;   // Alcance efectivo en metros
   iconName?: string;      // Nombre de icono
+  healValue?: number;     // Puntos de salud restaurados si category === 'health'
 }
 
 export interface DroppedItem {
@@ -182,7 +183,7 @@ export interface SupplyCrate {
   opened: boolean;
   droppedAt: number;
   crateType?: CrateType;
-  weaponReward: Weapon;
+  weaponReward?: Weapon;
   healReward: number;
   ammoReward: number;
 }
