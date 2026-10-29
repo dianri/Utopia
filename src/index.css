@@ -120,3 +120,24 @@
 .animate-fadeIn {
   animation: fadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+@keyframes flash {
+  0% { opacity: 0.8; }
+  100% { opacity: 0; }
+}
+
+.animate-flash {
+  animation: flash 0.25s ease-out forwards;
+}
+
+@keyframes hitShake {
+  0%, 100% { transform: scale(0.95) translate(0, 0); }
+  20% { transform: scale(0.95) translate(-4px, 2px); }
+  40% { transform: scale(0.95) translate(4px, -2px); }
+  60% { transform: scale(0.95) translate(-3px, -1px); }
+  80% { transform: scale(0.95) translate(3px, 1px); }
+}
+
+.animate-hitShake {
+  animation: hitShake 0.2s ease-in-out;
+}

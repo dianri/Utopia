@@ -5,6 +5,10 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ## [Unreleased]
 ### Added
+- **Added: Tap-to-attack interactive central target avatar in PvP combat arena matching PvE mechanics (`PvPArena.tsx`, `index.css`, `README.md`):**
+  - **Avatar Central Interactivo del Rival:** El adversario se proyecta como un avatar circular grande interactivo con borde neón hostil, resplandor pulsante (`animate-ping`), respuesta háptica/sonora inmediata y soporte táctil y clic directo (`onClick` / `onTouchStart`), unificando la memoria muscular entre el combate contra monstruos (PvE) y duelos entre jugadores (PvP).
+  - **Feedback Visual de Impacto y Sacudida:** Animación reactiva de sacudida táctica (`animate-hitShake`), destello de daño blanco (`animate-flash`), retracción (`active:scale-90`) y números flotantes de daño sobre el avatar al ser golpeado.
+  - **Barra de Salud del Oponente Centralizada:** Indicador de salud con valor numérico [X/100] y alias del rival situado directamente encima del objetivo central, actualizándose en tiempo real con cada toque o ataque de mascotas.
 - **Added: Required form input validation with glowing red borders and tactical error alerts for lobby creation and joining (`CreateRoomModal.tsx`, `JoinRoomModal.tsx`, `index.css`, `README.md`):**
   - **Validación Visual Reactiva por Campo:** Prevención de bloqueos silenciosos al pulsar "CREAR PARTIDA" o "UNIRSE A LA PARTIDA". El sistema ahora resalta inmediatamente los inputs obligatorios vacíos (Nombre de Agente en creación y unión, Código de Sala en unión) con borde carmesí brillante (`border-red-500`), fondo tintado (`bg-red-950/25`), resplandor táctico (`shadow-[0_0_12px_rgba(239,68,68,0.35)]`) y autofoco automático en el primer campo no completado.
   - **Microtexto Explicativo Táctico:** Inclusión de avisos contextuales bajo los campos obligatorios (*"⚠️ El nombre de agente es obligatorio para desplegarte en la zona"* y *"⚠️ El código de sala es obligatorio para unirte a la operación"*), con animación fluida `animate-fadeIn`.
