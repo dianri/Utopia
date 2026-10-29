@@ -4,6 +4,15 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Unreleased]
+### Fixed
+- **Corrección de la condición de fin de partida y progresión estricta de 3 cofres secuenciales (`App.tsx`, `ChestLockModal.tsx`, `ChestCountdown.tsx`, `GameMap.tsx`, `README.md`):**
+  - **Avance estricto de cofres (1 -> 2 -> 3) sin falso cierre por victoria:** Se corrigió el problema por el cual resolver el último cerrojo del Cofre 1 invocaba prematuramente la rutina de fin de partida y victoria global. Ahora `handleChestDecrypted` verifica estrictamente `currentChestIndex`: si `currentChestIndex < 3`, avanza al siguiente cofre (`nextChestIndex`), reubica el tesoro en una coordenada aleatoria válida dentro del área de juego, genera el monstruo secuencial de la fase correspondiente, resetea los 6 cerrojos de la sala a Fase 1 Paso 0 y transmite la transición a toda la escuadra vía Supabase Realtime y base de datos.
+  - **Sincronización multi-cliente robusta:** Se incorporó un estado dedicado `currentChestIndex` con su correspondiente `currentChestIndexRef` en `App.tsx`, sincronizado sincrónicamente con `onChestTransition`, `onFullStateSync`, y la escucha de eventos `postgres_changes` sobre la tabla `games` de Supabase, previniendo sobreescrituras accidentales de estado en cualquier cliente.
+  - **Optimización y reducción visual de banners y botones:**
+    - `ChestLockModal.tsx`: Franja de proximidad del monstruo compactada a estilo táctico minimalista (`py-1`, `text-[11px]`), cabecera y cerrojos con padding reducido (`p-2.5 sm:p-3`), botones de acción estilizados y dial magnético reducido para evitar desbordamiento en pantallas móviles.
+    - `ChestCountdown.tsx`: Dock de escritorio reducido en anchura (`w-48`) y espaciado interior (`p-1.5`); popover táctico móvil reducido a `w-52` para maximizar el área visible del terreno.
+    - `GameMap.tsx`: Aviso de tap-to-move y etiqueta del marcador del tesoro ajustados a dimensiones discretas y semitransparentes.
+
 ### Changed
 - **Rediseño de la condición de victoria a 3 cofres secuenciales, escalado de monstruos concurrentes, reaparición silenciosa y cola de combate 1v1 estricta (`App.tsx`, `ChestLockModal.tsx`, `CombatArena.tsx`, `GameMap.tsx`, `ChestCountdown.tsx`, `useGameRealtime.ts`, `mapEntities.ts`, `monsterAI.ts`, `soundEffects.ts`, `types/game.ts`, `README.md`):**
   - **Cadena de 3 Cofres Secuenciales para la Victoria:** Descartada la victoria inmediata al abrir el cofre 1. La partida progresa a través de 3 cofres secuenciales (Fases 1, 2 y 3). Al descifrar los 6 cerrojos del Cofre 1, este desaparece del mapa y engendra inmediatamente el Cofre 2 en coordenadas aleatorias válidas dentro del área jugable. Al completar el Cofre 2, desaparece y engendra el Cofre 3. Solo al desbloquear por completo el Cofre 3 (3/3) se activa la victoria definitiva de la partida (`status: 'victory'`).

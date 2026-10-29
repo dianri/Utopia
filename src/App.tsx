@@ -240,6 +240,10 @@ export const App: React.FC = () => {
   isHospitalModalOpenRef.current = isHospitalModalOpen;
 
   // COFRE MULTI-FASE COOPERATIVO (3 FASES, 2 PASOS C/U = 6 CERROJOS)
+  const [currentChestIndex, setCurrentChestIndex] = useState<number>(1);
+  const currentChestIndexRef = useRef<number>(1);
+  currentChestIndexRef.current = currentChestIndex;
+
   const [chestPhase, setChestPhase] = useState<number>(1);
   const [chestStep, setChestStep] = useState<number>(0);
   const [isChestLockModalOpen, setIsChestLockModalOpen] = useState<boolean>(false);
@@ -659,6 +663,8 @@ export const App: React.FC = () => {
       },
       onChestTransition: (payload) => {
         if (typeof payload.currentChestIndex === 'number') {
+          setCurrentChestIndex(payload.currentChestIndex);
+          currentChestIndexRef.current = payload.currentChestIndex;
           setRoom((prev) =>
             prev
               ? {
@@ -666,6 +672,11 @@ export const App: React.FC = () => {
                   currentChestIndex: payload.currentChestIndex,
                   treasureLat: payload.treasureLat,
                   treasureLng: payload.treasureLng,
+                  chestPhase: 1,
+                  chestStep: 0,
+                  chestUnlockedSteps: 0,
+                  chestCurrentPhase: 1,
+                  chestProgressPct: 0,
                 }
               : null
           );
@@ -675,6 +686,7 @@ export const App: React.FC = () => {
           chestStepRef.current = 0;
           setIsChestLockModalOpen(false);
           isChestLockModalOpenRef.current = false;
+          setIsChestInteractedGlobally(false);
         }
         if (payload.monsters && payload.monsters.length > 0) {
           setMonsters(payload.monsters);
@@ -907,7 +919,7 @@ export const App: React.FC = () => {
             holdersCount: chestHoldersCountRef.current,
             chestPhase: chestPhaseRef.current,
             chestStep: chestStepRef.current,
-            currentChestIndex: roomRef.current?.currentChestIndex ?? 1,
+            currentChestIndex: currentChestIndexRef.current,
             treasureLat: roomRef.current?.treasureLat,
             treasureLng: roomRef.current?.treasureLng,
             droppedItems: droppedItemsRef.current,
@@ -929,6 +941,8 @@ export const App: React.FC = () => {
             setMonsters(payload.monsters);
           }
           if (payload.currentChestIndex) {
+            setCurrentChestIndex(payload.currentChestIndex);
+            currentChestIndexRef.current = payload.currentChestIndex;
             setRoom((prev) =>
               prev
                 ? {
@@ -1234,12 +1248,33 @@ export const App: React.FC = () => {
               (updated?.settings?.player_speed as PlayerSpeed) ??
               (updated?.player_speed as PlayerSpeed) ??
               undefined;
+            const updatedChestIndex: number | undefined =
+              typeof updated?.settings?.current_chest_index === 'number'
+                ? updated.settings.current_chest_index
+                : undefined;
+            if (updatedChestIndex && updatedChestIndex !== currentChestIndexRef.current) {
+              setCurrentChestIndex(updatedChestIndex);
+              currentChestIndexRef.current = updatedChestIndex;
+            }
             setRoom((prev) =>
               prev
                 ? {
                     ...prev,
                     status: updated.status,
                     ...(updatedSpeed ? { playerSpeed: updatedSpeed } : {}),
+                    ...(updated?.treasure_lat && updated?.treasure_lng
+                      ? { treasureLat: updated.treasure_lat, treasureLng: updated.treasure_lng }
+                      : {}),
+                    ...(updatedChestIndex ? { currentChestIndex: updatedChestIndex } : {}),
+                    ...(typeof updated?.chest_current_phase === 'number'
+                      ? { chestPhase: updated.chest_current_phase, chestCurrentPhase: updated.chest_current_phase }
+                      : {}),
+                    ...(typeof updated?.chest_unlocked_steps === 'number'
+                      ? { chestUnlockedSteps: updated.chest_unlocked_steps, chestStep: updated.chest_unlocked_steps % 2 }
+                      : {}),
+                    ...(typeof updated?.chest_progress_pct === 'number'
+                      ? { chestProgressPct: updated.chest_progress_pct }
+                      : {}),
                   }
                 : null
             );
@@ -2134,32 +2169,36 @@ export const App: React.FC = () => {
     }
   }, [room?.id, addLog]);
 
-  const handleChestCompletion = useCallback(async () => {
+  const handleChestDecrypted = useCallback(async () => {
+    const currentChestIdx = currentChestIndexRef.current;
     const currentRoom = roomRef.current;
     if (!currentRoom) return;
 
-    const currentChestIdx = currentRoom.currentChestIndex ?? 1;
-
     if (currentChestIdx < 3) {
-      // Avanzar al siguiente cofre secuencial
+      // 1. Avanzar al siguiente cofre secuencial (Cofre 2 o Cofre 3)
       const nextChestIdx = currentChestIdx + 1;
-      const centerCoord: Coordinates = { lat: currentRoom.centerLat, lng: currentRoom.centerLng };
-      const prevChestCoord: Coordinates = { lat: currentRoom.treasureLat, lng: currentRoom.treasureLng };
+      setCurrentChestIndex(nextChestIdx);
+      currentChestIndexRef.current = nextChestIdx;
 
-      const newTreasureLoc = generateNextChestLocation(centerCoord, currentRoom.playAreaRadius, prevChestCoord);
-      const newMonster = createSequentialMonster(nextChestIdx, centerCoord, currentRoom.playAreaRadius);
-
-      const updatedMonsters = [...monstersRef.current, newMonster];
-      setMonsters(updatedMonsters);
-
-      // Resetear progreso de cerrojos del nuevo cofre
+      // 2. Cerrar modal de cofre y resetear cerrojos a 0/6 (Fase 1, Paso 0)
+      setIsChestLockModalOpen(false);
+      isChestLockModalOpenRef.current = false;
+      setIsChestInteractedGlobally(false);
       setChestPhase(1);
       setChestStep(0);
       chestPhaseRef.current = 1;
       chestStepRef.current = 0;
-      setIsChestLockModalOpen(false);
-      isChestLockModalOpenRef.current = false;
-      setIsChestInteractedGlobally(false);
+
+      // 3. Reubicar cofre en una nueva coordenada aleatoria válida dentro del área
+      const centerCoord: Coordinates = { lat: currentRoom.centerLat, lng: currentRoom.centerLng };
+      const prevChestCoord: Coordinates = { lat: currentRoom.treasureLat, lng: currentRoom.treasureLng };
+      const newTreasureLoc = generateNextChestLocation(centerCoord, currentRoom.playAreaRadius, prevChestCoord);
+
+      // 4. Invocar/desplegar el monstruo secuencial de la siguiente fase
+      const newMonster = createSequentialMonster(nextChestIdx, centerCoord, currentRoom.playAreaRadius);
+      const updatedMonsters = [...monstersRef.current, newMonster];
+      setMonsters(updatedMonsters);
+      activeCombatMonsterIdRef.current = newMonster.id || null;
 
       // Actualizar estado de sala
       setRoom((prev) =>
@@ -2178,13 +2217,14 @@ export const App: React.FC = () => {
           : null
       );
 
-      // Persistir en Supabase
+      // Persistir reset en localStorage
       try {
         localStorage.setItem(`utopia_chest_progress_${currentRoom.id}`, JSON.stringify({ phase: 1, step: 0 }));
       } catch {
         // Ignorar
       }
 
+      // Persistir en Supabase games
       try {
         await (supabase.from('games') as any)
           .update({
@@ -2203,7 +2243,7 @@ export const App: React.FC = () => {
         console.warn('Error al actualizar siguiente cofre en DB:', err);
       }
 
-      // Transmitir a la escuadra
+      // Transmitir transición a la escuadra
       realtimeRef.current.broadcastChestTransition({
         currentChestIndex: nextChestIdx,
         treasureLat: newTreasureLoc.lat,
@@ -2214,14 +2254,16 @@ export const App: React.FC = () => {
 
       soundEffects.playLevelUp();
       addLog(
-        `¡Cofre [${currentChestIdx}/3] descifrado! Ha emergido el cofre [${nextChestIdx}/3] y ${newMonster.name || 'un nuevo monstruo'} acecha en el área.`,
+        `¡Cofre [${currentChestIdx}/3] descifrado! Se ha detectado la señal del Cofre [${nextChestIdx}/3]. Ha emergido ${newMonster.name || 'un nuevo monstruo'}.`,
         'loot'
       );
     } else {
-      // Cofre 3 descifrado -> ¡Victoria Definitiva de la partida!
+      // SOLO al completar el Cofre 3 se declara la victoria definitiva de la partida
       await handleChestVictory();
     }
   }, [handleChestVictory, addLog]);
+
+  const handleChestCompletion = handleChestDecrypted;
 
   // ==========================================
   // ESTADO DE PARTIDA CONTINUO (SIN DERROTA GLOBAL)
@@ -3257,6 +3299,9 @@ export const App: React.FC = () => {
     setMonsters([initMonster]);
 
     // Resetear explícitamente el progreso del cofre a 0 cerrojos y Fase 1 al crear una sala nueva
+    const initialChestIdx = gameData?.settings?.current_chest_index ?? 1;
+    setCurrentChestIndex(initialChestIdx);
+    currentChestIndexRef.current = initialChestIdx;
     setChestPhase(1);
     setChestStep(0);
     chestPhaseRef.current = 1;
@@ -3660,6 +3705,10 @@ export const App: React.FC = () => {
     setCrates(finalCrates);
     setWildPets(finalWildPets);
     setDroppedItems(dbDroppedItems);
+
+    const joinedChestIdx = currentRoom.currentChestIndex ?? 1;
+    setCurrentChestIndex(joinedChestIdx);
+    currentChestIndexRef.current = joinedChestIdx;
 
     setRoom(currentRoom);
     setMyPlayer(player);
@@ -4068,7 +4117,7 @@ export const App: React.FC = () => {
             <ChestCountdown
               currentPhase={chestPhase}
               currentStep={chestStep}
-              currentChestIndex={room.currentChestIndex ?? 1}
+              currentChestIndex={currentChestIndex}
               totalChests={3}
               isInChestZone={
                 getDistanceMeters(
@@ -4253,12 +4302,13 @@ export const App: React.FC = () => {
           isOpen={isChestLockModalOpen}
           currentPhase={chestPhase}
           currentStep={chestStep}
-          currentChestIndex={room.currentChestIndex ?? 1}
+          currentChestIndex={currentChestIndex}
           totalChests={3}
           distToMonster={distToMonster}
           isMonsterAlive={isMonsterAlive(monster)}
           onStepSuccess={handleChestStepSuccess}
-          onVictory={handleChestCompletion}
+          onChestDecrypted={handleChestDecrypted}
+          onVictory={handleChestDecrypted}
           onClose={handleCloseChestModal}
         />
       )}

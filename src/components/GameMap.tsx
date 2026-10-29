@@ -834,7 +834,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             👑
           </div>
         </div>
-        <span class="mt-1 px-2 py-0.5 text-[10px] font-bold bg-hud-dark/90 border border-amber-500/60 text-amber-300 rounded uppercase tracking-wider">
+        <span class="mt-0.5 px-1.5 py-0.2 text-[9px] font-bold bg-hud-dark/90 border border-amber-500/50 text-amber-300 rounded uppercase tracking-wider">
           Tesoro
         </span>
       `;
@@ -1822,7 +1822,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       {/* AVISO TAP-TO-MOVE (Ubicado debajo del widget del cofre para evitar colisiones) */}
       {movementMode === 'manual' && myPlayer.isAlive && (
-        <div className="absolute top-[124px] sm:top-56 left-3 sm:left-4 z-20 bg-hud-dark/80 border border-hud-cyan/40 backdrop-blur-sm px-2.5 py-1 rounded text-[11px] font-mono text-hud-cyan shadow pointer-events-none">
+        <div className="absolute top-[118px] sm:top-52 left-3 sm:left-4 z-20 bg-hud-dark/75 border border-hud-cyan/30 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-mono text-hud-cyan/90 shadow pointer-events-none">
           👆 Toca el mapa para moverte ({PLAYER_SPEED_MPS[playerSpeed].toFixed(1)} m/s)
         </div>
       )}
