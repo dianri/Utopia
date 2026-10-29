@@ -16,6 +16,14 @@ import { soundEffects } from '../services/soundEffects';
 
 interface RealtimeCallbacks {
   onMonsterUpdate?: (monster: Monster) => void;
+  onMonstersUpdate?: (monsters: Monster[]) => void;
+  onChestTransition?: (payload: {
+    currentChestIndex: number;
+    treasureLat: number;
+    treasureLng: number;
+    newMonster?: Monster;
+    monsters?: Monster[];
+  }) => void;
   onPlayerMove?: (payload: {
     playerId?: string;
     userId?: string;
@@ -30,7 +38,7 @@ interface RealtimeCallbacks {
     pets?: Pet[];
   }) => void;
   onPlayerDamaged?: (payload: { playerId: string; damage: number; currentHp: number }) => void;
-  onMonsterDamaged?: (payload: { damage: number; fromPlayerId: string; currentHp: number }) => void;
+  onMonsterDamaged?: (payload: { damage: number; fromPlayerId: string; currentHp: number; monsterId?: string }) => void;
   onGhostPing?: (ping: GhostPing) => void;
   onRadarActivated?: (payload: { activatedBy: string; expiresAt: number }) => void;
   onCrateLooted?: (payload: { crateId: string; playerId: string; playerNickname: string; weaponName: string }) => void;
@@ -46,11 +54,15 @@ interface RealtimeCallbacks {
   onRequestStateSync?: () => void;
   onFullStateSync?: (payload: {
     monster: Monster;
+    monsters?: Monster[];
     crates: SupplyCrate[];
     chestCountdown: number;
     holdersCount: number;
     chestPhase?: number;
     chestStep?: number;
+    currentChestIndex?: number;
+    treasureLat?: number;
+    treasureLng?: number;
     droppedItems?: DroppedItem[];
     wildPets?: WildPet[];
     playerSpeed?: PlayerSpeed;
@@ -123,6 +135,15 @@ export function useGameRealtime(
     // 1. ESCUCHAR ACTUALIZACIONES DEL MONSTRUO
     channel.on('broadcast', { event: 'monster_update' }, ({ payload }) => {
       callbacksRef.current.onMonsterUpdate?.(payload.monster);
+    });
+
+    channel.on('broadcast', { event: 'monsters_update' }, ({ payload }) => {
+      callbacksRef.current.onMonstersUpdate?.(payload.monsters);
+    });
+
+    // 1.1. TRANSICIÓN SECUENCIAL DE COFRE Y MONSTRUOS
+    channel.on('broadcast', { event: 'chest_transition' }, ({ payload }) => {
+      callbacksRef.current.onChestTransition?.(payload);
     });
 
     // 2. ESCUCHAR MOVIMIENTO DE JUGADORES
@@ -315,14 +336,17 @@ export function useGameRealtime(
     });
   }, []);
 
-  const broadcastMonsterDamaged = useCallback((damage: number, currentHp: number) => {
-    if (!channelRef.current || !isSubscribedRef.current || !myPlayerId) return;
-    channelRef.current.send({
-      type: 'broadcast',
-      event: 'monster_damaged',
-      payload: { damage, fromPlayerId: myPlayerId, currentHp },
-    });
-  }, [myPlayerId]);
+  const broadcastMonsterDamaged = useCallback(
+    (damage: number, currentHp: number, monsterId?: string) => {
+      if (!channelRef.current || !isSubscribedRef.current || !myPlayerId) return;
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'monster_damaged',
+        payload: { damage, fromPlayerId: myPlayerId, currentHp, monsterId },
+      });
+    },
+    [myPlayerId]
+  );
 
   const broadcastGhostPing = useCallback((ping: GhostPing) => {
     if (!channelRef.current || !isSubscribedRef.current) return;
@@ -441,13 +465,44 @@ export function useGameRealtime(
     });
   }, []);
 
+  const broadcastMonstersUpdate = useCallback((monsters: Monster[]) => {
+    if (!channelRef.current || !isSubscribedRef.current) return;
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'monsters_update',
+      payload: { monsters },
+    });
+  }, []);
+
+  const broadcastChestTransition = useCallback(
+    (payload: {
+      currentChestIndex: number;
+      treasureLat: number;
+      treasureLng: number;
+      newMonster?: Monster;
+      monsters?: Monster[];
+    }) => {
+      if (!channelRef.current || !isSubscribedRef.current) return;
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'chest_transition',
+        payload,
+      });
+    },
+    []
+  );
+
   const broadcastFullStateSync = useCallback((state: {
     monster: Monster;
+    monsters?: Monster[];
     crates: SupplyCrate[];
     chestCountdown: number;
     holdersCount: number;
     chestPhase?: number;
     chestStep?: number;
+    currentChestIndex?: number;
+    treasureLat?: number;
+    treasureLng?: number;
     droppedItems?: DroppedItem[];
     wildPets?: WildPet[];
     playerSpeed?: PlayerSpeed;
@@ -482,6 +537,8 @@ export function useGameRealtime(
     isConnected,
     onlineUsers,
     broadcastMonsterUpdate,
+    broadcastMonstersUpdate,
+    broadcastChestTransition,
     broadcastPlayerMove,
     broadcastPlayerHit,
     broadcastMonsterDamaged,

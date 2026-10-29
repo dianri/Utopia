@@ -54,6 +54,8 @@ import {
   generateSingleWildPet,
   createAirdropCrate,
   generateInitialCrates,
+  createSequentialMonster,
+  generateNextChestLocation,
   PET_ADOPTION_RADIUS_METERS,
   MAX_PETS_PER_PLAYER,
   MAX_UNCLAIMED_LOOT,
@@ -70,7 +72,6 @@ import { TacticalHeader } from './components/HUD/TacticalHeader';
 import { WeaponWheel } from './components/HUD/WeaponWheel';
 import { RoleSkillButton } from './components/HUD/RoleSkillButton';
 import { ChestCountdown } from './components/HUD/ChestCountdown';
-import { RespawnTimer } from './components/HUD/RespawnTimer';
 import { CombatLog } from './components/HUD/CombatLog';
 import { GhostOverlay } from './components/HUD/GhostOverlay';
 import { CriticallyWoundedOverlay } from './components/HUD/CriticallyWoundedOverlay';
@@ -164,8 +165,10 @@ export const App: React.FC = () => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [myPlayer, setMyPlayer] = useState<Player | null>(null);
 
-  // MONSTRUO Y ESTADO
+  // MONSTRUO Y ESTADO (SISTEMA SECUENCIAL)
   const [monster, setMonster] = useState<Monster>({
+    id: 'monster_1',
+    name: 'Goliardus Rex',
     lat: 0,
     lng: 0,
     hp: 1200,
@@ -175,6 +178,27 @@ export const App: React.FC = () => {
     speedMps: 2.8,
     isEnraged: false,
   });
+  const [monsters, setMonsters] = useState<Monster[]>([
+    {
+      id: 'monster_1',
+      name: 'Goliardus Rex',
+      lat: 0,
+      lng: 0,
+      hp: 1200,
+      maxHp: 1200,
+      state: 'patrol',
+      targetPlayerId: null,
+      speedMps: 2.8,
+      isEnraged: false,
+    },
+  ]);
+  const monstersRef = useRef<Monster[]>(monsters);
+  monstersRef.current = monsters;
+
+  const [activeCombatMonsterId, setActiveCombatMonsterId] = useState<string | null>(null);
+  const activeCombatMonsterIdRef = useRef<string | null>(null);
+  activeCombatMonsterIdRef.current = activeCombatMonsterId;
+  const monsterAIsRef = useRef<Map<string, MonsterAIController>>(new Map());
 
   const [crates, setCrates] = useState<SupplyCrate[]>([]);
   const [wildPets, setWildPets] = useState<WildPet[]>([]);
@@ -614,6 +638,57 @@ export const App: React.FC = () => {
     {
       onMonsterUpdate: (updatedMonster) => {
         setMonster(updatedMonster);
+        setMonsters((prev) => {
+          const idx = prev.findIndex((m) => (m.id || 'default') === (updatedMonster.id || 'default'));
+          if (idx !== -1) {
+            const next = [...prev];
+            next[idx] = updatedMonster;
+            return next;
+          }
+          return [updatedMonster];
+        });
+      },
+      onMonstersUpdate: (updatedMonsters) => {
+        setMonsters(updatedMonsters);
+        if (activeCombatMonsterIdRef.current) {
+          const duelMonster = updatedMonsters.find((m) => m.id === activeCombatMonsterIdRef.current);
+          if (duelMonster) setMonster(duelMonster);
+        } else if (updatedMonsters.length > 0) {
+          setMonster(updatedMonsters[0]);
+        }
+      },
+      onChestTransition: (payload) => {
+        if (typeof payload.currentChestIndex === 'number') {
+          setRoom((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  currentChestIndex: payload.currentChestIndex,
+                  treasureLat: payload.treasureLat,
+                  treasureLng: payload.treasureLng,
+                }
+              : null
+          );
+          setChestPhase(1);
+          setChestStep(0);
+          chestPhaseRef.current = 1;
+          chestStepRef.current = 0;
+          setIsChestLockModalOpen(false);
+          isChestLockModalOpenRef.current = false;
+        }
+        if (payload.monsters && payload.monsters.length > 0) {
+          setMonsters(payload.monsters);
+        } else if (payload.newMonster) {
+          setMonsters((prev) => {
+            const exists = prev.some((m) => m.id === payload.newMonster!.id);
+            return exists ? prev : [...prev, payload.newMonster!];
+          });
+        }
+        soundEffects.playMonsterRoar();
+        addLog(
+          `¡Cofre [${payload.currentChestIndex}/3] activo! Ha emergido un nuevo monstruo acechando en el terreno.`,
+          'loot'
+        );
       },
       onPlayerMove: ({
         playerId,
@@ -707,10 +782,23 @@ export const App: React.FC = () => {
           }
         }
       },
-      onMonsterDamaged: ({ damage, fromPlayerId, currentHp }) => {
-        setMonster((prev) => ({ ...prev, hp: currentHp }));
-        if (fromPlayerId && monsterAIRef.current) {
-          monsterAIRef.current.setAggroTarget(fromPlayerId);
+      onMonsterDamaged: ({ damage, fromPlayerId, currentHp, monsterId }) => {
+        setMonsters((prev) =>
+          prev.map((m) => {
+            if ((monsterId && m.id === monsterId) || (!monsterId && (m.id === prev[0]?.id || prev.length === 1))) {
+              return { ...m, hp: currentHp };
+            }
+            return m;
+          })
+        );
+        if (!monsterId || monsterId === activeCombatMonsterIdRef.current || monsterId === monsterRef.current.id) {
+          setMonster((prev) => ({ ...prev, hp: currentHp }));
+        }
+        if (fromPlayerId) {
+          const targetMonsterAI = monsterId ? monsterAIsRef.current.get(monsterId) : monsterAIRef.current;
+          if (targetMonsterAI) {
+            targetMonsterAI.setAggroTarget(fromPlayerId);
+          }
         }
         setPlayers((prev) =>
           prev.map((p) =>
@@ -813,11 +901,15 @@ export const App: React.FC = () => {
         if (myPlayerRef.current?.isHost) {
           realtime.broadcastFullStateSync({
             monster: monsterRef.current,
+            monsters: monstersRef.current,
             crates: cratesRef.current,
             chestCountdown: chestCountdownRef.current,
             holdersCount: chestHoldersCountRef.current,
             chestPhase: chestPhaseRef.current,
             chestStep: chestStepRef.current,
+            currentChestIndex: roomRef.current?.currentChestIndex ?? 1,
+            treasureLat: roomRef.current?.treasureLat,
+            treasureLng: roomRef.current?.treasureLng,
             droppedItems: droppedItemsRef.current,
             wildPets: wildPetsRef.current,
             playerSpeed: roomRef.current?.playerSpeed,
@@ -832,6 +924,22 @@ export const App: React.FC = () => {
           }
           if (payload.monster) {
             setMonster(payload.monster);
+          }
+          if (payload.monsters && payload.monsters.length > 0) {
+            setMonsters(payload.monsters);
+          }
+          if (payload.currentChestIndex) {
+            setRoom((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    currentChestIndex: payload.currentChestIndex,
+                    ...(payload.treasureLat && payload.treasureLng
+                      ? { treasureLat: payload.treasureLat, treasureLng: payload.treasureLng }
+                      : {}),
+                  }
+                : null
+            );
           }
           if (payload.crates && payload.crates.length > 0) {
             setCrates(payload.crates);
@@ -1207,115 +1315,134 @@ export const App: React.FC = () => {
       lat: room.treasureLat || room.centerLat,
       lng: room.treasureLng || room.centerLng,
     };
+    const centerCoords: Coordinates = {
+      lat: room.centerLat,
+      lng: room.centerLng,
+    };
 
     if (!monsterAIRef.current) {
-      monsterAIRef.current = new MonsterAIController(treasureCoords);
+      monsterAIRef.current = new MonsterAIController(treasureCoords, centerCoords, room.playAreaRadius);
     } else {
       monsterAIRef.current.setTreasureLocation(treasureCoords);
+      monsterAIRef.current.setPlayArea(centerCoords, room.playAreaRadius);
     }
 
     const interval = window.setInterval(() => {
-      if (!monsterAIRef.current) return;
-
       const isContest =
         isChestInteractedGloballyRef.current ||
         isChestLockModalOpenRef.current;
 
-      const result = monsterAIRef.current.update(
-        monsterRef.current,
-        playersRef.current,
-        isContest
-      );
+      const currentMonsters = monstersRef.current.length > 0 ? monstersRef.current : [monsterRef.current];
+      const updatedMonsters: Monster[] = [];
 
-      setMonster(result.updatedMonster);
-      realtimeRef.current.broadcastMonsterUpdate(result.updatedMonster);
+      for (const m of currentMonsters) {
+        const mKey = m.id || 'monster_1';
+        let ai = monsterAIsRef.current.get(mKey);
+        if (!ai) {
+          ai = new MonsterAIController(treasureCoords, centerCoords, room.playAreaRadius);
+          monsterAIsRef.current.set(mKey, ai);
+        } else {
+          ai.setTreasureLocation(treasureCoords);
+          ai.setPlayArea(centerCoords, room.playAreaRadius);
+        }
 
-      // Si el monstruo atacó a un jugador en el mapa
-      if (result.attackedPlayerId && result.attackDamage > 0) {
-        const victim = playersRef.current.find((p) => p.id === result.attackedPlayerId);
-        if (victim) {
-          // Si el jugador local está en la arena de combate, la arena ya ejecuta su propio bucle de daño periódico
-          if (victim.id === myPlayerRef.current?.id && isCombatArenaOpenRef.current) {
-            return;
-          }
+        const result = ai.update(m, playersRef.current, isContest);
+        updatedMonsters.push(result.updatedMonster);
 
-          const isShielded = isRoleSkillActiveRef.current && victim.id === myPlayerRef.current?.id && myPlayerRef.current?.role === 'tank';
-          const damageApplied = isShielded ? Math.round(result.attackDamage * 0.5) : result.attackDamage;
-
-          // Protección secuencial de mascotas en el mapa
-          const victimPets = (victim.id === myPlayerRef.current?.id ? myPlayerRef.current?.pets : victim.pets) || [];
-          const activePetIndex = victimPets.findIndex((p) => !p.isWounded && p.hp > 0);
-
-          if (activePetIndex !== -1) {
-            const targetPet = victimPets[activePetIndex];
-            const petRemainingHp = Math.max(0, targetPet.hp - damageApplied);
-            const petIsWounded = petRemainingHp <= 0;
-            const updatedPets = victimPets.map((p, idx) =>
-              idx === activePetIndex ? { ...p, hp: petRemainingHp, isWounded: petIsWounded } : p
-            );
-
-            if (victim.id === myPlayerRef.current?.id) {
-              setMyPlayer((prev) => (prev ? { ...prev, pets: updatedPets } : null));
-              if (myPlayerRef.current) {
-                myPlayerRef.current = { ...myPlayerRef.current, pets: updatedPets };
-              }
-              soundEffects.triggerDamageHaptics();
-              soundEffects.playAlarm();
-              addLogRef.current?.(`¡El monstruo atacó a tu mascota ${targetPet.name}! (-${damageApplied} HP)`, 'combat');
-              if (petIsWounded) {
-                addLogRef.current?.(`¡${targetPet.name} ha caído herida! 💫 El escudo táctico pasa a la siguiente mascota.`, 'warning');
-              }
+        // Si el monstruo atacó a un jugador en el mapa
+        if (result.attackedPlayerId && result.attackDamage > 0) {
+          const victim = playersRef.current.find((p) => p.id === result.attackedPlayerId);
+          if (victim) {
+            // Si el jugador local está en la arena de combate, la arena ya ejecuta su propio bucle de daño periódico
+            if (victim.id === myPlayerRef.current?.id && isCombatArenaOpenRef.current) {
+              continue;
             }
 
-            setPlayers((prev) =>
-              prev.map((p) => (p.id === victim.id ? { ...p, pets: updatedPets } : p))
-            );
-            return;
-          }
-          const currentVictimHp = victim.id === myPlayerRef.current?.id && myPlayerRef.current ? myPlayerRef.current.hp : victim.hp;
-          const calculatedHp = Math.max(0, currentVictimHp - damageApplied);
-          const isWounded = calculatedHp <= 0 || calculatedHp === 1;
-          const newHp = isWounded ? 1 : calculatedHp;
-          const newStatus: PlayerStatus = isWounded ? 'critically_wounded' : (victim.status || 'active');
+            const isShielded = isRoleSkillActiveRef.current && victim.id === myPlayerRef.current?.id && myPlayerRef.current?.role === 'tank';
+            const damageApplied = isShielded ? Math.round(result.attackDamage * 0.5) : result.attackDamage;
 
-          realtimeRef.current.broadcastPlayerHit(victim.id, damageApplied, newHp);
+            // Protección secuencial de mascotas en el mapa
+            const victimPets = (victim.id === myPlayerRef.current?.id ? myPlayerRef.current?.pets : victim.pets) || [];
+            const activePetIndex = victimPets.findIndex((p) => !p.isWounded && p.hp > 0);
 
-          // Si el host es la víctima
-          if (victim.id === myPlayerRef.current?.id) {
-            setMyPlayer((prev) => (prev ? {
-              ...prev,
-              hp: newHp,
-              isAlive: true,
-              isCriticallyWounded: isWounded || prev.isCriticallyWounded,
-              status: newStatus,
-            } : null));
+            if (activePetIndex !== -1) {
+              const targetPet = victimPets[activePetIndex];
+              const petRemainingHp = Math.max(0, targetPet.hp - damageApplied);
+              const petIsWounded = petRemainingHp <= 0;
+              const updatedPets = victimPets.map((p, idx) =>
+                idx === activePetIndex ? { ...p, hp: petRemainingHp, isWounded: petIsWounded } : p
+              );
 
-            // Sincronizar simultáneamente en la lista local
-            setPlayers((prev) =>
-              prev.map((p) =>
-                p.id === victim.id
-                  ? { ...p, hp: newHp, isCriticallyWounded: isWounded || p.isCriticallyWounded, status: newStatus }
-                  : p
-              )
-            );
+              if (victim.id === myPlayerRef.current?.id) {
+                setMyPlayer((prev) => (prev ? { ...prev, pets: updatedPets } : null));
+                if (myPlayerRef.current) {
+                  myPlayerRef.current = { ...myPlayerRef.current, pets: updatedPets };
+                }
+                soundEffects.triggerDamageHaptics();
+                soundEffects.playAlarm();
+                addLogRef.current?.(`¡${m.name || 'El monstruo'} atacó a tu mascota ${targetPet.name}! (-${damageApplied} HP)`, 'combat');
+                if (petIsWounded) {
+                  addLogRef.current?.(`¡${targetPet.name} ha caído herida! 💫 El escudo táctico pasa a la siguiente mascota.`, 'warning');
+                }
+              }
 
-            soundEffects.triggerDamageHaptics();
-            soundEffects.playAlarm();
-            if (isWounded) {
-              addLogRef.current('¡ATAQUE CRÍTICO! Has quedado Herido de Muerte. ¡Corre al Hospital!', 'warning');
-            } else {
-              addLogRef.current(`¡Has recibido ${damageApplied} de daño!`, 'combat');
+              setPlayers((prev) =>
+                prev.map((p) => (p.id === victim.id ? { ...p, pets: updatedPets } : p))
+              );
+              continue;
+            }
+            const currentVictimHp = victim.id === myPlayerRef.current?.id && myPlayerRef.current ? myPlayerRef.current.hp : victim.hp;
+            const calculatedHp = Math.max(0, currentVictimHp - damageApplied);
+            const isWounded = calculatedHp <= 0 || calculatedHp === 1;
+            const newHp = isWounded ? 1 : calculatedHp;
+            const newStatus: PlayerStatus = isWounded ? 'critically_wounded' : (victim.status || 'active');
+
+            realtimeRef.current.broadcastPlayerHit(victim.id, damageApplied, newHp);
+
+            // Si el host es la víctima
+            if (victim.id === myPlayerRef.current?.id) {
+              setMyPlayer((prev) => (prev ? {
+                ...prev,
+                hp: newHp,
+                isAlive: true,
+                isCriticallyWounded: isWounded || prev.isCriticallyWounded,
+                status: newStatus,
+              } : null));
+
+              // Sincronizar simultáneamente en la lista local
+              setPlayers((prev) =>
+                prev.map((p) =>
+                  p.id === victim.id
+                    ? { ...p, hp: newHp, isCriticallyWounded: isWounded || p.isCriticallyWounded, status: newStatus }
+                    : p
+                )
+              );
+
+              soundEffects.triggerDamageHaptics();
+              soundEffects.playAlarm();
+              if (isWounded) {
+                addLogRef.current('¡ATAQUE CRÍTICO! Has quedado Herido de Muerte. ¡Corre al Hospital!', 'warning');
+              } else {
+                addLogRef.current(`¡Has recibido ${damageApplied} de daño!`, 'combat');
+              }
             }
           }
         }
+
+        if (result.justEnraged) {
+          addLogRef.current(`¡${m.name || 'EL MONSTRUO'} SE HA ENFURECIDO (FASE 2)! RUGIDO Y VELOCIDAD +40%`, 'warning');
+        }
+        // Silent respawn: sin carteles ni toasts de reaparición
       }
 
-      if (result.justEnraged) {
-        addLogRef.current('¡EL MONSTRUO SE HA ENFURECIDO (FASE 2)! RUGIDO Y VELOCIDAD +40%', 'warning');
-      }
+      setMonsters(updatedMonsters);
+      realtimeRef.current.broadcastMonstersUpdate(updatedMonsters);
 
-      if (result.justRespawned) {
-        addLogRef.current('¡El Monstruo ha resucitado en el cofre del tesoro!', 'warning');
+      const focused =
+        updatedMonsters.find((m) => m.id === activeCombatMonsterIdRef.current) || updatedMonsters[0];
+      if (focused) {
+        setMonster(focused);
+        realtimeRef.current.broadcastMonsterUpdate(focused);
       }
     }, 1000);
 
@@ -1431,13 +1558,14 @@ export const App: React.FC = () => {
 
   // ==========================================
   // ARENA DE COMBATE TÁCTICO: DETECCIÓN Y ENGANCHE EN TIEMPO REAL (< 20M)
+  // COLA ESTRICTA 1V1 Y TRANSICIÓN SECUENCIAL
   // ==========================================
   useEffect(() => {
     if (room?.status !== 'playing' || !myPlayer?.isAlive) return;
 
     const interval = setInterval(() => {
       const player = myPlayerRef.current;
-      const currentMonster = monsterRef.current;
+      const allMonsters = monstersRef.current.length > 0 ? monstersRef.current : [monsterRef.current];
 
       if (
         !player ||
@@ -1447,41 +1575,85 @@ export const App: React.FC = () => {
         !!player.insideBuildingId
       ) {
         if (isCombatArenaOpen) setIsCombatArenaOpen(false);
-        return;
-      }
-
-      if (!isMonsterAlive(currentMonster)) {
-        if (isCombatArenaOpen) setIsCombatArenaOpen(false);
+        setActiveCombatMonsterId(null);
+        activeCombatMonsterIdRef.current = null;
         return;
       }
 
       const now = Date.now();
       const inImmunity = fleeImmunityUntilRef.current > now;
 
+      if (inImmunity) {
+        if (isCombatArenaOpen) setIsCombatArenaOpen(false);
+        setActiveCombatMonsterId(null);
+        activeCombatMonsterIdRef.current = null;
+        return;
+      }
+
       const playerCoord: Coordinates = {
         lat: player.lat ?? room.centerLat,
         lng: player.lng ?? room.centerLng,
       };
 
-      const dist = getDistanceMeters(playerCoord, currentMonster);
+      // Si actualmente está en combate en la arena (1v1 estricto)
+      if (isCombatArenaOpen) {
+        const currentDuelMonster =
+          allMonsters.find((m) => m.id === activeCombatMonsterIdRef.current) || monsterRef.current;
+        const isCurrentAlive = isMonsterAlive(currentDuelMonster);
+        const distToCurrent = getDistanceMeters(playerCoord, currentDuelMonster);
 
-      // Si entra a menos de 20m y no está en período de inmunidad de huida
-      if (dist <= 20 && !inImmunity) {
-        if (!isCombatArenaOpen) {
-          setIsCombatArenaOpen(true);
-          cancelMovement();
-          // Si estaba manipulando el cofre, interrumpirlo de inmediato
-          if (isChestLockModalOpenRef.current) {
-            setIsChestLockModalOpen(false);
-            isChestLockModalOpenRef.current = false;
-            realtimeRef.current.broadcastChestInteracting(false);
-            addLog('¡El monstruo interrumpió la desencriptación del cofre! Entrando en combate táctico.', 'combat');
+        if (!isCurrentAlive) {
+          // El monstruo actual ha caído. Transición secuencial si hay otro monstruo en rango <= 20m
+          const otherLiving = allMonsters
+            .filter((m) => m.id !== currentDuelMonster.id && isMonsterAlive(m))
+            .map((m) => ({ monster: m, dist: getDistanceMeters(playerCoord, m) }))
+            .filter((item) => item.dist <= 20)
+            .sort((a, b) => a.dist - b.dist);
+
+          if (otherLiving.length > 0) {
+            const nextMonster = otherLiving[0].monster;
+            setActiveCombatMonsterId(nextMonster.id || null);
+            activeCombatMonsterIdRef.current = nextMonster.id || null;
+            setMonster(nextMonster);
+            soundEffects.playAlarm();
+            addLog(`¡Monstruo caído! Transición táctica inmediata contra ${nextMonster.name || 'siguiente amenaza'}.`, 'combat');
+          } else {
+            setIsCombatArenaOpen(false);
+            setActiveCombatMonsterId(null);
+            activeCombatMonsterIdRef.current = null;
           }
-        }
-      } else if (dist > 25 && !inImmunity) {
-        // Si el monstruo se alejó a más de 25m
-        if (isCombatArenaOpen) {
+        } else if (distToCurrent > 25) {
+          // El monstruo o el jugador se han alejado más de 25m
           setIsCombatArenaOpen(false);
+          setActiveCombatMonsterId(null);
+          activeCombatMonsterIdRef.current = null;
+        }
+        return;
+      }
+
+      // Si NO está en combate: seleccionar el monstruo vivo más cercano a <= 20m
+      const livingMonstersInRange = allMonsters
+        .filter((m) => isMonsterAlive(m))
+        .map((m) => ({ monster: m, dist: getDistanceMeters(playerCoord, m) }))
+        .filter((item) => item.dist <= 20)
+        .sort((a, b) => a.dist - b.dist);
+
+      if (livingMonstersInRange.length > 0) {
+        const targetMonster = livingMonstersInRange[0].monster;
+        setActiveCombatMonsterId(targetMonster.id || null);
+        activeCombatMonsterIdRef.current = targetMonster.id || null;
+        setMonster(targetMonster);
+        setIsCombatArenaOpen(true);
+        cancelMovement();
+
+        if (isChestLockModalOpenRef.current) {
+          setIsChestLockModalOpen(false);
+          isChestLockModalOpenRef.current = false;
+          realtimeRef.current.broadcastChestInteracting(false);
+          addLog(
+            `¡${targetMonster.name || 'El monstruo'} interrumpió la desencriptación del cofre! Entrando en combate táctico.`,
+            'combat'
+          );
         }
       }
     }, 300);
@@ -1493,11 +1665,20 @@ export const App: React.FC = () => {
   const handleArenaAttack = useCallback(
     (damage: number, newHp: number, weapon: Weapon) => {
       const now = Date.now();
-      realtimeRef.current.broadcastMonsterDamaged(damage, newHp);
+      const currentTargetId = activeCombatMonsterIdRef.current || monsterRef.current.id;
+      realtimeRef.current.broadcastMonsterDamaged(damage, newHp, currentTargetId);
       setMonster((prev) => ({ ...prev, hp: newHp }));
+      setMonsters((prev) =>
+        prev.map((m) =>
+          m.id === currentTargetId || (!currentTargetId && m === prev[0]) ? { ...m, hp: newHp } : m
+        )
+      );
 
-      if (myPlayerRef.current && monsterAIRef.current) {
-        monsterAIRef.current.setAggroTarget(myPlayerRef.current.id);
+      if (myPlayerRef.current) {
+        const ai = currentTargetId ? monsterAIsRef.current.get(currentTargetId) : monsterAIRef.current;
+        if (ai) {
+          ai.setAggroTarget(myPlayerRef.current.id);
+        }
       }
 
       setMyPlayer((prev) => {
@@ -1622,10 +1803,37 @@ export const App: React.FC = () => {
     [addLog]
   );
 
+  const handleArenaClose = useCallback(() => {
+    const playerCoord: Coordinates = {
+      lat: myPlayerRef.current?.lat ?? roomRef.current?.centerLat ?? 0,
+      lng: myPlayerRef.current?.lng ?? roomRef.current?.centerLng ?? 0,
+    };
+    const otherLiving = monstersRef.current
+      .filter((m) => m.id !== activeCombatMonsterIdRef.current && isMonsterAlive(m))
+      .map((m) => ({ monster: m, dist: getDistanceMeters(playerCoord, m) }))
+      .filter((item) => item.dist <= 20)
+      .sort((a, b) => a.dist - b.dist);
+
+    if (otherLiving.length > 0) {
+      const nextM = otherLiving[0].monster;
+      setActiveCombatMonsterId(nextM.id || null);
+      activeCombatMonsterIdRef.current = nextM.id || null;
+      setMonster(nextM);
+      soundEffects.playAlarm();
+      addLog(`¡Monstruo derrotado! Siguiente enfrentamiento inmediato: ${nextM.name || 'Enemigo'}`, 'combat');
+    } else {
+      setIsCombatArenaOpen(false);
+      setActiveCombatMonsterId(null);
+      activeCombatMonsterIdRef.current = null;
+    }
+  }, [addLog]);
+
   const handleArenaFlee = useCallback(() => {
     const immunityEnd = Date.now() + 5000;
     setFleeImmunityUntil(immunityEnd);
     fleeImmunityUntilRef.current = immunityEnd;
+    setActiveCombatMonsterId(null);
+    activeCombatMonsterIdRef.current = null;
     setIsCombatArenaOpen(false);
     soundEffects.vibrate([100, 50, 100]);
     addLog('¡HUIDA ACTIVA! Aléjate del monstruo (Sprint +30% durante 5 segundos)', 'warning');
@@ -1925,6 +2133,95 @@ export const App: React.FC = () => {
       }
     }
   }, [room?.id, addLog]);
+
+  const handleChestCompletion = useCallback(async () => {
+    const currentRoom = roomRef.current;
+    if (!currentRoom) return;
+
+    const currentChestIdx = currentRoom.currentChestIndex ?? 1;
+
+    if (currentChestIdx < 3) {
+      // Avanzar al siguiente cofre secuencial
+      const nextChestIdx = currentChestIdx + 1;
+      const centerCoord: Coordinates = { lat: currentRoom.centerLat, lng: currentRoom.centerLng };
+      const prevChestCoord: Coordinates = { lat: currentRoom.treasureLat, lng: currentRoom.treasureLng };
+
+      const newTreasureLoc = generateNextChestLocation(centerCoord, currentRoom.playAreaRadius, prevChestCoord);
+      const newMonster = createSequentialMonster(nextChestIdx, centerCoord, currentRoom.playAreaRadius);
+
+      const updatedMonsters = [...monstersRef.current, newMonster];
+      setMonsters(updatedMonsters);
+
+      // Resetear progreso de cerrojos del nuevo cofre
+      setChestPhase(1);
+      setChestStep(0);
+      chestPhaseRef.current = 1;
+      chestStepRef.current = 0;
+      setIsChestLockModalOpen(false);
+      isChestLockModalOpenRef.current = false;
+      setIsChestInteractedGlobally(false);
+
+      // Actualizar estado de sala
+      setRoom((prev) =>
+        prev
+          ? {
+              ...prev,
+              currentChestIndex: nextChestIdx,
+              treasureLat: newTreasureLoc.lat,
+              treasureLng: newTreasureLoc.lng,
+              chestPhase: 1,
+              chestStep: 0,
+              chestUnlockedSteps: 0,
+              chestCurrentPhase: 1,
+              chestProgressPct: 0,
+            }
+          : null
+      );
+
+      // Persistir en Supabase
+      try {
+        localStorage.setItem(`utopia_chest_progress_${currentRoom.id}`, JSON.stringify({ phase: 1, step: 0 }));
+      } catch {
+        // Ignorar
+      }
+
+      try {
+        await (supabase.from('games') as any)
+          .update({
+            treasure_lat: newTreasureLoc.lat,
+            treasure_lng: newTreasureLoc.lng,
+            chest_unlocked_steps: 0,
+            chest_current_phase: 1,
+            chest_progress_pct: 0,
+            settings: {
+              ...((currentRoom as any).settings || {}),
+              current_chest_index: nextChestIdx,
+            },
+          })
+          .eq('id', currentRoom.id);
+      } catch (err) {
+        console.warn('Error al actualizar siguiente cofre en DB:', err);
+      }
+
+      // Transmitir a la escuadra
+      realtimeRef.current.broadcastChestTransition({
+        currentChestIndex: nextChestIdx,
+        treasureLat: newTreasureLoc.lat,
+        treasureLng: newTreasureLoc.lng,
+        newMonster,
+        monsters: updatedMonsters,
+      });
+
+      soundEffects.playLevelUp();
+      addLog(
+        `¡Cofre [${currentChestIdx}/3] descifrado! Ha emergido el cofre [${nextChestIdx}/3] y ${newMonster.name || 'un nuevo monstruo'} acecha en el área.`,
+        'loot'
+      );
+    } else {
+      // Cofre 3 descifrado -> ¡Victoria Definitiva de la partida!
+      await handleChestVictory();
+    }
+  }, [handleChestVictory, addLog]);
 
   // ==========================================
   // ESTADO DE PARTIDA CONTINUO (SIN DERROTA GLOBAL)
@@ -2822,6 +3119,7 @@ export const App: React.FC = () => {
         active_crates: initialCrates,
         active_wild_pets: initialPets,
         active_dropped_items: [],
+        current_chest_index: 1,
       },
       play_area_radius: config.radiusMeters,
       center_lat: config.center.lat,
@@ -2919,6 +3217,7 @@ export const App: React.FC = () => {
       centerLng: gameData.center_lng,
       treasureLat: gameData.treasure_lat,
       treasureLng: gameData.treasure_lng,
+      currentChestIndex: gameData?.settings?.current_chest_index ?? 1,
       chestPhase: gameData.chest_current_phase ?? 1,
       chestStep: (gameData.chest_unlocked_steps ?? 0) % 2,
       chestUnlockedSteps: gameData.chest_unlocked_steps ?? 0,
@@ -2952,17 +3251,10 @@ export const App: React.FC = () => {
       equippedItemId: hostBestWeapon.id,
     };
 
-    // Inicializar ubicación del monstruo en el cofre del tesoro
-    setMonster({
-      lat: treasureLoc.lat,
-      lng: treasureLoc.lng,
-      hp: 1200,
-      maxHp: 1200,
-      state: 'patrol',
-      targetPlayerId: null,
-      speedMps: 2.8,
-      isEnraged: false,
-    });
+    // Inicializar monstruo 1 en el cofre del tesoro
+    const initMonster = createSequentialMonster(1, treasureLoc, config.radiusMeters);
+    setMonster(initMonster);
+    setMonsters([initMonster]);
 
     // Resetear explícitamente el progreso del cofre a 0 cerrojos y Fase 1 al crear una sala nueva
     setChestPhase(1);
@@ -3169,6 +3461,7 @@ export const App: React.FC = () => {
       centerLng: gameData.center_lng,
       treasureLat: gameData.treasure_lat,
       treasureLng: gameData.treasure_lng,
+      currentChestIndex: gameData?.settings?.current_chest_index ?? 1,
       chestPhase: gameData.chest_current_phase ?? 1,
       chestStep: (gameData.chest_unlocked_steps ?? 0) % 2,
       chestUnlockedSteps: gameData.chest_unlocked_steps ?? 0,
@@ -3265,17 +3558,20 @@ export const App: React.FC = () => {
     localStorage.setItem('utopia_active_room', gameData.code);
     setSavedActiveRoomCode(gameData.code);
 
-    // Sincronizar posición del monstruo en el cofre del tesoro de la sala como base
-    setMonster({
-      lat: gameData.treasure_lat,
-      lng: gameData.treasure_lng,
-      hp: 1200,
-      maxHp: 1200,
-      state: 'patrol',
-      targetPlayerId: null,
-      speedMps: 2.8,
-      isEnraged: false,
-    });
+    // Sincronizar monstruos según la fase de cofre actual
+    const currentChestIdx = gameData.settings?.current_chest_index ?? 1;
+    const joinedMonsters: Monster[] = [];
+    for (let cIdx = 1; cIdx <= currentChestIdx; cIdx++) {
+      joinedMonsters.push(
+        createSequentialMonster(
+          cIdx,
+          { lat: gameData.center_lat, lng: gameData.center_lng },
+          gameData.play_area_radius
+        )
+      );
+    }
+    setMonster(joinedMonsters[0]);
+    setMonsters(joinedMonsters);
 
     // Cargar todos los compañeros de escuadra registrados en la sala
     const { data: teammatesData } = await (supabase
@@ -3481,6 +3777,7 @@ export const App: React.FC = () => {
           myPlayer={myPlayer}
           players={players}
           monster={monster}
+          monsters={monsters}
           crates={crates}
           ghostPings={ghostPings}
           movementMode={room.movementMode}
@@ -3490,7 +3787,7 @@ export const App: React.FC = () => {
           droppedItems={droppedItems}
           wildPets={wildPets}
           inCombat={isCombatArenaOpen}
-          isChestOpened={(chestPhase >= 3 && chestStep >= 2) || room.status === 'victory'}
+          isChestOpened={room.status === 'victory'}
           isVictory={room.status === 'victory'}
           onMapClick={handleMapClick}
           onPickDroppedItem={handlePickDroppedItem}
@@ -3764,8 +4061,6 @@ export const App: React.FC = () => {
                 </span>
               </div>
             )}
-
-            <RespawnTimer secondsRemaining={monster.respawnTimeRemaining} />
           </div>
 
           {/* WIDGET LATERAL / MICRO-PÍLDORA TÁCTICA DE PROGRESO DEL COFRE (Desacoplado del centro) */}
@@ -3773,6 +4068,8 @@ export const App: React.FC = () => {
             <ChestCountdown
               currentPhase={chestPhase}
               currentStep={chestStep}
+              currentChestIndex={room.currentChestIndex ?? 1}
+              totalChests={3}
               isInChestZone={
                 getDistanceMeters(
                   { lat: myPlayer.lat ?? room.centerLat, lng: myPlayer.lng ?? room.centerLng },
@@ -3930,7 +4227,7 @@ export const App: React.FC = () => {
           }}
           onAddLog={addLog}
           onFlee={handleArenaFlee}
-          onClose={() => setIsCombatArenaOpen(false)}
+          onClose={handleArenaClose}
         />
       )}
 
@@ -3956,10 +4253,12 @@ export const App: React.FC = () => {
           isOpen={isChestLockModalOpen}
           currentPhase={chestPhase}
           currentStep={chestStep}
+          currentChestIndex={room.currentChestIndex ?? 1}
+          totalChests={3}
           distToMonster={distToMonster}
           isMonsterAlive={isMonsterAlive(monster)}
           onStepSuccess={handleChestStepSuccess}
-          onVictory={handleChestVictory}
+          onVictory={handleChestCompletion}
           onClose={handleCloseChestModal}
         />
       )}

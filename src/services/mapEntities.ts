@@ -1,5 +1,5 @@
-import type { Pet, PetType, WildPet, Coordinates, SupplyCrate, CrateType, Weapon } from '../types/game';
-import { getRandomPointInCircle } from './geoUtils';
+import type { Pet, PetType, WildPet, Coordinates, SupplyCrate, CrateType, Weapon, Monster } from '../types/game';
+import { getRandomPointInCircle, getDistanceMeters } from './geoUtils';
 import { WEAPON_REGISTRY } from './combatEngine';
 
 /**
@@ -252,4 +252,88 @@ export function generateInitialCrates(
     });
   }
   return crates;
+}
+
+/**
+ * Configuraciones de monstruos para cada fase secuencial de cofres
+ */
+export interface SequentialMonsterConfig {
+  id: string;
+  name: string;
+  maxHp: number;
+  speedMps: number;
+}
+
+export const SEQUENTIAL_MONSTER_CONFIGS: SequentialMonsterConfig[] = [
+  {
+    id: 'monster_1',
+    name: 'Goliardus Rex',
+    maxHp: 1200,
+    speedMps: 2.8,
+  },
+  {
+    id: 'monster_2',
+    name: 'Devorador Alfa',
+    maxHp: 1400,
+    speedMps: 3.2,
+  },
+  {
+    id: 'monster_3',
+    name: 'Coloso de Sombra',
+    maxHp: 1600,
+    speedMps: 3.6,
+  },
+];
+
+/**
+ * Genera el monstruo asociado a un cofre secuencial (1, 2 o 3)
+ */
+export function createSequentialMonster(
+  chestIndex: number,
+  center: Coordinates,
+  playAreaRadius: number
+): Monster {
+  const safeIndex = Math.min(Math.max(chestIndex - 1, 0), SEQUENTIAL_MONSTER_CONFIGS.length - 1);
+  const config = SEQUENTIAL_MONSTER_CONFIGS[safeIndex];
+  const spawnPoint = getRandomPointInCircle(center, playAreaRadius * 0.75);
+
+  return {
+    id: config.id,
+    name: config.name,
+    lat: spawnPoint.lat,
+    lng: spawnPoint.lng,
+    hp: config.maxHp,
+    maxHp: config.maxHp,
+    state: 'patrol',
+    targetPlayerId: null,
+    speedMps: config.speedMps,
+    isEnraged: false,
+  };
+}
+
+/**
+ * Genera una nueva ubicación válida dentro del área jugable para el siguiente cofre
+ * garantizando una distancia mínima con respecto a la ubicación del cofre anterior
+ */
+export function generateNextChestLocation(
+  center: Coordinates,
+  playAreaRadius: number,
+  previousLocation?: Coordinates
+): Coordinates {
+  let attempts = 0;
+  let bestPoint = getRandomPointInCircle(center, playAreaRadius * 0.7);
+  const minSeparation = Math.min(playAreaRadius * 0.4, 40);
+
+  if (previousLocation) {
+    while (attempts < 10) {
+      const candidate = getRandomPointInCircle(center, playAreaRadius * 0.7);
+      if (getDistanceMeters(candidate, previousLocation) >= minSeparation) {
+        return candidate;
+      }
+      bestPoint = candidate;
+      attempts++;
+    }
+  }
+
+  return bestPoint;
 }

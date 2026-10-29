@@ -501,6 +501,28 @@ class SoundEffectsService {
   }
 
   /**
+   * Arpegio ascendente triunfal al avanzar de cofre / nivel
+   */
+  public playLevelUp() {
+    this.vibrate([80, 50, 120]);
+    if (this.stealthMode || this.isMuted) return;
+    const ctx = this.initContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [523.25, 659.25, 783.99, 987.77].forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+      gain.gain.setValueAtTime(0.2, now + idx * 0.1);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.1 + 0.25);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.1);
+      osc.stop(now + idx * 0.1 + 0.25);
+    });
+  }
+
+  /**
    * Latido médico / bio-regenerativo en el Hospital de Campaña
    */
   public playHeartbeat() {

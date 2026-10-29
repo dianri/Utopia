@@ -54,6 +54,7 @@ interface GameMapProps {
   myPlayer: Player;
   players: Player[];
   monster: Monster;
+  monsters?: Monster[];
   crates: SupplyCrate[];
   ghostPings: GhostPing[];
   movementMode: MovementMode;
@@ -78,6 +79,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   myPlayer,
   players,
   monster,
+  monsters,
   crates,
   ghostPings,
   movementMode,
@@ -102,7 +104,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
   // Marcadores HTML persistentes en refs para animación a 60 FPS sin re-renderizar React
   const playerMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
-  const monsterMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const monsterMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const chestMarkerRef = useRef<maplibregl.Marker | null>(null);
   const crateMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const pingMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
@@ -689,10 +691,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     mapRef.current = map;
 
     return () => {
-      if (monsterMarkerRef.current) {
-        monsterMarkerRef.current.remove();
-        monsterMarkerRef.current = null;
-      }
+      monsterMarkersRef.current.forEach((m) => m.remove());
+      monsterMarkersRef.current.clear();
       if (chestMarkerRef.current) {
         chestMarkerRef.current.remove();
         chestMarkerRef.current = null;
@@ -1290,58 +1290,75 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   }, [droppedItems, wildPets, isMeWounded, mapLoaded, styleVersion]);
 
   // ==========================================
-  // 7. MARCADOR DEL MONSTRUO (Anclaje nativo MapLibre GL y niebla de guerra)
+  // 7. MARCADORES DE MONSTRUOS (Anclaje nativo MapLibre GL y niebla de guerra)
   // ==========================================
   const myCoords = { lat: myPlayer.lat ?? center.lat, lng: myPlayer.lng ?? center.lng };
-  const distToMonster = getDistanceMeters(myCoords, monster);
   const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
   const visionRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
-  const isMonsterVisible =
-    (distToMonster <= visionRadius || isRadarActive) &&
-    monster.state !== 'dead' &&
-    monster.hp > 0;
+  const activeMonstersList = monsters && monsters.length > 0 ? monsters : [monster];
 
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    // Crear el elemento DOM del marcador una sola vez
-    if (!monsterMarkerRef.current) {
-      const el = document.createElement('div');
-      el.className = 'monster-map-marker select-none pointer-events-none';
-      el.innerHTML = `
-        <div class="relative flex items-center justify-center pointer-events-none">
-          <div class="w-12 h-12 bg-red-600/30 rounded-full animate-ping absolute"></div>
-          <div class="w-10 h-10 bg-red-950 border-2 border-red-500 rounded-full flex items-center justify-center shadow-lg shadow-red-500/50">
-            <span class="text-xl">👹</span>
-          </div>
-          <div class="absolute -top-4 w-14 bg-black/80 rounded h-1.5 overflow-hidden border border-red-500/40">
-            <div id="monster-hp-bar" class="bg-red-500 h-full transition-all duration-300" style="width: 100%"></div>
-          </div>
-        </div>
-      `;
+    const currentMonsterIds = new Set<string>();
 
-      monsterMarkerRef.current = new maplibregl.Marker({
-        element: el,
-        anchor: 'center',
-      })
-        .setLngLat([monster.lng, monster.lat])
-        .addTo(map);
-    } else {
-      // Actualizar posición de forma fluida sin recrear el DOM
-      monsterMarkerRef.current.setLngLat([monster.lng, monster.lat]);
-      const hpBar = document.getElementById('monster-hp-bar');
-      if (hpBar) {
-        hpBar.style.width = `${Math.max(0, (monster.hp / monster.maxHp) * 100)}%`;
+    activeMonstersList.forEach((m, idx) => {
+      const monsterKey = m.id || `monster_${idx}`;
+      currentMonsterIds.add(monsterKey);
+
+      const distToMonster = getDistanceMeters(myCoords, m);
+      const isVisible =
+        (distToMonster <= visionRadius || isRadarActive) &&
+        m.state !== 'dead' &&
+        m.hp > 0;
+
+      let marker = monsterMarkersRef.current.get(monsterKey);
+      if (!marker) {
+        const el = document.createElement('div');
+        el.className = 'monster-map-marker select-none pointer-events-none';
+        el.innerHTML = `
+          <div class="relative flex items-center justify-center pointer-events-none">
+            <div class="w-12 h-12 bg-red-600/30 rounded-full animate-ping absolute"></div>
+            <div class="w-10 h-10 bg-red-950 border-2 border-red-500 rounded-full flex items-center justify-center shadow-lg shadow-red-500/50">
+              <span class="text-xl">👹</span>
+            </div>
+            <div class="absolute -top-4 w-14 bg-black/80 rounded h-1.5 overflow-hidden border border-red-500/40">
+              <div id="monster-hp-bar-${monsterKey}" class="bg-red-500 h-full transition-all duration-300" style="width: 100%"></div>
+            </div>
+          </div>
+        `;
+
+        marker = new maplibregl.Marker({
+          element: el,
+          anchor: 'center',
+        })
+          .setLngLat([m.lng, m.lat])
+          .addTo(map);
+
+        monsterMarkersRef.current.set(monsterKey, marker);
+      } else {
+        marker.setLngLat([m.lng, m.lat]);
+        const hpBar = document.getElementById(`monster-hp-bar-${monsterKey}`);
+        if (hpBar) {
+          hpBar.style.width = `${Math.max(0, (m.hp / m.maxHp) * 100)}%`;
+        }
       }
-    }
 
-    // Visibilidad condicionada a la niebla de guerra y estado de herido de muerte
-    const element = monsterMarkerRef.current.getElement();
-    if (element) {
-      element.style.display = (!isMeWounded && isMonsterVisible) ? 'block' : 'none';
-    }
-  }, [monster.lat, monster.lng, monster.hp, monster.maxHp, isMonsterVisible, isMeWounded]);
+      const el = marker.getElement();
+      if (el) {
+        el.style.display = !isMeWounded && isVisible ? 'block' : 'none';
+      }
+    });
+
+    // Limpiar marcadores de monstruos que ya no estén presentes
+    monsterMarkersRef.current.forEach((marker, id) => {
+      if (!currentMonsterIds.has(id)) {
+        marker.remove();
+        monsterMarkersRef.current.delete(id);
+      }
+    });
+  }, [activeMonstersList, isMeWounded, visionRadius, isRadarActive, myCoords.lat, myCoords.lng]);
 
   // ==========================================
   // 8. MARCADORES DE JUGADORES (Direct DOM update sin lag)
@@ -1726,12 +1743,17 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       }
     });
 
-    if (monsterMarkerRef.current) {
-      const el = monsterMarkerRef.current.getElement();
+    monsterMarkersRef.current.forEach((marker, id) => {
+      const el = marker.getElement();
       if (el) {
-        el.style.display = !isMeWounded && isMonsterVisible ? 'block' : 'none';
+        const targetM = activeMonstersList.find((m, idx) => (m.id || `monster_${idx}`) === id);
+        if (targetM) {
+          const dist = getDistanceMeters(myCoords, targetM);
+          const isVisible = (dist <= visionRadius || isRadarActive) && targetM.state !== 'dead' && targetM.hp > 0;
+          el.style.display = !isMeWounded && isVisible ? 'block' : 'none';
+        }
       }
-    }
+    });
   }, [
     isMeWounded,
     myPlayer.lat,
@@ -1740,7 +1762,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     structures,
     center.lat,
     center.lng,
-    isMonsterVisible,
+    isRadarActive,
+    monsters,
     styleVersion,
   ]);
 
