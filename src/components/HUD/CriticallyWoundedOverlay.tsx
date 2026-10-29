@@ -1,5 +1,5 @@
 import React from 'react';
-import { Navigation, AlertTriangle } from 'lucide-react';
+import { Navigation } from 'lucide-react';
 import type { Coordinates, MapStructure } from '../../types/game';
 import { getDistanceMeters, getBearing } from '../../services/geoUtils';
 
@@ -12,11 +12,11 @@ export const CriticallyWoundedOverlay: React.FC<CriticallyWoundedOverlayProps> =
   playerCoord,
   hospital,
 }) => {
-  const distToHospital = hospital
+  const hospitalDistance = hospital
     ? Math.round(getDistanceMeters(playerCoord, { lat: hospital.lat, lng: hospital.lng }))
     : null;
 
-  const bearingToHospital = hospital
+  const hospitalBearing = hospital
     ? Math.round(getBearing(playerCoord, { lat: hospital.lat, lng: hospital.lng }))
     : 0;
 
@@ -25,41 +25,40 @@ export const CriticallyWoundedOverlay: React.FC<CriticallyWoundedOverlayProps> =
       {/* 1. VIÑETA ROJA PULSANTE EN LOS BORDES DE LA PANTALLA */}
       <div className="fixed inset-0 z-40 pointer-events-none border-[10px] sm:border-[16px] border-red-600/70 shadow-[inset_0_0_90px_rgba(220,38,38,0.65)] animate-pulse" />
 
-      {/* 2. ALERTA CRÍTICA Y GUÍA DE EMERGENCIA HACIA EL HOSPITAL */}
-      <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none w-full max-w-sm px-4">
-        <div className="bg-red-950/95 border-2 border-red-500 rounded-2xl p-3.5 shadow-2xl shadow-red-900/80 backdrop-blur-md flex flex-col gap-2 animate-bounce">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-red-600/40 border border-red-400 flex items-center justify-center text-xl shrink-0">
-              <AlertTriangle className="w-6 h-6 text-red-300 animate-pulse" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <span className="block text-xs font-mono font-black text-red-300 uppercase tracking-wider">
+      {/* 2. PÍLDORA TÁCTICA COMPACTA: ALERTA CRÍTICA Y TELEMETRÍA AL HOSPITAL */}
+      <div className="fixed top-14 left-4 right-4 z-20 mx-auto max-w-md pointer-events-none">
+        <div className="flex items-center justify-between gap-2.5 rounded-lg border border-red-500/70 bg-slate-950/90 px-3 py-1.5 shadow-[0_0_15px_rgba(239,68,68,0.5)] backdrop-blur-md pointer-events-auto">
+          {/* 1. Indicador Crítico */}
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-black text-white animate-pulse">
+              !
+            </span>
+            <div className="flex flex-col min-w-0">
+              <span className="text-[11px] font-black tracking-wider text-red-400 uppercase leading-tight truncate font-mono">
                 ¡HERIDO DE MUERTE!
               </span>
-              <span className="block text-[11px] font-mono text-red-100 font-bold leading-tight">
-                Ve al Hospital de Campaña para salvarte
+              <span className="text-[9px] font-medium text-red-200/80 leading-tight truncate font-mono">
+                Dirígete al Hospital de Campaña
               </span>
             </div>
           </div>
 
-          {/* BRÚJULA DIRECCIONAL Y DISTANCIA AL HOSPITAL */}
-          {hospital && distToHospital !== null && (
-            <div className="flex items-center justify-between bg-black/60 border border-red-500/50 rounded-xl px-3 py-2 mt-1">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">🏥</span>
-                <span className="text-xs font-mono font-bold text-red-200">
-                  HOSPITAL: <span className="text-white font-black">{distToHospital}m</span>
-                </span>
+          {/* 2. Datos de Telemetría al Hospital (Distancia y Rumbo) */}
+          {hospitalDistance !== null && (
+            <div className="flex shrink-0 items-center gap-2 border-l border-red-500/30 pl-2 text-[11px] font-bold text-red-300 font-mono">
+              <div className="flex items-center gap-1">
+                <span>🏥</span>
+                <span>{hospitalDistance}m</span>
               </div>
-              <div className="flex items-center gap-1.5 bg-red-900/50 border border-red-400 px-2 py-1 rounded-lg">
-                <Navigation
-                  className="w-4 h-4 text-red-300"
-                  style={{ transform: `rotate(${bearingToHospital}deg)` }}
-                />
-                <span className="text-[10px] font-mono font-black text-white">
-                  {bearingToHospital}°
+              {hospitalBearing !== undefined && (
+                <span className="flex items-center gap-1 rounded bg-red-950/80 px-1.5 py-0.5 text-[10px] text-red-400 border border-red-500/40">
+                  <Navigation
+                    className="w-3 h-3 text-red-400 shrink-0"
+                    style={{ transform: `rotate(${hospitalBearing}deg)` }}
+                  />
+                  <span>{hospitalBearing}°</span>
                 </span>
-              </div>
+              )}
             </div>
           )}
         </div>
