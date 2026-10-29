@@ -2412,12 +2412,6 @@ export const App: React.FC = () => {
       lng: player.lng ?? currentRoom.centerLng,
     };
 
-    if (lastDecryptedChestLocationRef.current) {
-      const distToOldChest = getDistanceMeters(pCoord, lastDecryptedChestLocationRef.current);
-      if (distToOldChest <= 25) return;
-      lastDecryptedChestLocationRef.current = null;
-    }
-
     const treasureCoord = {
       lat: chestLat,
       lng: chestLng,
@@ -2425,9 +2419,16 @@ export const App: React.FC = () => {
     const distToChest = getDistanceMeters(pCoord, treasureCoord);
 
     if (distToChest > 15) {
+      lastDecryptedChestLocationRef.current = null;
       handleMapClickRef.current?.(treasureCoord);
       addLog('Desplazándose hacia las coordenadas del cofre del tesoro...', 'info');
       return;
+    }
+
+    if (lastDecryptedChestLocationRef.current) {
+      const distToOldChest = getDistanceMeters(pCoord, lastDecryptedChestLocationRef.current);
+      if (distToOldChest <= 25) return;
+      lastDecryptedChestLocationRef.current = null;
     }
 
     if (!hasTriggeredChestOpenRef.current || !isChestLockModalOpenRef.current) {

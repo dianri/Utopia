@@ -834,9 +834,56 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // ==========================================
   // 5. MARCADOR DEL COFRE DEL TESORO
   // ==========================================
+  const activeChestCoordsRef = useRef<Coordinates>(treasureLocation);
+  activeChestCoordsRef.current = treasureLocation;
+
+  useEffect(() => {
+    if (treasureLocation?.lat && treasureLocation?.lng) {
+      activeChestCoordsRef.current = {
+        lat: treasureLocation.lat,
+        lng: treasureLocation.lng,
+      };
+    }
+  }, [treasureLocation?.lat, treasureLocation?.lng]);
+
+  const handleChestMarkerClick = useCallback(
+    (e: MouseEvent) => {
+      e.stopPropagation();
+      const targetCoords = activeChestCoordsRef.current;
+      if (!targetCoords || !targetCoords.lat || !targetCoords.lng) return;
+
+      const myPos = {
+        lat: myPlayerRef.current?.lat ?? center.lat,
+        lng: myPlayerRef.current?.lng ?? center.lng,
+      };
+      const currentDist = getDistanceMeters(myPos, targetCoords);
+
+      // Si ya está a rango (<= 15m), abrir directamente el modal
+      if (currentDist <= 15) {
+        hasTriggeredChestInMapRef.current = true;
+        onOpenChestRef.current?.();
+        return;
+      }
+
+      // Si está lejos, iniciar el desplazamiento hacia la coordenada ACTUAL (Cofre 3)
+      onMapClickRef.current?.(targetCoords);
+    },
+    [center.lat, center.lng]
+  );
+  const handleChestMarkerClickRef = useRef(handleChestMarkerClick);
+  handleChestMarkerClickRef.current = handleChestMarkerClick;
+
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+
+    if (!treasureLocation.lat || !treasureLocation.lng) {
+      if (chestMarkerRef.current) {
+        chestMarkerRef.current.remove();
+        chestMarkerRef.current = null;
+      }
+      return;
+    }
 
     const isOpened = isChestOpened || isVictory;
 
@@ -870,21 +917,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.style.display = 'none';
       }
       el.innerHTML = chestHtml;
-
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const myPos = {
-          lat: myPlayerRef.current?.lat ?? center.lat,
-          lng: myPlayerRef.current?.lng ?? center.lng,
-        };
-        const dist = getDistanceMeters(myPos, treasureLocation);
-        if (dist <= 25) {
-          hasTriggeredChestInMapRef.current = true;
-          onOpenChestRef.current?.();
-        } else {
-          onMapClickRef.current?.(treasureLocation);
-        }
-      });
+      el.onclick = (e) => handleChestMarkerClickRef.current(e);
 
       chestMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
         .setLngLat([treasureLocation.lng, treasureLocation.lat])
@@ -895,6 +928,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (el) {
         el.style.display = isMeWounded ? 'none' : 'flex';
         el.innerHTML = chestHtml;
+        el.onclick = (e) => handleChestMarkerClickRef.current(e);
       }
     }
   }, [treasureLocation.lat, treasureLocation.lng, isMeWounded, isChestOpened, isVictory]);
