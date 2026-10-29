@@ -290,13 +290,13 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
         setIsVictorious(true);
         setTimeout(() => {
           setFeedback('idle');
-          if (onClose) {
-            onClose();
-          }
           if (onChestDecrypted) {
             onChestDecrypted();
           } else if (onVictory) {
             onVictory();
+          }
+          if (onClose) {
+            onClose();
           }
         }, 700);
       }
