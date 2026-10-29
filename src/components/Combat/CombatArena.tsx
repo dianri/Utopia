@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Player, Monster, Weapon, Pet } from '../../types/game';
 import { DEFAULT_WEAPONS_BY_ROLE, getModifiedWeaponStats } from '../../services/combatEngine';
 import { getMonsterVisualConfig } from '../../services/mapEntities';
+import { SavageBeastIcon } from '../Icons/SavageBeastIcon';
 import { soundEffects } from '../../services/soundEffects';
 import { ShieldAlert, Crosshair, Zap, Flame, Target, Footprints, Shield, Skull, Swords, AlertTriangle, Heart } from 'lucide-react';
 
@@ -386,7 +387,11 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
       <div className="w-full max-w-md flex items-center justify-between z-20 pt-1">
         <div className="flex items-center gap-2">
           <div className={`px-2.5 py-1 rounded-md ${visual.arenaHeaderBadgeBg} border flex items-center gap-1.5 animate-pulse`}>
-            <span className="text-sm">{visual.icon}</span>
+            {visual.type === 'stalker' ? (
+              <SavageBeastIcon className="w-4 h-4 text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]" />
+            ) : (
+              <span className="text-sm">{visual.icon}</span>
+            )}
             <span className="text-xs font-mono font-black tracking-wider uppercase">
               DUELO: {visual.label}
             </span>
@@ -442,7 +447,11 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
           {/* Cabecera de la carta: Nombre y Tipo */}
           <div className={`px-4 py-2.5 ${visual.cardHeaderBg} border-b ${visual.cardHeaderBorder} flex items-center justify-between`}>
             <div className="flex items-center gap-2">
-              <span className="text-base">{visual.icon}</span>
+              {visual.type === 'stalker' ? (
+                <SavageBeastIcon className="w-5 h-5 text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]" />
+              ) : (
+                <span className="text-base">{visual.icon}</span>
+              )}
               <span className="font-mono font-black text-sm text-white uppercase tracking-wider">
                 {monster.name || visual.defaultName}
               </span>
@@ -462,11 +471,19 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
                 cardHitAnim ? `scale-110 ${visual.avatarBg}` : visual.avatarBg
               }`}
             >
-              <span className={`text-6xl sm:text-7xl select-none transition-all duration-300 ${
-                monster.isEnraged ? 'scale-110 drop-shadow-[0_0_15px_rgba(249,115,22,0.8)] animate-pulse' : 'drop-shadow-lg'
-              }`}>
-                {visual.icon}
-              </span>
+              {visual.type === 'stalker' ? (
+                <SavageBeastIcon
+                  className={`w-16 h-16 sm:w-20 sm:h-20 text-red-500 drop-shadow-[0_0_15px_rgba(239,68,68,0.95)] select-none transition-all duration-300 ${
+                    monster.isEnraged ? 'scale-110 drop-shadow-[0_0_25px_rgba(249,115,22,1)] animate-pulse' : ''
+                  }`}
+                />
+              ) : (
+                <span className={`text-6xl sm:text-7xl select-none transition-all duration-300 ${
+                  monster.isEnraged ? 'scale-110 drop-shadow-[0_0_15px_rgba(249,115,22,0.8)] animate-pulse' : 'drop-shadow-lg'
+                }`}>
+                  {visual.icon}
+                </span>
+              )}
 
               {/* Ojos brillantes / destello biomecánico */}
               <div className={`absolute top-8 left-8 w-2.5 h-2.5 rounded-full ${visual.eyeColor} animate-ping`} />
