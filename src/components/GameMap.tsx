@@ -128,8 +128,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const followPlayerRef = useRef<boolean>(true);
   followPlayerRef.current = followPlayer;
 
-  // Estado local para alternar entre vista táctica oscura y satélite/terreno real
-  const [isSatelliteView, setIsSatelliteView] = useState<boolean>(false);
+  // Estado local para alternar entre vista táctica oscura y satélite/terreno real (Satélite por defecto)
+  const [isSatelliteView, setIsSatelliteView] = useState<boolean>(true);
   const [styleVersion, setStyleVersion] = useState<number>(0);
   const isStyleChangingRef = useRef<boolean>(false);
 
@@ -140,11 +140,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const isMeWounded = myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded';
 
   // ==========================================
-  // INYECCIÓN ROBUSTA DE CAPAS Y FUENTES GEOJSON
+  // INYECCIÓN ROBUSTA DE CAPAS TÁCTICAS Y FUENTES GEOJSON
   // ==========================================
-  const setupGameMapLayers = useCallback(
+  const injectTacticalOverlays = useCallback(
     (map: maplibregl.Map) => {
-      // 1. Capa estática: Área de juego
+      // 1. Capa estática: Área de juego (Perímetro exterior de alto contraste sobre fotografía aérea)
       if (!map.getSource('play-area')) {
         const playAreaGeo = createGeoJsonCircle(center, playAreaRadius);
         map.addSource('play-area', {
@@ -158,7 +158,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           source: 'play-area',
           paint: {
             'fill-color': '#00f0ff',
-            'fill-opacity': 0.05,
+            'fill-opacity': 0.08,
           },
         });
 
@@ -167,9 +167,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           type: 'line',
           source: 'play-area',
           paint: {
-            'line-color': '#00f0ff',
-            'line-width': 2.5,
-            'line-opacity': 0.7,
+            'line-color': '#00f2fe',
+            'line-width': 2.8,
+            'line-opacity': 0.9,
             'line-dasharray': [3, 2],
           },
         });
@@ -189,7 +189,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           source: 'treasure-zone',
           paint: {
             'fill-color': '#ffaa00',
-            'fill-opacity': 0.22,
+            'fill-opacity': 0.28,
           },
         });
 
@@ -198,9 +198,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           type: 'line',
           source: 'treasure-zone',
           paint: {
-            'line-color': '#ffaa00',
-            'line-width': 2,
-            'line-opacity': 0.9,
+            'line-color': '#ffd000',
+            'line-width': 2.5,
+            'line-opacity': 1,
           },
         });
       }
@@ -223,9 +223,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           source: 'player-vision',
           paint: {
             'line-color': '#00ff88',
-            'line-width': 1.5,
-            'line-opacity': 0.4,
-            'line-dasharray': [2, 3],
+            'line-width': 2,
+            'line-opacity': 0.75,
+            'line-dasharray': [2, 2],
           },
         });
       }
@@ -253,8 +253,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           type: 'fill',
           source: 'crates-zones',
           paint: {
-            'fill-color': '#00ffaa',
-            'fill-opacity': 0.08,
+            'fill-color': '#10b981',
+            'fill-opacity': 0.16,
           },
         });
 
@@ -263,9 +263,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           type: 'line',
           source: 'crates-zones',
           paint: {
-            'line-color': '#00ffaa',
-            'line-width': 1.5,
-            'line-opacity': 0.35,
+            'line-color': '#34d399',
+            'line-width': 2,
+            'line-opacity': 0.85,
             'line-dasharray': [2, 2],
           },
         });
@@ -307,7 +307,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           source: 'structures-zones',
           paint: {
             'fill-color': ['match', ['get', 'type'], 'hospital', '#10b981', '#06b6d4'],
-            'fill-opacity': 0.15,
+            'fill-opacity': 0.22,
           },
         });
 
@@ -317,8 +317,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           source: 'structures-zones',
           paint: {
             'line-color': ['match', ['get', 'type'], 'hospital', '#34d399', '#22d3ee'],
-            'line-width': 1.8,
-            'line-opacity': 0.8,
+            'line-width': 2.5,
+            'line-opacity': 0.95,
             'line-dasharray': [3, 2],
           },
         });
@@ -368,7 +368,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           source: 'interaction-ranges',
           paint: {
             'fill-color': ['match', ['get', 'type'], 'pet', '#10b981', '#06b6d4'],
-            'fill-opacity': 0.08,
+            'fill-opacity': 0.12,
           },
         });
 
@@ -378,8 +378,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           source: 'interaction-ranges',
           paint: {
             'line-color': ['match', ['get', 'type'], 'pet', '#34d399', '#22d3ee'],
-            'line-width': 1.6,
-            'line-opacity': 0.45,
+            'line-width': 2.2,
+            'line-opacity': 0.9,
             'line-dasharray': [2, 2],
           },
         });
@@ -404,7 +404,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           paint: {
             'line-color': '#10b981',
             'line-width': 3.5,
-            'line-opacity': 0.9,
+            'line-opacity': 0.95,
             'line-dasharray': [1.5, 2.5],
           },
         });
@@ -427,8 +427,127 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     ]
   );
 
-  const setupGameMapLayersRef = useRef<(map: maplibregl.Map) => void>(setupGameMapLayers);
-  setupGameMapLayersRef.current = setupGameMapLayers;
+  const injectTacticalOverlaysRef = useRef<(map: maplibregl.Map) => void>(injectTacticalOverlays);
+  injectTacticalOverlaysRef.current = injectTacticalOverlays;
+
+  // Actualización de fuentes GeoJSON tácticas
+  const updateEntityInfluenceSources = useCallback(
+    (map: maplibregl.Map) => {
+      // 1. Actualizar play-area si procede
+      const playAreaSource = map.getSource('play-area') as maplibregl.GeoJSONSource | undefined;
+      if (playAreaSource) {
+        playAreaSource.setData(createGeoJsonCircle(center, playAreaRadius));
+      }
+
+      // 2. Actualizar treasure-zone
+      const treasureSource = map.getSource('treasure-zone') as maplibregl.GeoJSONSource | undefined;
+      if (treasureSource) {
+        treasureSource.setData(createGeoJsonCircle(treasureLocation, 20));
+      }
+
+      // 3. Actualizar player-vision
+      const visionSource = map.getSource('player-vision') as maplibregl.GeoJSONSource | undefined;
+      if (visionSource) {
+        const myCoords = { lat: myPlayer.lat ?? center.lat, lng: myPlayer.lng ?? center.lng };
+        const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
+        const visionRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
+        visionSource.setData(createGeoJsonCircle(myCoords, Math.min(visionRadius, playAreaRadius)));
+      }
+
+      // 4. Actualizar crates-zones
+      const cratesSource = map.getSource('crates-zones') as maplibregl.GeoJSONSource | undefined;
+      if (cratesSource) {
+        const crateFeatures = crates
+          .filter(
+            (c) =>
+              !c.opened &&
+              typeof c.lat === 'number' &&
+              typeof c.lng === 'number' &&
+              !isNaN(c.lat) &&
+              !isNaN(c.lng)
+          )
+          .map((c) => createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40));
+        cratesSource.setData({ type: 'FeatureCollection', features: crateFeatures });
+      }
+
+      // 5. Actualizar structures-zones
+      const structuresSource = map.getSource('structures-zones') as maplibregl.GeoJSONSource | undefined;
+      if (structuresSource) {
+        const visibleStructures = isMeWounded
+          ? structures.filter((s) => s.type === 'hospital')
+          : structures;
+        const structureFeatures = visibleStructures
+          .filter(
+            (s) =>
+              typeof s.lat === 'number' &&
+              typeof s.lng === 'number' &&
+              !isNaN(s.lat) &&
+              !isNaN(s.lng)
+          )
+          .map((s) => ({
+            ...createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius),
+            properties: { type: s.type, id: s.id },
+          }));
+        structuresSource.setData({ type: 'FeatureCollection', features: structureFeatures });
+      }
+
+      // 6. Actualizar interaction-ranges
+      const rangesSource = map.getSource('interaction-ranges') as maplibregl.GeoJSONSource | undefined;
+      if (rangesSource) {
+        const features = isMeWounded
+          ? []
+          : [
+              ...droppedItems
+                .filter(
+                  (d) =>
+                    typeof d.lat === 'number' &&
+                    typeof d.lng === 'number' &&
+                    !isNaN(d.lat) &&
+                    !isNaN(d.lng) &&
+                    (d.lat !== 0 || d.lng !== 0)
+                )
+                .map((d) => ({
+                  ...createGeoJsonCircle({ lat: d.lat, lng: d.lng }, 25),
+                  properties: { type: 'loot', id: d.id },
+                })),
+              ...wildPets
+                .filter(
+                  (wp) =>
+                    typeof wp.lat === 'number' &&
+                    typeof wp.lng === 'number' &&
+                    !isNaN(wp.lat) &&
+                    !isNaN(wp.lng) &&
+                    (wp.lat !== 0 || wp.lng !== 0)
+                )
+                .map((wp) => ({
+                  ...createGeoJsonCircle({ lat: wp.lat, lng: wp.lng }, 25),
+                  properties: { type: 'pet', id: wp.id },
+                })),
+            ];
+        rangesSource.setData({ type: 'FeatureCollection', features });
+      }
+    },
+    [
+      center,
+      playAreaRadius,
+      treasureLocation,
+      myPlayer.lat,
+      myPlayer.lng,
+      myPlayer.role,
+      myPlayer.pets,
+      isRadarActive,
+      crates,
+      structures,
+      isMeWounded,
+      droppedItems,
+      wildPets,
+    ]
+  );
+
+  const updateEntityInfluenceSourcesRef = useRef<(map: maplibregl.Map) => void>(
+    updateEntityInfluenceSources
+  );
+  updateEntityInfluenceSourcesRef.current = updateEntityInfluenceSources;
 
   // ==========================================
   // CONMUTACIÓN DINÁMICA DE ESTILO (TÁCTICO VS SATÉLITE)
@@ -450,7 +569,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     map.once('style.load', () => {
       if (mapRef.current === map) {
-        setupGameMapLayersRef.current?.(map);
+        injectTacticalOverlaysRef.current?.(map);
+        updateEntityInfluenceSourcesRef.current?.(map);
         setStyleVersion((v) => v + 1);
       }
       isStyleChangingRef.current = false;
@@ -479,7 +599,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
-      style: MAP_STYLES.tactical,
+      style: MAP_STYLES.satellite,
       center: [initialCenterLng, initialCenterLat],
       zoom: 16.5,
       pitch: 45,
@@ -502,7 +622,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         map.jumpTo({ center: [myPlayer.lng, myPlayer.lat], zoom: 17 });
       }
 
-      setupGameMapLayersRef.current?.(map);
+      injectTacticalOverlaysRef.current?.(map);
+      updateEntityInfluenceSourcesRef.current?.(map);
     });
 
     // Control de interacción de puntero y arrastre

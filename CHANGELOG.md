@@ -5,6 +5,11 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ## [Unreleased]
 ### Changed
+- **Vista de satélite (terreno real) por defecto y proyección persistente de capas de influencia táctica (`GameMap.tsx`, `README.md`):**
+  - **Satélite como vista inicial predeterminada:** La partida inicia directamente con la ortofoto de satélite de alta resolución de ArcGIS World Imagery (`MAP_STYLES.satellite`).
+  - **Selector HUD táctico sincronizado:** El botón flotante lateral inicializa mostrando el icono 📡 y la etiqueta `"TÁCTICO"` para permitir al usuario alternar a la vista oscura vectorial en cualquier momento.
+  - **Inyección centralizada de capas (`injectTacticalOverlays` y `updateEntityInfluenceSources`):** Unificación de la adición y refresco de fuentes/capas GeoJSON tanto en el evento inicial `map.on('load')` como tras cada cambio dinámico de estilo en `map.once('style.load')`.
+  - **Alto contraste lumínico sobre fotografía aérea:** Adaptadas las paletas cromáticas y grosores de trazo de los 7 overlays tácticos (perímetro de juego, zona del cofre del tesoro, cono de visión del cazador, áreas de suministros y airdrops, zonas de estructuras/hospitales, círculos de interacción de botín/mascotas y directriz de emergencia médica) con cian brillante (`#00f2fe`), esmeralda luminoso (`#10b981`, `#34d399`) y ámbar dorado (`#ffd000`), garantizando legibilidad total sobre cualquier tipo de terreno y textura satelital.
 - **Ampliación del radio de adopción de mascotas y mascotas como escudo de daño secuencial en combate (`mapEntities.ts`, `GameMap.tsx`, `App.tsx`, `CombatArena.tsx`, `BackpackModal.tsx`, `README.md`):**
   - **Radio de adopción táctico igualado al botín (`PET_ADOPTION_RADIUS_METERS = 25`):** Se incrementó de 12m a 25 metros el rango de interacción de mascotas silvestres en el mapa, habilitando tanto la adopción automática por proximidad como la adopción manual por clic interactivo en el marcador de la mascota.
   - **Mascotas como escudo táctico de primera línea en combate:** El bucle de ataque periódico del monstruo (`CombatArena.tsx`) concentra secuencialmente todo el daño en la primera mascota viva (`!p.isWounded && p.hp > 0`). Mientras el jugador cuente con al menos una mascota viva, su salud permanece 100% intacta.
