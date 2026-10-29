@@ -51,10 +51,11 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 - **Muerte Temporal y Reaparición Silenciosa (`dead` / `respawning`):**
   - Al caer a 0 HP, el monstruo queda abatido temporalmente durante **60 segundos** sin emitir alertas ni carteles de respawn intrusivos en el HUD.
   - Al expirar los 60s, reaparece silenciosamente en una posición alejada dentro del área de juego con su salud restablecida, reanudando su patrulla sin ruidos ni avisos sonoros molestos.
-- **Escalado Concurrente de Monstruos por Cofres Activos:**
-  - Al desbloquearse el Cofre 1 y emerger el Cofre 2, se engendra un segundo monstruo (`monster_2`, **Devorador Alfa**, 1400 HP, 3.2 m/s).
-  - Al desbloquearse el Cofre 2 y emerger el Cofre 3, se engendra un tercer monstruo (`monster_3`, **Coloso de Sombra**, 1600 HP, 3.6 m/s).
-  - Los monstruos existentes persisten y patrullan simultáneamente en el terreno con controladores de IA independientes gobernados en paralelo por el Host.
+- **Escalado Concurrente e Identidad Visual de Monstruos por Cofres Activos:**
+  - **Monstruo 1 (Fase 1 — Rastreador Sombrío / Stalker):** Depredador rápido y perimetral con icono 🐺, halo rojo carmesí (`border-red-500`, sombra `shadow-red-500/70`), placa táctica `"RASTREADOR SOMBRÍO"` y cabecera de combate en rojo (`AMENAZA: ACECHADOR`).
+  - **Monstruo 2 (Fase 2 — Devorador Alfa / Quimera Mecánica):** Engendrado al abrir el Cofre 1 (`monster_2`, 1400 HP, 3.2 m/s). Posee icono 👹, halo púrpura neón (`border-purple-500`, sombra `shadow-purple-500/70`), placa táctica `"DEVORADOR ALFA"` y cabecera de combate en violeta (`AMENAZA: ALFA`).
+  - **Monstruo 3 (Fase 3 — Coloso de Sombra / Titan Apex):** Engendrado al abrir el Cofre 2 (`monster_3`, 1600 HP, 3.6 m/s). Posee icono 🐲, silueta ampliada (`scale-110`), halo naranja ígneo / ámbar (`border-amber-500`, sombra `shadow-amber-500/80`), placa táctica `"COLOSO DE SOMBRA"` y cabecera de combate dorada (`AMENAZA: TITÁN APEX`).
+  - **Persistencia Concurrente:** Los monstruos existentes persisten y patrullan simultáneamente en el terreno con controladores de IA independientes gobernados en paralelo por el Host, siendo perfectamente distinguibles a simple vista en el mapa satélite y táctico.
 - **Cola de Combate Estricta 1 vs 1:**
   - La Arena de Combate (`CombatArena.tsx`) se enfoca estrictamente en un único duelo a la vez (`activeCombatMonsterId`).
   - Si otros monstruos alcanzan al cazador ($\le 20\text{m}$), aguardan fuera en el mapa sin interrumpir ni superponer pantallas de combate.

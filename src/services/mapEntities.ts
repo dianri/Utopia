@@ -260,6 +260,7 @@ export function generateInitialCrates(
 export interface SequentialMonsterConfig {
   id: string;
   name: string;
+  type: string;
   maxHp: number;
   speedMps: number;
 }
@@ -267,23 +268,170 @@ export interface SequentialMonsterConfig {
 export const SEQUENTIAL_MONSTER_CONFIGS: SequentialMonsterConfig[] = [
   {
     id: 'monster_1',
-    name: 'Goliardus Rex',
+    name: 'Rastreador Sombrío',
+    type: 'stalker',
     maxHp: 1200,
     speedMps: 2.8,
   },
   {
     id: 'monster_2',
     name: 'Devorador Alfa',
+    type: 'alpha',
     maxHp: 1400,
     speedMps: 3.2,
   },
   {
     id: 'monster_3',
     name: 'Coloso de Sombra',
+    type: 'colossus',
     maxHp: 1600,
     speedMps: 3.6,
   },
 ];
+
+export interface MonsterVisualConfig {
+  type: 'stalker' | 'alpha' | 'colossus';
+  defaultName: string;
+  label: string;
+  icon: string;
+  borderColor: string;
+  glowColor: string;
+  badgeBg: string;
+  pingBg: string;
+  coreBg: string;
+  hpBarColor: string;
+  hpBorderColor: string;
+  scaleClass: string;
+  threatLabel: string;
+  threatBadgeBg: string;
+  arenaHeaderBadgeBg: string;
+  cardBorder: string;
+  cardHitBorder: string;
+  cardGlow: string;
+  cardHitGlow: string;
+  cardBgGradient: string;
+  cardHeaderBg: string;
+  cardHeaderBorder: string;
+  cardBadgeBg: string;
+  avatarBg: string;
+  avatarBorder: string;
+  avatarRadialGlow: string;
+  eyeColor: string;
+  hpBarGradient: string;
+  hpBarCriticalGradient: string;
+  accentTextColor: string;
+}
+
+/**
+ * Obtiene la configuración visual, temática y cromática de cada monstruo secuencial
+ */
+export const getMonsterVisualConfig = (monster?: Monster | null): MonsterVisualConfig => {
+  const key = monster?.type || monster?.id || '';
+
+  if (key === 'monster_1' || key === 'stalker') {
+    return {
+      type: 'stalker',
+      defaultName: 'Rastreador Sombrío',
+      label: 'RASTREADOR SOMBRÍO',
+      icon: '🐺',
+      borderColor: 'border-red-500',
+      glowColor: 'shadow-[0_0_15px_rgba(239,68,68,0.7)]',
+      badgeBg: 'bg-red-950/80 text-red-300',
+      pingBg: 'bg-red-600/30',
+      coreBg: 'bg-red-950',
+      hpBarColor: 'bg-red-500',
+      hpBorderColor: 'border-red-500/40',
+      scaleClass: '',
+      threatLabel: 'AMENAZA: ACECHADOR',
+      threatBadgeBg: 'bg-red-950/80 text-red-300 border-red-500/60',
+      arenaHeaderBadgeBg: 'bg-red-950/80 border-red-500/60 text-red-200',
+      cardBorder: 'border-red-500/60 hover:border-red-400',
+      cardHitBorder: 'border-red-400',
+      cardGlow: 'shadow-[0_0_30px_rgba(220,38,38,0.3)]',
+      cardHitGlow: 'shadow-[0_0_40px_rgba(239,68,68,0.7)]',
+      cardBgGradient: 'from-slate-900 via-slate-900/90 to-red-950/80',
+      cardHeaderBg: 'bg-black/60',
+      cardHeaderBorder: 'border-red-500/30',
+      cardBadgeBg: 'bg-red-900/60 text-red-300 border-red-700/50',
+      avatarBg: 'bg-red-950/60',
+      avatarBorder: 'border-red-500/50',
+      avatarRadialGlow: 'bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.25)_0%,transparent_70%)]',
+      eyeColor: 'bg-red-400 shadow-[0_0_8px_#f87171]',
+      hpBarGradient: 'from-red-700 to-red-500',
+      hpBarCriticalGradient: 'from-red-600 to-orange-500',
+      accentTextColor: 'text-red-400',
+    };
+  }
+
+  if (key === 'monster_2' || key === 'alpha') {
+    return {
+      type: 'alpha',
+      defaultName: 'Devorador Alfa',
+      label: 'DEVORADOR ALFA',
+      icon: '👹',
+      borderColor: 'border-purple-500',
+      glowColor: 'shadow-[0_0_15px_rgba(168,85,247,0.7)]',
+      badgeBg: 'bg-purple-950/80 text-purple-300',
+      pingBg: 'bg-purple-600/30',
+      coreBg: 'bg-purple-950',
+      hpBarColor: 'bg-purple-500',
+      hpBorderColor: 'border-purple-500/40',
+      scaleClass: '',
+      threatLabel: 'AMENAZA: ALFA',
+      threatBadgeBg: 'bg-purple-950/80 text-purple-300 border-purple-500/60',
+      arenaHeaderBadgeBg: 'bg-purple-950/80 border-purple-500/60 text-purple-200',
+      cardBorder: 'border-purple-500/60 hover:border-purple-400',
+      cardHitBorder: 'border-purple-400',
+      cardGlow: 'shadow-[0_0_30px_rgba(168,85,247,0.3)]',
+      cardHitGlow: 'shadow-[0_0_40px_rgba(168,85,247,0.7)]',
+      cardBgGradient: 'from-slate-900 via-slate-900/90 to-purple-950/80',
+      cardHeaderBg: 'bg-black/60',
+      cardHeaderBorder: 'border-purple-500/30',
+      cardBadgeBg: 'bg-purple-900/60 text-purple-300 border-purple-700/50',
+      avatarBg: 'bg-purple-950/60',
+      avatarBorder: 'border-purple-500/50',
+      avatarRadialGlow: 'bg-[radial-gradient(circle_at_center,rgba(168,85,247,0.25)_0%,transparent_70%)]',
+      eyeColor: 'bg-purple-400 shadow-[0_0_8px_#c084fc]',
+      hpBarGradient: 'from-purple-700 to-purple-500',
+      hpBarCriticalGradient: 'from-purple-600 to-pink-500',
+      accentTextColor: 'text-purple-400',
+    };
+  }
+
+  // monster_3, colossus o por defecto
+  return {
+    type: 'colossus',
+    defaultName: 'Coloso de Sombra',
+    label: 'COLOSO DE SOMBRA',
+    icon: '🐲',
+    borderColor: 'border-amber-500',
+    glowColor: 'shadow-[0_0_20px_rgba(245,158,11,0.8)]',
+    badgeBg: 'bg-amber-950/80 text-amber-300',
+    pingBg: 'bg-amber-600/30',
+    coreBg: 'bg-amber-950',
+    hpBarColor: 'bg-amber-500',
+    hpBorderColor: 'border-amber-500/40',
+    scaleClass: 'scale-110',
+    threatLabel: 'AMENAZA: TITÁN APEX',
+    threatBadgeBg: 'bg-amber-950/80 text-amber-300 border-amber-500/60',
+    arenaHeaderBadgeBg: 'bg-amber-950/80 border-amber-500/60 text-amber-200',
+    cardBorder: 'border-amber-500/60 hover:border-amber-400',
+    cardHitBorder: 'border-amber-400',
+    cardGlow: 'shadow-[0_0_30px_rgba(245,158,11,0.35)]',
+    cardHitGlow: 'shadow-[0_0_40px_rgba(245,158,11,0.8)]',
+    cardBgGradient: 'from-slate-900 via-slate-900/90 to-amber-950/80',
+    cardHeaderBg: 'bg-black/60',
+    cardHeaderBorder: 'border-amber-500/30',
+    cardBadgeBg: 'bg-amber-900/60 text-amber-300 border-amber-700/50',
+    avatarBg: 'bg-amber-950/60',
+    avatarBorder: 'border-amber-500/50',
+    avatarRadialGlow: 'bg-[radial-gradient(circle_at_center,rgba(245,158,11,0.25)_0%,transparent_70%)]',
+    eyeColor: 'bg-amber-400 shadow-[0_0_8px_#fbbf24]',
+    hpBarGradient: 'from-amber-700 to-amber-500',
+    hpBarCriticalGradient: 'from-amber-600 to-orange-500',
+    accentTextColor: 'text-amber-400',
+  };
+};
 
 /**
  * Genera el monstruo asociado a un cofre secuencial (1, 2 o 3)
@@ -300,6 +448,7 @@ export function createSequentialMonster(
   return {
     id: config.id,
     name: config.name,
+    type: config.type,
     lat: spawnPoint.lat,
     lng: spawnPoint.lng,
     hp: config.maxHp,
