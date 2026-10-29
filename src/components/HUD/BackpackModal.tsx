@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { InventoryItem, DroppedItem, Pet, PetType } from '../../types/game';
+import { MAX_PETS_PER_PLAYER } from '../../services/mapEntities';
 import {
   Package,
   X,
@@ -168,7 +169,7 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-hud-dark border border-hud-cyan/40 text-hud-cyan font-bold">
                   {activeTab === 'inventory'
                     ? `${inventory.length} OBJETOS (ILIMITADA)`
-                    : `${pets.length} ACOMPAÑANTES`}
+                    : `${pets.length}/${MAX_PETS_PER_PLAYER} ACOMPAÑANTES`}
                 </span>
               </div>
               <p className="text-[11px] font-mono text-hud-muted">
@@ -223,11 +224,13 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
             <span
               className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono font-bold ${
                 activeTab === 'pets'
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                  ? pets.length >= MAX_PETS_PER_PLAYER
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                   : 'bg-slate-800 text-slate-400'
               }`}
             >
-              {pets.length}
+              {pets.length}/{MAX_PETS_PER_PLAYER}
             </span>
           </button>
         </div>
@@ -395,9 +398,16 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
           {activeTab === 'pets' && (
             <div className="space-y-3 animate-fade-in">
               <div className="flex items-center justify-between px-1">
-                <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-400">
-                  Escuadra de Acompañantes ({pets.length} {pets.length === 1 ? 'mascota' : 'mascotas'})
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-slate-400">
+                    Escuadra de Acompañantes ({pets.length}/{MAX_PETS_PER_PLAYER})
+                  </span>
+                  {pets.length >= MAX_PETS_PER_PLAYER && (
+                    <span className="text-[9px] font-mono font-black text-amber-300 bg-amber-950/70 border border-amber-500/50 px-2 py-0.5 rounded-full">
+                      CAPACIDAD MÁXIMA (3/3)
+                    </span>
+                  )}
+                </div>
                 <span className="text-[9px] font-mono text-emerald-400 font-bold bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 rounded-full flex items-center gap-1">
                   <Sparkles className="w-2.5 h-2.5" /> Asistencia Activa
                 </span>

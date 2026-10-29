@@ -55,6 +55,9 @@ import {
   createAirdropCrate,
   generateInitialCrates,
   PET_ADOPTION_RADIUS_METERS,
+  MAX_PETS_PER_PLAYER,
+  MAX_UNCLAIMED_LOOT,
+  MAX_UNCLAIMED_WILD_PETS,
 } from './services/mapEntities';
 import { soundEffects } from './services/soundEffects';
 import { MonsterAIController } from './services/monsterAI';
@@ -297,6 +300,8 @@ export const App: React.FC = () => {
 
   const chestHoldersCountRef = useRef<number>(chestHoldersCount);
   chestHoldersCountRef.current = chestHoldersCount;
+
+  const lastPetCapacityWarningRef = useRef<number>(0);
 
   // ==========================================
   // PERSISTENCIA CONTINUA DE SESIÓN Y SUPABASE
@@ -2052,19 +2057,40 @@ export const App: React.FC = () => {
       lng: myPlayer.lng ?? room.centerLng,
     };
 
+    const currentPets = myPlayer.pets || [];
+    const hasMaxPets = currentPets.length >= MAX_PETS_PER_PLAYER;
+
     wildPets.forEach((wp) => {
       const dist = getDistanceMeters(myCoord, { lat: wp.lat, lng: wp.lng });
       if (dist <= PET_ADOPTION_RADIUS_METERS) {
+        if (hasMaxPets) {
+          // Bloquear adopción y emitir feedback táctico con throttling (máx 1 aviso cada 8s)
+          const now = Date.now();
+          if (now - lastPetCapacityWarningRef.current > 8000) {
+            lastPetCapacityWarningRef.current = now;
+            addLog('CAPACIDAD MÁXIMA DE MASCOTAS (3/3): No puedes vincular más acompañantes.', 'warning');
+            soundEffects.playAlarm();
+            soundEffects.vibrate(150);
+          }
+          return;
+        }
+
         // Adoptar mascota
-        setWildPets((prev) => prev.filter((p) => p.id !== wp.id));
+        setWildPets((prev) => {
+          const updated = prev.filter((p) => p.id !== wp.id);
+          if (room?.id) {
+            syncRoomEntitiesToSupabase(room.id, { wildPets: updated });
+          }
+          return updated;
+        });
 
         setMyPlayer((prev) => {
           if (!prev) return null;
-          const currentPets = prev.pets || [];
-          // Si ya la tiene agregada, omitir
-          if (currentPets.some((p) => p.id === wp.pet.id)) return prev;
+          const prevPets = prev.pets || [];
+          // Si ya la tiene agregada o alcanzó el límite, omitir
+          if (prevPets.some((p) => p.id === wp.pet.id) || prevPets.length >= MAX_PETS_PER_PLAYER) return prev;
 
-          const updatedPets = [...currentPets, wp.pet];
+          const updatedPets = [...prevPets, wp.pet];
           addLog(`¡Has adoptado a ${wp.pet.name} ${wp.pet.icon}! Te acompañará fielmente en la misión.`, 'loot');
           soundEffects.playCrateLoot();
 
@@ -2092,7 +2118,7 @@ export const App: React.FC = () => {
         });
       }
     });
-  }, [myPlayer?.lat, myPlayer?.lng, myPlayer?.isAlive, wildPets, room?.centerLat, room?.centerLng, realtime, addLog]);
+  }, [myPlayer?.lat, myPlayer?.lng, myPlayer?.isAlive, myPlayer?.pets, wildPets, room?.centerLat, room?.centerLng, realtime, addLog]);
 
   // ==========================================
   // RECOGIDA PASIVA AUTOMÁTICA DE SUMINISTROS POR MASCOTAS (FETCH LOOT)
@@ -2266,13 +2292,13 @@ export const App: React.FC = () => {
 
   // ==========================================
   // GENERACIÓN DINÁMICA PROGRESIVA (HOST AIRDROP Y MASCOTAS CADA INTERVALO)
+  // Control estricto de densidad: máx 3 armas/loot y máx 3 mascotas silvestres
   // ==========================================
   useEffect(() => {
     if (!room || room.status !== 'playing' || !myPlayer?.isHost) return;
 
     const AIRDROP_INTERVAL_MS = 50000; // Cada 50 segundos
     const PET_INTERVAL_MS = 95000; // Cada 95 segundos
-    const MAX_WILD_PETS_IN_MAP = 5;
 
     const startedAtMs = room.startedAt
       ? new Date(room.startedAt).getTime()
@@ -2296,6 +2322,16 @@ export const App: React.FC = () => {
     let petInterval: any = null;
 
     const dropAirdrop = () => {
+      // Filtrar únicamente los objetos/cajas que están actualmente en el suelo del mapa sin recoger
+      const activeUnopenedCrates = cratesRef.current.filter((c) => !c.opened).length;
+      const activeDroppedItems = droppedItemsRef.current.length;
+      const currentLootCount = activeUnopenedCrates + activeDroppedItems;
+
+      if (currentLootCount >= MAX_UNCLAIMED_LOOT) {
+        // Hay 3 o más armas/suministros sin recoger en el terreno: pausar lanzamiento de paracaídas
+        return;
+      }
+
       const newCrate = createAirdropCrate(
         { lat: room.centerLat, lng: room.centerLng },
         room.playAreaRadius
@@ -2311,7 +2347,14 @@ export const App: React.FC = () => {
     };
 
     const spawnPet = () => {
-      if (wildPetsRef.current.length >= MAX_WILD_PETS_IN_MAP) return;
+      // Filtrar únicamente las mascotas libres en el mapa (no las adoptadas por jugadores)
+      const currentWildPetsCount = wildPetsRef.current.length;
+
+      if (currentWildPetsCount >= MAX_UNCLAIMED_WILD_PETS) {
+        // Hay 3 o más mascotas libres: no generar nuevas
+        return;
+      }
+
       const newPet = generateSingleWildPet(
         { lat: room.centerLat, lng: room.centerLng },
         room.playAreaRadius
@@ -2649,6 +2692,14 @@ export const App: React.FC = () => {
     const player = myPlayerRef.current;
     if (!player.isAlive || player.isCriticallyWounded || player.status === 'critically_wounded') return;
 
+    const currentPets = player.pets || [];
+    if (currentPets.length >= MAX_PETS_PER_PLAYER) {
+      addLog('CAPACIDAD MÁXIMA DE MASCOTAS (3/3): No puedes vincular más acompañantes.', 'warning');
+      soundEffects.playAlarm();
+      soundEffects.vibrate(150);
+      return;
+    }
+
     const myPos = {
       lat: player.lat ?? roomRef.current?.centerLat ?? 0,
       lng: player.lng ?? roomRef.current?.centerLng ?? 0,
@@ -2671,10 +2722,10 @@ export const App: React.FC = () => {
 
     setMyPlayer((prev) => {
       if (!prev) return null;
-      const currentPets = prev.pets || [];
-      if (currentPets.some((p) => p.id === wp.pet.id)) return prev;
+      const prevPets = prev.pets || [];
+      if (prevPets.some((p) => p.id === wp.pet.id) || prevPets.length >= MAX_PETS_PER_PLAYER) return prev;
 
-      const updatedPets = [...currentPets, wp.pet];
+      const updatedPets = [...prevPets, wp.pet];
       addLog(`¡Has adoptado a ${wp.pet.name} ${wp.pet.icon}! Te acompañará fielmente en la misión.`, 'loot');
       soundEffects.playCrateLoot();
 

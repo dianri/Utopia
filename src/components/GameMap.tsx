@@ -17,6 +17,7 @@ import type {
 import { PLAYER_SPEED_MPS } from '../types/game';
 import { createGeoJsonCircle, getDistanceMeters } from '../services/geoUtils';
 import { getVisionRadius, getCrateVisualInfo } from '../services/combatEngine';
+import { MAX_PETS_PER_PLAYER } from '../services/mapEntities';
 import { soundEffects } from '../services/soundEffects';
 import { Locate, Compass } from 'lucide-react';
 
@@ -115,6 +116,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
   const onAdoptWildPetRef = useRef(onAdoptWildPet);
   onAdoptWildPetRef.current = onAdoptWildPet;
+
+  const myPlayerRef = useRef(myPlayer);
+  myPlayerRef.current = myPlayer;
 
   // Refs para desacoplar arrastre de cámara (drag) de clic de movimiento (tap-to-move)
   const isDraggingRef = useRef<boolean>(false);
@@ -1183,6 +1187,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.className = 'pet-marker-container pointer-events-auto select-none cursor-pointer';
         el.style.zIndex = '35'; // Visible por encima del canvas
         el.style.display = isMeWounded ? 'none' : 'block';
+        const hasMaxPets = (myPlayer.pets || []).length >= MAX_PETS_PER_PLAYER;
+        el.title = hasMaxPets
+          ? 'Capacidad máxima de mascotas (3/3): Comitiva completa'
+          : `Mascota silvestre: ${wp.pet.name} (Toca para adoptar)`;
 
         el.innerHTML = `
           <div class="relative flex flex-col items-center justify-center">
@@ -1202,9 +1210,16 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
         el.addEventListener('click', (e) => {
           e.stopPropagation();
+          const hasMaxPetsNow = (myPlayerRef.current?.pets || []).length >= MAX_PETS_PER_PLAYER;
+          if (hasMaxPetsNow) {
+            // Notificar capacidad máxima sin desplazarse ni consumir la mascota
+            onAdoptWildPetRef.current?.(wp);
+            return;
+          }
+
           const myPos = {
-            lat: myPlayer.lat ?? center.lat,
-            lng: myPlayer.lng ?? center.lng,
+            lat: myPlayerRef.current?.lat ?? center.lat,
+            lng: myPlayerRef.current?.lng ?? center.lng,
           };
           const dist = getDistanceMeters(myPos, { lat: wp.lat, lng: wp.lng });
           if (dist <= 25) {
@@ -1227,10 +1242,16 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const marker = wildPetMarkersRef.current.get(wp.id);
         marker?.setLngLat([wp.lng, wp.lat]);
         const el = marker?.getElement();
-        if (el) el.style.display = isMeWounded ? 'none' : 'block';
+        if (el) {
+          el.style.display = isMeWounded ? 'none' : 'block';
+          const hasMaxPets = (myPlayer.pets || []).length >= MAX_PETS_PER_PLAYER;
+          el.title = hasMaxPets
+            ? 'Capacidad máxima de mascotas (3/3): Comitiva completa'
+            : `Mascota silvestre: ${wp.pet.name} (Toca para adoptar)`;
+        }
       }
     });
-  }, [wildPets, mapLoaded, center.lat, center.lng, isMeWounded]);
+  }, [wildPets, mapLoaded, center.lat, center.lng, isMeWounded, myPlayer.pets?.length]);
 
   // ==========================================
   // 6.8. RADIOS DE INTERACCIÓN DE ENTIDADES (LOOT Y MASCOTAS, 25M)

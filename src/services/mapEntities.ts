@@ -7,6 +7,21 @@ import { WEAPON_REGISTRY } from './combatEngine';
  */
 export const PET_ADOPTION_RADIUS_METERS = 25;
 
+/**
+ * Capacidad máxima de mascotas en la comitiva activa por jugador
+ */
+export const MAX_PETS_PER_PLAYER = 3;
+
+/**
+ * Límite máximo de armas/loot sin recoger simultáneamente en el mapa (control de densidad)
+ */
+export const MAX_UNCLAIMED_LOOT = 3;
+
+/**
+ * Límite máximo de mascotas silvestres libres simultáneamente en el mapa (control de densidad)
+ */
+export const MAX_UNCLAIMED_WILD_PETS = 3;
+
 export interface PetConfig {
   type: PetType;
   name: string;
