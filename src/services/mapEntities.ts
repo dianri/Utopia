@@ -462,27 +462,57 @@ export function createSequentialMonster(
 
 /**
  * Genera una nueva ubicación válida dentro del área jugable para el siguiente cofre
- * garantizando una distancia mínima con respecto a la ubicación del cofre anterior
+ * garantizando una distancia mínima sustancial (mínimo 70m) con respecto a la ubicación del cofre anterior
+ * y respecto a la posición actual del jugador, evitando reapariciones inmediatas sobre los cazadores.
  */
 export function generateNextChestLocation(
-  center: Coordinates,
-  playAreaRadius: number,
-  previousLocation?: Coordinates
+  arg1: Coordinates,
+  arg2: Coordinates | number,
+  arg3?: Coordinates | number,
+  playerLocation?: Coordinates
 ): Coordinates {
-  let attempts = 0;
-  let bestPoint = getRandomPointInCircle(center, playAreaRadius * 0.7);
-  const minSeparation = Math.min(playAreaRadius * 0.4, 40);
+  let previousChest: Coordinates | undefined;
+  let center: Coordinates;
+  let radiusMeters: number;
 
-  if (previousLocation) {
-    while (attempts < 10) {
-      const candidate = getRandomPointInCircle(center, playAreaRadius * 0.7);
-      if (getDistanceMeters(candidate, previousLocation) >= minSeparation) {
-        return candidate;
-      }
-      bestPoint = candidate;
-      attempts++;
-    }
+  if (typeof arg2 === 'number') {
+    // Firma: (center, playAreaRadius, previousLocation, playerLocation)
+    center = arg1;
+    radiusMeters = arg2;
+    previousChest = typeof arg3 === 'object' ? arg3 : undefined;
+  } else {
+    // Firma: (previousLocation, center, radiusMeters, playerLocation)
+    previousChest = arg1;
+    center = arg2;
+    radiusMeters = typeof arg3 === 'number' ? arg3 : 100;
   }
+
+  // Separación mínima obligatoria: 70 metros (ajustada si el radio de partida es menor a 100m)
+  const MIN_DISTANCE_FROM_PREVIOUS = Math.min(70, Math.max(radiusMeters * 0.5, 30));
+  let bestPoint = getRandomPointInCircle(center, radiusMeters * 0.85);
+  let maxMinDist = -1;
+  let attempts = 0;
+
+  do {
+    const candidate = getRandomPointInCircle(center, radiusMeters * 0.85);
+    const distPrev = previousChest
+      ? getDistanceMeters(candidate, previousChest)
+      : Infinity;
+    const distPlayer = playerLocation
+      ? getDistanceMeters(candidate, playerLocation)
+      : Infinity;
+
+    const minDist = Math.min(distPrev, distPlayer);
+    if (minDist >= MIN_DISTANCE_FROM_PREVIOUS) {
+      return candidate;
+    }
+
+    if (minDist > maxMinDist) {
+      maxMinDist = minDist;
+      bestPoint = candidate;
+    }
+    attempts++;
+  } while (attempts < 50);
 
   return bestPoint;
 }
