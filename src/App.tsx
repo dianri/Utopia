@@ -89,6 +89,7 @@ import { DefeatModal } from './components/PostGame/DefeatModal';
 import { LeaderboardModal } from './components/PostGame/LeaderboardModal';
 
 import { CombatArena } from './components/Combat/CombatArena';
+import { PvPArena } from './components/Combat/PvPArena';
 import { HospitalModal } from './components/Hospital/HospitalModal';
 import { ChestLockModal } from './components/Chest/ChestLockModal';
 
@@ -236,6 +237,22 @@ export const App: React.FC = () => {
   const fleeImmunityUntilRef = useRef<number>(0);
   fleeImmunityUntilRef.current = fleeImmunityUntil;
 
+  // MODO DUELO PVP JUGADOR CONTRA JUGADOR (TIEMPO REAL)
+  const [isPvPModalOpen, setIsPvPModalOpen] = useState<boolean>(false);
+  const isPvPModalOpenRef = useRef<boolean>(false);
+  isPvPModalOpenRef.current = isPvPModalOpen;
+
+  const [pvpOpponentPlayerId, setPvpOpponentPlayerId] = useState<string | null>(null);
+  const pvpOpponentPlayerIdRef = useRef<string | null>(null);
+  pvpOpponentPlayerIdRef.current = pvpOpponentPlayerId;
+
+  const [pvpCombatId, setPvpCombatId] = useState<string | null>(null);
+  const pvpCombatIdRef = useRef<string | null>(null);
+  pvpCombatIdRef.current = pvpCombatId;
+
+  const queuedMonsterRef = useRef<Monster | null>(null);
+  const [queuedMonster, setQueuedMonster] = useState<Monster | null>(null);
+
   // MODAL TÁCTICO DEL HOSPITAL DE CAMPAÑA
   const [isHospitalModalOpen, setIsHospitalModalOpen] = useState<boolean>(false);
   const isHospitalModalOpenRef = useRef<boolean>(false);
@@ -259,6 +276,7 @@ export const App: React.FC = () => {
   isChestLockModalOpenRef.current = isChestLockModalOpen;
   const isChestInteractedGloballyRef = useRef<boolean>(isChestInteractedGlobally);
   isChestInteractedGloballyRef.current = isChestInteractedGlobally;
+  const hasTriggeredChestOpenRef = useRef<boolean>(false);
 
   // Reseteo y aislamiento estricto del progreso del cofre por partida (game.id)
   useEffect(() => {
@@ -267,6 +285,7 @@ export const App: React.FC = () => {
       setChestStep(0);
       setIsChestLockModalOpen(false);
       setIsChestInteractedGlobally(false);
+      hasTriggeredChestOpenRef.current = false;
       return;
     }
 
@@ -470,6 +489,17 @@ export const App: React.FC = () => {
 
   const structuresRef = useRef<MapStructure[]>(structures);
   structuresRef.current = structures;
+
+  const isPlayerInSafeZone = useCallback((player: Player | null, mapStructures: MapStructure[]): boolean => {
+    if (!player) return false;
+    if (player.insideBuildingId) return true;
+    if (player.insideBuildingType === 'hospital' || player.insideBuildingType === 'shelter') return true;
+    if (player.lat == null || player.lng == null) return false;
+    return mapStructures.some((s) => {
+      const d = getDistanceMeters({ lat: player.lat, lng: player.lng }, { lat: s.lat, lng: s.lng });
+      return d <= s.radius;
+    });
+  }, []);
 
   const hospitalStructure = useMemo(
     () => structures.find((s) => s.type === 'hospital') || null,
@@ -1041,6 +1071,50 @@ export const App: React.FC = () => {
         addLog(`¡${unlockedBy || 'La escuadra'} ha desbloqueado el sexto cerrojo! ¡TESORO ASEGURADO!`, 'victory');
         soundEffects.playVictoryFanfare();
       },
+      onPvPEncounter: ({ combatId, player1Id, player2Id }) => {
+        const me = myPlayerRef.current;
+        if (!me) return;
+        if (player1Id === me.id || player2Id === me.id) {
+          const oppId = player1Id === me.id ? player2Id : player1Id;
+          const allStructures = structuresRef.current;
+          if (isPlayerInSafeZone(me, allStructures)) return; // Protección estricta en zonas seguras
+
+          setPvpCombatId(combatId);
+          pvpCombatIdRef.current = combatId;
+          setPvpOpponentPlayerId(oppId);
+          pvpOpponentPlayerIdRef.current = oppId;
+          setIsPvPModalOpen(true);
+          isPvPModalOpenRef.current = true;
+          cancelMovementRef.current();
+
+          const opp = playersRef.current.find((p) => p.id === oppId);
+          addLog(`¡Encuentro hostil sincronizado con ${opp?.nickname || 'oponente'}! Iniciando duelo PvP.`, 'combat');
+        }
+      },
+      onPvPEncounterEnd: ({ combatId }) => {
+        if (pvpCombatIdRef.current === combatId) {
+          setIsPvPModalOpen(false);
+          isPvPModalOpenRef.current = false;
+          setPvpCombatId(null);
+          pvpCombatIdRef.current = null;
+          setPvpOpponentPlayerId(null);
+          pvpOpponentPlayerIdRef.current = null;
+        }
+      },
+      onChestClaimed: ({ playerId, playerNickname, chestIndex }) => {
+        setPlayers((prev) =>
+          prev.map((p) =>
+            p.id === playerId
+              ? {
+                  ...p,
+                  chests_opened: (p.chests_opened || p.chestsOpened || 0) + 1,
+                  chestsOpened: (p.chests_opened || p.chestsOpened || 0) + 1,
+                }
+              : p
+          )
+        );
+        addLog(`¡${playerNickname} ha abierto y conquistado el Cofre [${chestIndex}/3]!`, 'loot');
+      },
     },
     !!myPlayer?.isHost,
     room?.id ?? null,
@@ -1101,9 +1175,11 @@ export const App: React.FC = () => {
             );
 
             if (playerNeedsHealing || petsNeedHealing) {
-              cancelMovementRef.current();
-              setIsHospitalModalOpen(true);
               isHospitalModalOpenRef.current = true;
+              if (typeof cancelMovementRef.current === 'function') {
+                cancelMovementRef.current();
+              }
+              setIsHospitalModalOpen(true);
               addLog('Has entrado al Hospital de Campaña. Iniciando regeneración táctica.', 'info');
             }
             // Si la escuadra está al 100% no se emite toast flotante redundante;
@@ -1130,9 +1206,11 @@ export const App: React.FC = () => {
         );
 
         if ((playerNeedsHealing || petsNeedHealing) && !isHospitalModalOpenRef.current) {
-          cancelMovementRef.current();
-          setIsHospitalModalOpen(true);
           isHospitalModalOpenRef.current = true;
+          if (typeof cancelMovementRef.current === 'function') {
+            cancelMovementRef.current();
+          }
+          setIsHospitalModalOpen(true);
         }
       }
 
@@ -1164,21 +1242,75 @@ export const App: React.FC = () => {
         targetChestLat !== 0 &&
         targetChestLng !== 0 &&
         currentRoom?.status === 'playing' &&
-        isAliveAndActive &&
-        !isChestLockModalOpenRef.current &&
-        !isCombatArenaOpenRef.current &&
-        !isHospitalModalOpenRef.current
+        isAliveAndActive
       ) {
         const distanceToChest = getDistanceMeters(coords, { lat: targetChestLat, lng: targetChestLng });
         if (distanceToChest <= CHEST_TRIGGER_RADIUS) {
-          if (typeof cancelMovementRef.current === 'function') {
-            cancelMovementRef.current();
+          if (
+            !hasTriggeredChestOpenRef.current &&
+            !isChestLockModalOpenRef.current &&
+            !isCombatArenaOpenRef.current &&
+            !isHospitalModalOpenRef.current &&
+            !isPvPModalOpenRef.current
+          ) {
+            hasTriggeredChestOpenRef.current = true;
+            isChestLockModalOpenRef.current = true;
+            if (typeof cancelMovementRef.current === 'function') {
+              cancelMovementRef.current();
+            }
+            setIsChestLockModalOpen(true);
+            realtime.broadcastChestInteracting(true);
+            soundEffects.playCrateLoot();
+            addLog('¡En rango del cofre táctico! Iniciando desencriptación de cerrojos.', 'info');
           }
-          setIsChestLockModalOpen(true);
-          isChestLockModalOpenRef.current = true;
-          realtime.broadcastChestInteracting(true);
-          soundEffects.playCrateLoot();
-          addLog('¡En rango del cofre táctico! Iniciando desencriptación de cerrojos.', 'info');
+        } else if (distanceToChest > CHEST_TRIGGER_RADIUS) {
+          hasTriggeredChestOpenRef.current = false;
+        }
+      }
+
+      // Detección y desencadenante de Combate PvP Automático (<= 12 metros)
+      const PVP_TRIGGER_RADIUS = 12;
+      if (
+        currentRoom?.status === 'playing' &&
+        isAliveAndActive &&
+        (myPlayerRef.current.status === 'active' || !myPlayerRef.current.status) &&
+        Date.now() >= fleeImmunityUntilRef.current &&
+        !isPvPModalOpenRef.current &&
+        !isCombatArenaOpenRef.current &&
+        !isHospitalModalOpenRef.current &&
+        !isPlayerInSafeZone(myPlayerRef.current, structuresRef.current)
+      ) {
+        const otherPlayers = playersRef.current.filter((p) => p.id !== myPlayerRef.current?.id);
+        for (const other of otherPlayers) {
+          if (
+            other.isAlive &&
+            !other.isCriticallyWounded &&
+            (other.status === 'active' || !other.status) &&
+            other.lat != null &&
+            other.lng != null &&
+            !isPlayerInSafeZone(other, structuresRef.current)
+          ) {
+            const distToOther = getDistanceMeters(coords, { lat: other.lat, lng: other.lng });
+            if (distToOther <= PVP_TRIGGER_RADIUS) {
+              const combatId = [myPlayerRef.current.id, other.id].sort().join('_');
+              setPvpCombatId(combatId);
+              pvpCombatIdRef.current = combatId;
+              setPvpOpponentPlayerId(other.id);
+              pvpOpponentPlayerIdRef.current = other.id;
+              setIsPvPModalOpen(true);
+              isPvPModalOpenRef.current = true;
+              if (typeof cancelMovementRef.current === 'function') {
+                cancelMovementRef.current();
+              }
+              realtime.broadcastPvPEncounter({
+                combatId,
+                player1Id: myPlayerRef.current.id,
+                player2Id: other.id,
+              });
+              addLog(`¡Encuentro hostil con ${other.nickname}! Duelo PvP iniciado.`, 'combat');
+              break;
+            }
+          }
         }
       }
 
@@ -1274,7 +1406,7 @@ export const App: React.FC = () => {
     isAlive: myPlayer?.isAlive ?? true,
     isSlowed: myPlayer?.isSlowed ?? false,
     speedMultiplier: fleeImmunityUntil > Date.now() ? 1.3 : 1,
-    isMovingBlocked: isCombatArenaOpen || isHospitalModalOpen || isChestLockModalOpen,
+    isMovingBlocked: isCombatArenaOpen || isHospitalModalOpen || isChestLockModalOpen || isPvPModalOpen,
   });
   cancelMovementRef.current = cancelMovement;
 
@@ -1723,6 +1855,16 @@ export const App: React.FC = () => {
 
       if (livingMonstersInRange.length > 0) {
         const targetMonster = livingMonstersInRange[0].monster;
+
+        // Aislamiento Táctico y Burbuja de Duelo PvP: los monstruos no pueden interrumpir la pelea
+        if (isPvPModalOpenRef.current) {
+          if (queuedMonsterRef.current?.id !== targetMonster.id) {
+            queuedMonsterRef.current = targetMonster;
+            setQueuedMonster(targetMonster);
+          }
+          return;
+        }
+
         setActiveCombatMonsterId(targetMonster.id || null);
         activeCombatMonsterIdRef.current = targetMonster.id || null;
         setMonster(targetMonster);
@@ -1922,6 +2064,111 @@ export const App: React.FC = () => {
     addLog('¡HUIDA ACTIVA! Aléjate del monstruo (Sprint +30% durante 5 segundos)', 'warning');
   }, [addLog]);
 
+  // Manejadores del Duelo PvP en Tiempo Real
+  const handlePvPVictory = useCallback(
+    (opponent: Player) => {
+      setIsPvPModalOpen(false);
+      isPvPModalOpenRef.current = false;
+      setPvpCombatId(null);
+      pvpCombatIdRef.current = null;
+      setPvpOpponentPlayerId(null);
+      pvpOpponentPlayerIdRef.current = null;
+
+      soundEffects.playVictoryFanfare();
+      addLog(`¡Victoria en duelo táctico! Has neutralizado a ${opponent.nickname}.`, 'combat');
+
+      // Si había un monstruo en cola de combate exterior, iniciar duelo 1 vs 1 con el vencedor
+      const queued = queuedMonsterRef.current;
+      queuedMonsterRef.current = null;
+      setQueuedMonster(null);
+
+      if (queued && isMonsterAlive(queued)) {
+        const playerCoord = {
+          lat: myPlayerRef.current?.lat ?? roomRef.current?.centerLat ?? 0,
+          lng: myPlayerRef.current?.lng ?? roomRef.current?.centerLng ?? 0,
+        };
+        const distToQueued = getDistanceMeters(playerCoord, queued);
+        if (distToQueued <= 20) {
+          setTimeout(() => {
+            setActiveCombatMonsterId(queued.id || null);
+            activeCombatMonsterIdRef.current = queued.id || null;
+            setMonster(queued);
+            setIsCombatArenaOpen(true);
+            if (typeof cancelMovementRef.current === 'function') {
+              cancelMovementRef.current();
+            }
+            addLog(`¡Duelo PvP concluido! ${queued.name || 'El monstruo en espera'} inicia combate inmediato contra ti.`, 'combat');
+          }, 400);
+        }
+      }
+    },
+    [addLog]
+  );
+
+  const handlePvPDefeat = useCallback(
+    (opponent: Player) => {
+      setIsPvPModalOpen(false);
+      isPvPModalOpenRef.current = false;
+      setPvpCombatId(null);
+      pvpCombatIdRef.current = null;
+      setPvpOpponentPlayerId(null);
+      pvpOpponentPlayerIdRef.current = null;
+      queuedMonsterRef.current = null;
+      setQueuedMonster(null);
+
+      // El perdedor queda críticamente herido con 1 HP
+      setMyPlayer((prev) => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          hp: 1,
+          isAlive: true,
+          isCriticallyWounded: true,
+          status: 'critically_wounded',
+        };
+      });
+      if (myPlayerRef.current) {
+        myPlayerRef.current.hp = 1;
+        myPlayerRef.current.isCriticallyWounded = true;
+        myPlayerRef.current.status = 'critically_wounded';
+      }
+
+      setPlayers((prev) =>
+        prev.map((p) =>
+          p.id === myPlayerRef.current?.id
+            ? { ...p, hp: 1, isCriticallyWounded: true, status: 'critically_wounded' }
+            : p
+        )
+      );
+
+      if (room?.id && myPlayerRef.current?.id) {
+        (supabase.from('players') as any)
+          .update({ hp: 1, status: 'critically_wounded' })
+          .eq('id', myPlayerRef.current.id);
+      }
+
+      addLog(`Has caído en duelo ante ${opponent.nickname}. Corre al Hospital para reanimarte.`, 'warning');
+    },
+    [room?.id, addLog]
+  );
+
+  const handlePvPFlee = useCallback(() => {
+    setIsPvPModalOpen(false);
+    isPvPModalOpenRef.current = false;
+    setPvpCombatId(null);
+    pvpCombatIdRef.current = null;
+    setPvpOpponentPlayerId(null);
+    pvpOpponentPlayerIdRef.current = null;
+    queuedMonsterRef.current = null;
+    setQueuedMonster(null);
+
+    const immunityEnd = Date.now() + 8000;
+    setFleeImmunityUntil(immunityEnd);
+    fleeImmunityUntilRef.current = immunityEnd;
+    soundEffects.vibrate([100, 50, 100]);
+    addLog('¡RETIRADA TÁCTICA! Has huido del duelo PvP. Inmunidad concedida por 8 segundos.', 'warning');
+  }, [addLog]);
+
   // Manejadores del Hospital de Campaña Táctico
   const handleHospitalHealTick = useCallback(
     (
@@ -2080,14 +2327,17 @@ export const App: React.FC = () => {
       return;
     }
 
-    if (typeof cancelMovementRef.current === 'function') {
-      cancelMovementRef.current();
+    if (!hasTriggeredChestOpenRef.current || !isChestLockModalOpenRef.current) {
+      hasTriggeredChestOpenRef.current = true;
+      isChestLockModalOpenRef.current = true;
+      if (typeof cancelMovementRef.current === 'function') {
+        cancelMovementRef.current();
+      }
+      setIsChestLockModalOpen(true);
+      realtimeRef.current.broadcastChestInteracting(true);
+      soundEffects.playCrateLoot();
+      addLog('Iniciando desencriptación del cofre táctico. ¡La escuadra debe proteger el perímetro!', 'info');
     }
-    setIsChestLockModalOpen(true);
-    isChestLockModalOpenRef.current = true;
-    realtimeRef.current.broadcastChestInteracting(true);
-    soundEffects.playCrateLoot();
-    addLog('Iniciando desencriptación del cofre táctico. ¡La escuadra debe proteger el perímetro!', 'info');
   }, [addLog]);
 
   // Apertura automática e imperativa del cofre por proximidad de coordenadas (<= 15m)
@@ -2109,7 +2359,6 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (!activeChestLat || !activeChestLng || !myPlayer?.lat || !myPlayer?.lng) return;
-    if (isChestLockModalOpen || isCombatArenaOpen || isHospitalModalOpen) return;
     if (room?.status !== 'playing') return;
     if (!myPlayer.isAlive || myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded') return;
 
@@ -2118,16 +2367,28 @@ export const App: React.FC = () => {
       { lat: activeChestLat, lng: activeChestLng }
     );
 
-    // Si está a 15 metros o menos, abrir imperativamente
+    // Si está a 15 metros o menos, abrir imperativamente una sola vez
     if (dist <= 15) {
-      if (typeof cancelMovementRef.current === 'function') {
-        cancelMovementRef.current();
+      if (
+        !hasTriggeredChestOpenRef.current &&
+        !isChestLockModalOpen &&
+        !isCombatArenaOpen &&
+        !isHospitalModalOpen &&
+        !isPvPModalOpen
+      ) {
+        hasTriggeredChestOpenRef.current = true;
+        isChestLockModalOpenRef.current = true;
+        if (typeof cancelMovementRef.current === 'function') {
+          cancelMovementRef.current();
+        }
+        setIsChestLockModalOpen(true);
+        realtimeRef.current.broadcastChestInteracting(true);
+        soundEffects.playCrateLoot();
+        addLog('¡En rango del cofre táctico! Iniciando desencriptación de cerrojos.', 'info');
       }
-      setIsChestLockModalOpen(true);
-      isChestLockModalOpenRef.current = true;
-      realtimeRef.current.broadcastChestInteracting(true);
-      soundEffects.playCrateLoot();
-      addLog('¡En rango del cofre táctico! Iniciando desencriptación de cerrojos.', 'info');
+    } else {
+      // Resetear la bandera únicamente cuando el jugador se aleja a más de 15m
+      hasTriggeredChestOpenRef.current = false;
     }
   }, [
     myPlayer?.lat,
@@ -2141,6 +2402,7 @@ export const App: React.FC = () => {
     isChestLockModalOpen,
     isCombatArenaOpen,
     isHospitalModalOpen,
+    isPvPModalOpen,
     addLog,
   ]);
 
@@ -2201,7 +2463,7 @@ export const App: React.FC = () => {
     [room?.id, addLog]
   );
 
-  const handleChestVictory = useCallback(async () => {
+  const handleChestVictory = useCallback(async (finalWinnerNickname?: string) => {
     // 1. Asegurar estado local en 6/6 y cerrar modal de cofre
     setChestPhase(3);
     setChestStep(2);
@@ -2224,21 +2486,32 @@ export const App: React.FC = () => {
 
     const endedAt = new Date().toISOString();
 
-    // 2. Transición inmediata de estado de sala a 'victory'
-    setRoom((prev) => (prev ? { ...prev, status: 'victory', endedAt } : null));
+    // 2. Determinar vencedor oficial de la partida por mayoría de cofres conquistados
+    let winnerNickname = finalWinnerNickname;
+    if (!winnerNickname) {
+      const allSorted = [...playersRef.current].sort((a, b) => {
+        const aChests = a.chests_opened || a.chestsOpened || 0;
+        const bChests = b.chests_opened || b.chestsOpened || 0;
+        if (bChests !== aChests) return bChests - aChests;
+        return (b.damageDealt || 0) - (a.damageDealt || 0);
+      });
+      winnerNickname = allSorted[0]?.nickname || myPlayerRef.current?.nickname || 'Vencedor';
+    }
 
-    // 3. Emitir broadcast a todos los jugadores conectados
-    const unlockedByNickname = myPlayerRef.current?.nickname || 'Escuadra';
-    realtimeRef.current.broadcastGameVictory(true, unlockedByNickname);
-    addLog(`¡${unlockedByNickname} ha desbloqueado el sexto cerrojo! ¡TESORO ASEGURADO!`, 'victory');
+    // 3. Transición inmediata de estado de sala a 'victory'
+    setRoom((prev) => (prev ? { ...prev, status: 'victory', winner: winnerNickname, endedAt } : null));
+
+    // 4. Emitir broadcast a todos los jugadores conectados
+    realtimeRef.current.broadcastGameVictory(true, winnerNickname);
+    addLog(`¡Competencia finalizada! Vencedor de la partida: ¡${winnerNickname}!`, 'victory');
     soundEffects.playVictoryFanfare();
 
-    // 4. Actualizar base de datos de forma atómica y autoritativa (RPC SECURITY DEFINER + Fallbacks)
+    // 5. Actualizar base de datos de forma atómica y autoritativa (RPC SECURITY DEFINER + Fallbacks)
     if (room?.id) {
       try {
         const { error: rpcErr } = await (supabase.rpc as any)('finish_game_victory', {
           p_game_id: room.id,
-          p_winner_nickname: unlockedByNickname,
+          p_winner_nickname: winnerNickname,
         });
         if (rpcErr) {
           console.warn('finish_game_victory RPC falló, intentando set_game_status:', rpcErr);
@@ -2259,7 +2532,7 @@ export const App: React.FC = () => {
             chest_current_phase: 3,
             chest_progress_pct: 100,
             chest_opened: true,
-            winner: unlockedByNickname,
+            winner: winnerNickname,
             ended_at: endedAt,
           })
           .eq('id', room.id);
@@ -2269,6 +2542,7 @@ export const App: React.FC = () => {
 
       // Inserción de estadísticas personales en match_stats
       if (myPlayerRef.current) {
+        const didIWin = myPlayerRef.current.nickname === winnerNickname;
         try {
           await (supabase.from('match_stats') as any).insert({
             game_id: room.id,
@@ -2277,9 +2551,10 @@ export const App: React.FC = () => {
             damage_dealt: myPlayerRef.current.damageDealt,
             revives_done: myPlayerRef.current.revivesDone,
             crates_opened: myPlayerRef.current.cratesOpened,
+            chests_opened: myPlayerRef.current.chests_opened || myPlayerRef.current.chestsOpened || 0,
             monster_kills: myPlayerRef.current.monsterKills,
-            won: true,
-            score: myPlayerRef.current.damageDealt + myPlayerRef.current.revivesDone * 100,
+            won: didIWin,
+            score: ((myPlayerRef.current.chests_opened || 0) * 1000) + myPlayerRef.current.damageDealt,
           });
         } catch (err) {
           console.warn('Error al guardar match_stats de victoria:', err);
@@ -2292,6 +2567,42 @@ export const App: React.FC = () => {
     const currentChestIdx = currentChestIndexRef.current;
     const currentRoom = roomRef.current;
     if (!currentRoom) return;
+
+    // 0. Reclamar individualmente el cofre actual: incrementar chests_opened
+    const myId = myPlayerRef.current?.id;
+    const updatedChests = (myPlayerRef.current?.chests_opened || myPlayerRef.current?.chestsOpened || 0) + 1;
+    setMyPlayer((prev) => (prev ? { ...prev, chests_opened: updatedChests, chestsOpened: updatedChests } : null));
+    if (myPlayerRef.current) {
+      myPlayerRef.current.chests_opened = updatedChests;
+      myPlayerRef.current.chestsOpened = updatedChests;
+    }
+    setPlayers((prev) =>
+      prev.map((p) =>
+        p.id === myId
+          ? { ...p, chests_opened: updatedChests, chestsOpened: updatedChests }
+          : p
+      )
+    );
+
+    // Persistir chests_opened en Supabase
+    if (myId) {
+      try {
+        await (supabase.from('players') as any)
+          .update({ chests_opened: updatedChests })
+          .eq('id', myId);
+      } catch (err) {
+        console.warn('Error al persistir chests_opened en DB:', err);
+      }
+    }
+
+    // Transmitir reclamo del cofre a la sala
+    if (myPlayerRef.current) {
+      realtimeRef.current.broadcastChestClaimed({
+        playerId: myPlayerRef.current.id,
+        playerNickname: myPlayerRef.current.nickname,
+        chestIndex: currentChestIdx,
+      });
+    }
 
     if (currentChestIdx < 3) {
       // 1. Avanzar al siguiente cofre secuencial (Cofre 2 o Cofre 3)
@@ -2373,12 +2684,23 @@ export const App: React.FC = () => {
 
       soundEffects.playLevelUp();
       addLog(
-        `¡Cofre [${currentChestIdx}/3] descifrado! Se ha detectado la señal del Cofre [${nextChestIdx}/3]. Ha emergido ${newMonster.name || 'un nuevo monstruo'}.`,
+        `¡Cofre [${currentChestIdx}/3] conquistado por ti (+1 punto)! Se ha detectado la señal del Cofre [${nextChestIdx}/3]. Ha emergido ${newMonster.name || 'un nuevo monstruo'}.`,
         'loot'
       );
     } else {
-      // SOLO al completar el Cofre 3 se declara la victoria definitiva de la partida
-      await handleChestVictory();
+      // Tercer y último cofre resuelto: calcular vencedor por mayoría de cofres
+      const allPlayersRanked = [...playersRef.current].map((p) =>
+        p.id === myId ? { ...p, chests_opened: updatedChests, chestsOpened: updatedChests } : p
+      ).sort((a, b) => {
+        const aChests = a.chests_opened || a.chestsOpened || 0;
+        const bChests = b.chests_opened || b.chestsOpened || 0;
+        if (bChests !== aChests) return bChests - aChests;
+        return (b.damageDealt || 0) - (a.damageDealt || 0);
+      });
+
+      const champion = allPlayersRanked[0];
+      const championNickname = champion?.nickname || myPlayerRef.current?.nickname || 'Vencedor';
+      await handleChestVictory(championNickname);
     }
   }, [handleChestVictory, addLog]);
 
@@ -3988,6 +4310,7 @@ export const App: React.FC = () => {
           inCombat={isCombatArenaOpen}
           isChestOpened={room.status === 'victory'}
           isVictory={room.status === 'victory'}
+          isChestLockModalOpen={isChestLockModalOpen}
           onMapClick={handleMapClick}
           onPickDroppedItem={handlePickDroppedItem}
           onAdoptWildPet={handleAdoptWildPet}
@@ -4295,6 +4618,7 @@ export const App: React.FC = () => {
         <VictoryModal
           players={players}
           startedAt={room.startedAt}
+          winnerNickname={room.winner}
           onRestart={() => {
             if (room?.id) {
               try {
@@ -4402,6 +4726,61 @@ export const App: React.FC = () => {
           onAddLog={addLog}
           onFlee={handleArenaFlee}
           onClose={handleArenaClose}
+        />
+      )}
+
+      {/* 4.1. MODAL DE ARENA DE COMBATE PVP EN TIEMPO REAL */}
+      {room && myPlayer && isPvPModalOpen && pvpCombatId && pvpOpponentPlayerId && (
+        <PvPArena
+          isOpen={isPvPModalOpen}
+          combatId={pvpCombatId}
+          myPlayer={myPlayer}
+          opponentPlayer={
+            players.find((p) => p.id === pvpOpponentPlayerId) || {
+              id: pvpOpponentPlayerId,
+              userId: pvpOpponentPlayerId,
+              gameId: room.id,
+              nickname: 'Oponente',
+              role: 'tank',
+              hp: 100,
+              maxHp: 100,
+              isAlive: true,
+              lat: myPlayer.lat,
+              lng: myPlayer.lng,
+              damageDealt: 0,
+              revivesDone: 0,
+              cratesOpened: 0,
+              monsterKills: 0,
+            }
+          }
+          queuedMonster={queuedMonster}
+          isRoleSkillActive={isRoleSkillActive}
+          onPlayerDamaged={(newHp) => {
+            setMyPlayer((prev) => (prev ? { ...prev, hp: newHp } : null));
+            if (myPlayerRef.current) {
+              myPlayerRef.current.hp = newHp;
+            }
+            setPlayers((prev) =>
+              prev.map((p) => (p.id === myPlayer.id ? { ...p, hp: newHp } : p))
+            );
+            if (room?.id) {
+              (supabase.from('players') as any)
+                .update({ hp: newHp })
+                .eq('id', myPlayer.id);
+            }
+          }}
+          onOpponentDamaged={(newHp) => {
+            setPlayers((prev) =>
+              prev.map((p) => (p.id === pvpOpponentPlayerId ? { ...p, hp: newHp } : p))
+            );
+          }}
+          onPvPVictory={handlePvPVictory}
+          onPvPDefeat={handlePvPDefeat}
+          onFlee={handlePvPFlee}
+          onClose={() => {
+            setIsPvPModalOpen(false);
+            isPvPModalOpenRef.current = false;
+          }}
         />
       )}
 

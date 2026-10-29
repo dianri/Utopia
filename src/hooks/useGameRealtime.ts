@@ -69,6 +69,9 @@ interface RealtimeCallbacks {
   }) => void;
   onGameCancelled?: (payload: { reason?: string }) => void;
   onGameVictory?: (payload: { winnerTeam: boolean; unlockedBy: string }) => void;
+  onPvPEncounter?: (payload: { combatId: string; player1Id: string; player2Id: string }) => void;
+  onPvPEncounterEnd?: (payload: { combatId: string; winnerId?: string; loserId?: string }) => void;
+  onChestClaimed?: (payload: { playerId: string; playerNickname: string; chestIndex: number }) => void;
   onPresenceSync?: (activeUserIds: string[]) => void;
 }
 
@@ -243,6 +246,20 @@ export function useGameRealtime(
     // 12.1. VICTORIA DEFINITIVA (COFRE DESBLOQUEADO)
     channel.on('broadcast', { event: 'game_victory' }, ({ payload }) => {
       callbacksRef.current.onGameVictory?.(payload);
+    });
+
+    // 12.2. ENCUENTRO PVP ENTRE JUGADORES
+    channel.on('broadcast', { event: 'pvp_encounter' }, ({ payload }) => {
+      callbacksRef.current.onPvPEncounter?.(payload);
+    });
+
+    channel.on('broadcast', { event: 'pvp_encounter_end' }, ({ payload }) => {
+      callbacksRef.current.onPvPEncounterEnd?.(payload);
+    });
+
+    // 12.3. RECLAMO DE COFRE EN MODO COMPETITIVO
+    channel.on('broadcast', { event: 'chest_claimed' }, ({ payload }) => {
+      callbacksRef.current.onChestClaimed?.(payload);
     });
 
     // 13. PRESENCE (QUIÉN ESTÁ ONLINE)
@@ -533,6 +550,42 @@ export function useGameRealtime(
     });
   }, []);
 
+  const broadcastPvPEncounter = useCallback(
+    (payload: { combatId: string; player1Id: string; player2Id: string }) => {
+      if (!channelRef.current || !isSubscribedRef.current) return;
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'pvp_encounter',
+        payload,
+      });
+    },
+    []
+  );
+
+  const broadcastPvPEncounterEnd = useCallback(
+    (payload: { combatId: string; winnerId?: string; loserId?: string }) => {
+      if (!channelRef.current || !isSubscribedRef.current) return;
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'pvp_encounter_end',
+        payload,
+      });
+    },
+    []
+  );
+
+  const broadcastChestClaimed = useCallback(
+    (payload: { playerId: string; playerNickname: string; chestIndex: number }) => {
+      if (!channelRef.current || !isSubscribedRef.current) return;
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'chest_claimed',
+        payload,
+      });
+    },
+    []
+  );
+
   return {
     isConnected,
     onlineUsers,
@@ -558,5 +611,8 @@ export function useGameRealtime(
     broadcastFullStateSync,
     broadcastGameCancelled,
     broadcastGameVictory,
+    broadcastPvPEncounter,
+    broadcastPvPEncounterEnd,
+    broadcastChestClaimed,
   };
 }
