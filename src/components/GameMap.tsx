@@ -1629,27 +1629,27 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         <Locate className="w-6 h-6" />
       </button>
 
-      {/* CONTROLES SUPERIORES DERECHOS: BRÚJULA Y SELECTOR SATÉLITE/TÁCTICO */}
-      <div className="absolute top-20 right-4 z-20 flex flex-col items-center gap-2.5">
-        {/* BRÚJULA / COMPÁS HUD TÁCTICO */}
-        <div className="pointer-events-none flex flex-col items-center">
-          <div className="w-10 h-10 rounded-full bg-hud-dark/80 border border-hud-cyan/40 backdrop-blur-sm flex items-center justify-center shadow-lg">
-            <Compass className="w-6 h-6 text-hud-cyan animate-pulse" />
-          </div>
-          <span className="text-[9px] font-mono font-bold text-hud-cyan tracking-widest mt-0.5">
-            NORTE
-          </span>
+      {/* BRÚJULA HUD TÁCTICO */}
+      <div className="absolute top-16 sm:top-20 right-3 sm:right-4 z-20 pointer-events-none flex flex-col items-center">
+        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-hud-dark/80 border border-hud-cyan/40 backdrop-blur-sm flex items-center justify-center shadow-lg">
+          <Compass className="w-5 h-5 sm:w-6 sm:h-6 text-hud-cyan animate-pulse" />
         </div>
+        <span className="text-[8px] sm:text-[9px] font-mono font-bold text-hud-cyan tracking-widest mt-0.5">
+          NORTE
+        </span>
+      </div>
 
-        {/* SELECTOR DE VISTA DE MAPA (TÁCTICO VS SATÉLITE) */}
+      {/* SELECTOR DE VISTA DE MAPA (TÁCTICO VS SATÉLITE) - FAB FLOTANTE EN COLUMNA DERECHA */}
+      <div className="absolute top-28 right-3 sm:right-4 z-30 pointer-events-auto">
         <button
           type="button"
           onClick={handleToggleSatelliteView}
-          className="pointer-events-auto px-2.5 py-1.5 rounded-xl bg-slate-900/90 border border-cyan-500/50 shadow-lg backdrop-blur-md flex items-center gap-1.5 hover:bg-slate-800/90 active:scale-95 transition-all text-cyan-400"
+          className="w-[38px] h-[38px] sm:w-auto sm:h-auto sm:px-2.5 sm:py-1.5 rounded-full sm:rounded-xl bg-slate-900/90 border border-cyan-400/60 shadow-lg backdrop-blur-md flex items-center justify-center sm:gap-1.5 hover:bg-slate-800/90 active:scale-95 transition-all text-cyan-400"
           title={isSatelliteView ? 'Cambiar a mapa táctico' : 'Cambiar a vista satélite'}
+          aria-label={isSatelliteView ? 'Cambiar a mapa táctico' : 'Cambiar a vista satélite'}
         >
-          <span className="text-sm select-none">{isSatelliteView ? '📡' : '🌍'}</span>
-          <span className="font-mono font-bold text-[10px] tracking-wider text-cyan-400 select-none">
+          <span className="text-base sm:text-sm select-none">{isSatelliteView ? '📡' : '🌍'}</span>
+          <span className="hidden sm:inline font-mono font-bold text-[10px] tracking-wider text-cyan-400 select-none">
             {isSatelliteView ? 'TÁCTICO' : 'SATÉLITE'}
           </span>
         </button>
