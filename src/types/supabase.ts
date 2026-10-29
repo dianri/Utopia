@@ -20,6 +20,7 @@ export type Database = {
           center_lng: number
           chest_current_phase: number
           chest_opened: boolean
+          current_chest_index?: number
           chest_progress_pct: number
           chest_unlocked_steps: number
           code: string
@@ -48,6 +49,7 @@ export type Database = {
           center_lng: number
           chest_current_phase?: number
           chest_opened?: boolean
+          current_chest_index?: number
           chest_progress_pct?: number
           chest_unlocked_steps?: number
           code?: string
@@ -76,6 +78,7 @@ export type Database = {
           center_lng?: number
           chest_current_phase?: number
           chest_opened?: boolean
+          current_chest_index?: number
           chest_progress_pct?: number
           chest_unlocked_steps?: number
           code?: string

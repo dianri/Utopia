@@ -14,11 +14,17 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - **Podio y Clasificación de Vencedor en el Modal de Fin de Partida:** `VictoryModal.tsx` destaca al Vencedor de la Operación con su recuento de cofres y muestra la tabla de clasificación ordenada por cofres conquistados (`👑 X Cofres`) y daño total.
 
 ### Database
+- **Columna de Índice de Cofre Secuencial (`20261029105500_add_current_chest_index_to_games.sql`):**
+  - Añadida columna `current_chest_index INTEGER NOT NULL DEFAULT 1` a la tabla `games` para sincronización y persistencia atómica entre clientes y base de datos.
 - **Migración Incremental para Conquista de Cofres (`20261029103000_add_chests_opened_to_players.sql`):**
   - Añadida columna `chests_opened INTEGER NOT NULL DEFAULT 0` a la tabla `players`.
   - Añadida columna `chests_opened INTEGER NOT NULL DEFAULT 0` a la tabla `match_stats`.
 
 ### Fixed
+- **Fixed: Enforced minimum distance relocation for subsequent chests and prevented instant reopen loop on previous chest coordinates (`mapEntities.ts`, `App.tsx`, `GameMap.tsx`, `README.md`):**
+  - **Reubicación Obligatoria con Distancia Mínima (>= 70m):** `generateNextChestLocation` evalúa hasta 50 candidatos dentro del área operativa (`radiusMeters * 0.85`), garantizando una separación mínima sustancial de al menos 70 metros respecto a la ubicación del cofre previo y respecto a la posición actual del avatar del jugador.
+  - **Sincronización Atómica Dual (camelCase y snake_case):** Se corrigió la discrepancia de claves de coordenadas en el estado local de `App.tsx` (`setRoom`), sincronizando simultáneamente `treasureLat` / `treasureLng` y `treasure_lat` / `treasure_lng` tanto en el cliente local como en `postgres_changes`, `onChestTransition` y Supabase, erradicando lecturas de coordenadas residuales del cofre anterior.
+  - **Período de Gracia y Enfriamiento de Proximidad (5s):** Implementada la bandera `isChestTransitioningRef` y el estado `isChestTransitioning` que desactivan durante 5 segundos el disparador automático de 15 metros tras completar cualquier cofre, permitiendo que el cofre 2 o 3 se dibuje en su posición distante sin provocar reaperturas indeseadas sobre el jugador.
 - **Fixed: Maximum call stack size exceeded crash caused by circular movement cancellation and reactive chest trigger (`useGeolocation.ts`, `App.tsx`, `GameMap.tsx`, `README.md`):**
   - **Eliminación de Recursión Mutua entre Callbacks de Posición y Cancelación:** Incorporada la guarda `isHandlingPositionChangeRef` y el seguimiento de movimiento activo `targetPositionRef` en `useGeolocation.ts`. Al invocarse `cancelMovement()`, si el avatar no estaba desplazándose o si la llamada se origina dentro de un ciclo de `onPositionChange`, se detiene el destino de forma limpia sin re-disparar `onPositionChange` síncronamente, erradicando el desbordamiento de pila (`RangeError: Maximum call stack size exceeded`).
   - **Bandera Anti-Bucle en la Proximidad del Cofre (`hasTriggeredChestOpenRef`):** En `App.tsx` y `GameMap.tsx`, la detección de radio táctico del tesoro (`<= 15m`) implementa un cerrojo por referencia que se activa una sola vez por aproximación. Al entrar en rango, se fija la bandera y el modal antes de cancelar el desplazamiento; la bandera solo se restablece cuando el jugador se aleja a más de 15 metros, evitando bucles infinitos de re-renderizado.

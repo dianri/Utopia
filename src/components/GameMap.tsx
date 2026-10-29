@@ -67,6 +67,7 @@ interface GameMapProps {
   isChestOpened?: boolean;
   isVictory?: boolean;
   isChestLockModalOpen?: boolean;
+  isChestTransitioning?: boolean;
   onMapClick: (coords: Coordinates) => void;
   onReviveAttempt?: (targetPlayer: Player) => void;
   onPickDroppedItem?: (dropped: DroppedItem) => void;
@@ -94,6 +95,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   isChestOpened = false,
   isVictory = false,
   isChestLockModalOpen = false,
+  isChestTransitioning = false,
   onMapClick,
   onPickDroppedItem,
   onAdoptWildPet,
@@ -888,7 +890,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // ==========================================
   useEffect(() => {
     if (!myPlayer.lat || !myPlayer.lng || !treasureLocation.lat || !treasureLocation.lng) return;
-    if (inCombat || isMeWounded || isChestOpened || isVictory || isChestLockModalOpen) return;
+    if (inCombat || isMeWounded || isChestOpened || isVictory || isChestLockModalOpen || isChestTransitioning) return;
 
     const myPos = { lat: myPlayer.lat, lng: myPlayer.lng };
     const dist = getDistanceMeters(myPos, treasureLocation);
@@ -910,6 +912,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     isChestOpened,
     isVictory,
     isChestLockModalOpen,
+    isChestTransitioning,
   ]);
 
   // ==========================================

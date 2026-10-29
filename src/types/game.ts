@@ -232,6 +232,7 @@ export interface GameRoom {
   chestCurrentPhase?: number;
   chestProgressPct?: number;
   currentChestIndex?: number;
+  current_chest_index?: number;
   startedAt?: string | null;
   endedAt?: string | null;
   winner?: string | null;
