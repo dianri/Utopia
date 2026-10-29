@@ -1,25 +1,37 @@
 import React from 'react';
 
 export const SAVAGE_BEAST_SVG_PATH =
-  "M12 2C9.5 2 7.2 3.1 5.8 4.8L3 3.5 4.2 6.5C3.1 8.1 2.5 10 2.5 12c0 4.2 2.8 7.8 6.7 9 1.1.3 2.1-.5 2.1-1.7V17c0-.6.4-1 1-1h1.4c.6 0 1 .4 1 1v2.3c0 1.2 1 2 2.1 1.7 3.9-1.2 6.7-4.8 6.7-9 0-2-.6-3.9-1.7-5.5L23 3.5l-2.8 1.3C18.8 3.1 16.5 2 14 2h-2zm-3.5 7a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm7 0a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3zm-6.2 6.2l1.2-1.7 1.5 1.1 1.5-1.1 1.2 1.7-1.2 1.5h-3l-1.2-1.5z";
+  "M12 2L14.5 5.5L18 4L16.5 8.5L20 11L16 13L16.5 17L12 15L7.5 17L8 13L4 11L7.5 8.5L6 4L9.5 5.5L12 2Z";
 
 export interface SavageBeastIconProps extends React.SVGProps<SVGSVGElement> {
   className?: string;
 }
 
 export const SavageBeastIcon: React.FC<SavageBeastIconProps> = ({
-  className = "w-6 h-6",
+  className = "w-10 h-10",
   ...props
 }) => (
   <svg
     viewBox="0 0 24 24"
     fill="currentColor"
     className={className}
+    stroke="currentColor"
+    strokeWidth="0.5"
     {...props}
   >
-    {/* Silueta agresiva de bestia de caza con colmillos expuestos y orejas/púas erizadas */}
+    {/* Silueta de demonio / bestia cornuda con mandíbula de colmillos afilados */}
     <path d={SAVAGE_BEAST_SVG_PATH} />
+    <circle cx="9" cy="10" r="1.2" fill="#000" stroke="none" />
+    <circle cx="15" cy="10" r="1.2" fill="#000" stroke="none" />
+    <path d="M10 13L12 14.5L14 13L12 16L10 13Z" fill="#000" stroke="none" />
   </svg>
 );
 
-export const SAVAGE_BEAST_SVG_HTML = `<svg viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]"><path d="${SAVAGE_BEAST_SVG_PATH}" /></svg>`;
+export const SAVAGE_BEAST_SVG_HTML = `
+  <svg viewBox="0 0 24 24" fill="#ef4444" class="w-7 h-7 drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]">
+    <path d="M12 2L14.5 5.5L18 4L16.5 8.5L20 11L16 13L16.5 17L12 15L7.5 17L8 13L4 11L7.5 8.5L6 4L9.5 5.5L12 2Z" />
+    <polygon points="8,9 10,11 8,11" fill="#0f172a"/>
+    <polygon points="16,9 14,11 16,11" fill="#0f172a"/>
+    <polygon points="10,13 12,15 14,13 12,16" fill="#0f172a"/>
+  </svg>
+`;
