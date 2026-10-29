@@ -13,7 +13,7 @@ Para evitar solapamientos, las tareas en paralelo deben asignarse a dominios ais
   - Directorios exclusivos: `src/components/`, `src/hooks/useGeolocation.ts`.
   - Responsabilidad: Renderizado de MapLibre, estilos Tailwind, modales, vistas del lobby y componentes visuales.
 - **Dominio Lógica de Juego / Red / Audio / IA:**
-  - Directorios exclusivos: `src/services/`, `src/hooks/useGameRealtime.ts`, `src/hooks/usePvPCombat.ts`.
+  - Directorios exclusivos: `src/services/`, `src/hooks/useGameRealtime.ts`, `src/hooks/usePvPCombat.ts`, `src/hooks/useHostElection.ts`, `src/hooks/useMonsterAI.ts`.
   - Responsabilidad: Máquina de estados del monstruo, bucle de combate PvE y PvP en tiempo real, síntesis Web Audio y broadcast de Supabase.
 - **Zona Compartida / Contratos de Interfaz (Bloqueo previo):**
   - Archivos: `src/types/game.ts`, `src/types/supabase.ts`, `src/lib/supabase.ts`, `package.json`.

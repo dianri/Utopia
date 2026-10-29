@@ -73,7 +73,8 @@ interface RealtimeCallbacks {
   onPvPEncounterEnd?: (payload: { combatId: string; winnerId?: string; loserId?: string }) => void;
   onPvPPlayerDefeated?: (payload: { winnerId?: string; loserId: string; timestamp?: number }) => void;
   onChestClaimed?: (payload: { playerId: string; playerNickname: string; chestIndex: number }) => void;
-  onPresenceSync?: (activeUserIds: string[]) => void;
+  onPresenceSync?: (activeUserIds: string[], presenceState: Record<string, any[]>) => void;
+  onHostMigrated?: (payload: { newHostPlayerId: string; newHostUserId: string; newHostNickname: string }) => void;
 }
 
 export function useGameRealtime(
@@ -89,6 +90,8 @@ export function useGameRealtime(
   const isSubscribedRef = useRef<boolean>(false);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [presenceState, setPresenceState] = useState<Record<string, any[]>>({});
+  const joinedAtRef = useRef<number>(Date.now());
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
 
@@ -275,13 +278,33 @@ export function useGameRealtime(
       callbacksRef.current.onChestClaimed?.(payload);
     });
 
-    // 13. PRESENCE (QUIÉN ESTÁ ONLINE)
+    // 12.4. RELEVO DETERMINISTA DE ANFITRIÓN (HOST MIGRATION)
+    channel.on('broadcast', { event: 'host_migrated' }, ({ payload }) => {
+      callbacksRef.current.onHostMigrated?.(payload);
+    });
+
+    // 13. PRESENCE (QUIÉN ESTÁ ONLINE Y DETECCIÓN DE DESCONEXIÓN DEL HOST)
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
+        setPresenceState(state);
         const users = Object.keys(state);
         setOnlineUsers(users);
-        callbacksRef.current.onPresenceSync?.(users);
+        callbacksRef.current.onPresenceSync?.(users, state);
+      })
+      .on('presence', { event: 'join' }, () => {
+        const state = channel.presenceState();
+        setPresenceState(state);
+        const users = Object.keys(state);
+        setOnlineUsers(users);
+        callbacksRef.current.onPresenceSync?.(users, state);
+      })
+      .on('presence', { event: 'leave' }, () => {
+        const state = channel.presenceState();
+        setPresenceState(state);
+        const users = Object.keys(state);
+        setOnlineUsers(users);
+        callbacksRef.current.onPresenceSync?.(users, state);
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
@@ -291,6 +314,7 @@ export function useGameRealtime(
             playerId: myPlayerId,
             userId: myUserId,
             onlineAt: new Date().toISOString(),
+            joinedAt: joinedAtRef.current,
           });
         } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           isSubscribedRef.current = false;
@@ -626,9 +650,22 @@ export function useGameRealtime(
     []
   );
 
+  const broadcastHostMigrated = useCallback(
+    (payload: { newHostPlayerId: string; newHostUserId: string; newHostNickname: string }) => {
+      if (!channelRef.current || !isSubscribedRef.current) return;
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'host_migrated',
+        payload,
+      });
+    },
+    []
+  );
+
   return {
     isConnected,
     onlineUsers,
+    presenceState,
     broadcastMonsterUpdate,
     broadcastMonstersUpdate,
     broadcastChestTransition,
@@ -655,5 +692,6 @@ export function useGameRealtime(
     broadcastPvPEncounterEnd,
     broadcastPvPPlayerDefeated,
     broadcastChestClaimed,
+    broadcastHostMigrated,
   };
 }
