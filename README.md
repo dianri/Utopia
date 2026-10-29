@@ -146,7 +146,7 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 ### ⚔️ 7. Modo Competitivo, Combate PvP en Tiempo Real y Conquista de Cofres
 - **Victoria por Mayoría de Cofres (Modo Competitivo Individual):**
   - El juego evoluciona a un formato competitivo donde cada cazador compite individualmente por el dominio de la zona.
-  - La partida mantiene la cadena de **3 cofres secuenciales** en el mapa (Fase 1, 2 y 3) con reubicación obligatoria a distancia mínima (>= 70m del cofre previo y del jugador) y período de gracia de 5 segundos (`isChestTransitioning`) para evitar reaperturas inmediatas en la posición anterior:
+  - La partida mantiene la cadena de **3 cofres secuenciales** en el mapa (Fase 1, 2 y 3) con actualización atómica sincrónica en estado local y memoria (`roomRef.current` y `setRoom`), reubicación obligatoria a distancia mínima (>= 70m del cofre previo y del avatar), período de enfriamiento de 5 segundos (`isChestTransitioning`) y barrera de salida física obligatoria (`lastDecryptedChestLocationRef`, > 25m) para imposibilitar reaperturas indeseadas sobre el jugador estático:
     - **Cofre 1 (Fase 1):** Aparece al iniciar la partida con 6 cerrojos distribuidos en minijuegos tácticos.
     - **Cofre 2 (Fase 2):** Al ser descifrado, desaparece del mapa y otorga **1 punto de cofre** al jugador que superó el último cerrojo (`chests_opened`). Se engendra el Cofre 2 en un nuevo sector distante del área y convoca al Devorador Alfa.
     - **Cofre 3 (Fase 3):** Al completarse el cofre 2, se otorga el punto al jugador que lo descifró, desaparece y se despliega el tercer y último cofre en otra ubicación remota junto al Coloso de Sombra.
