@@ -48,9 +48,17 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
   - Se activa en el instante en que cualquier cazador abre el minijuego de cerrojos del cofre.
   - Cancela la patrulla y corre en **sprint directo hacia el cofre a 3.8 m/s** (4.2 m/s enfurecido).
   - Al llegar a $\le 30\text{m}$, ataca a los defensores en el radio de 25m del tesoro, forzando la apertura de la Arena de Combate e interrumpiendo el minijuego.
-- **Muerte Temporal y Reaparición (`dead` / `respawning`):**
-  - Al caer a 0 HP, desaparece del mapa y activa un temporizador visible de **60 segundos** en el HUD.
-  - Al expirar los 60s, resucita con **500 HP** en las coordenadas exactas del cofre del tesoro con rugido de alerta, reiniciando su estado a `patrol`.
+- **Muerte Temporal y Reaparición Silenciosa (`dead` / `respawning`):**
+  - Al caer a 0 HP, el monstruo queda abatido temporalmente durante **60 segundos** sin emitir alertas ni carteles de respawn intrusivos en el HUD.
+  - Al expirar los 60s, reaparece silenciosamente en una posición alejada dentro del área de juego con su salud restablecida, reanudando su patrulla sin ruidos ni avisos sonoros molestos.
+- **Escalado Concurrente de Monstruos por Cofres Activos:**
+  - Al desbloquearse el Cofre 1 y emerger el Cofre 2, se engendra un segundo monstruo (`monster_2`, **Devorador Alfa**, 1400 HP, 3.2 m/s).
+  - Al desbloquearse el Cofre 2 y emerger el Cofre 3, se engendra un tercer monstruo (`monster_3`, **Coloso de Sombra**, 1600 HP, 3.6 m/s).
+  - Los monstruos existentes persisten y patrullan simultáneamente en el terreno con controladores de IA independientes gobernados en paralelo por el Host.
+- **Cola de Combate Estricta 1 vs 1:**
+  - La Arena de Combate (`CombatArena.tsx`) se enfoca estrictamente en un único duelo a la vez (`activeCombatMonsterId`).
+  - Si otros monstruos alcanzan al cazador ($\le 20\text{m}$), aguardan fuera en el mapa sin interrumpir ni superponer pantallas de combate.
+  - Al derrotar al monstruo actual, si otro monstruo se encuentra en rango inmediato ($\le 20\text{m}$), se realiza una transición táctica automática e inmediata contra la siguiente amenaza.
 - **Niebla de Guerra y Radar:**
   - El monstruo permanece oculto en el mapa exterior a menos que esté dentro del radio de visión (70m base, 85m con dron, 105m/120m explorador) o que el Explorador active el **Radar Táctico**.
 
@@ -134,15 +142,20 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 
 ---
 
-### 🗝️ 7. Apertura Cooperativa del Cofre por Fases
-- Sustituida la cuenta regresiva estática por un sistema cooperativo de **3 fases con 2 cerrojos cada una** (6 desafíos en total):
-  1. **Fase 1 (Sincronización QTE):** Puntería temporal sobre zonas verdes oscilantes.
-  2. **Fase 2 (Código Lumínico / Simón Dice):** Secuencia de memoria táctica de 3 a 4 colores con feedback audiovisual inmediato bidireccional (tanto en la demostración automática como en la pulsación táctil del jugador: destello de 200ms con halo perimetral brillante, vibración táctica y tonos armónicos sintetizados dedicados para cyan, emerald, amber y purple mediante Web Audio API).
+### 🗝️ 7. Apertura Cooperativa y Cadena de 3 Cofres Secuenciales
+- **Condición de Victoria de 3 Cofres Secuenciales:**
+  - El objetivo principal consta de una cadena de **3 cofres en total** que aparecen de uno en uno:
+    - **Cofre 1 (Fase 1):** Aparece al iniciar la partida con 6 cerrojos distribuidos en 3 fases de minijuegos.
+    - **Cofre 2 (Fase 2):** Al descifrar el cofre 1 por completo (6/6), este desaparece del mapa y engendra inmediatamente un segundo cofre en una coordenada aleatoria válida dentro del área jugable, reseteando los cerrojos a 0/6 y desplegando al **Devorador Alfa**.
+    - **Cofre 3 (Fase 3):** Al descifrar el cofre 2 (6/6), desaparece del terreno y genera el tercer y último cofre, convocando al **Coloso de Sombra**.
+  - **Victoria Definitiva:** La partida **solo finaliza con victoria** (`status: 'victory'`) al descifrar por completo el tercer cofre (Cofre [3/3]).
+- **Minijuegos Cooperativos por Fases:**
+  1. **Fase 1 (Sincronización QTE):** Puntería temporal sobre zonas oscilantes.
+  2. **Fase 2 (Código Lumínico / Simón Dice):** Secuencia de memoria táctica de 3 a 4 colores con feedback audiovisual inmediato interactivo.
   3. **Fase 3 (Frecuencia Magnética):** Dial rotatorio sintonizador con respuesta háptica.
-- **Resolución Atómica del Sexto Cerrojo y Transición a Victoria:** Al resolver el segundo reto de la Fase 3, el cofre confirma el estado atómico en 6/6 cerrojos superados (100%), transformando el marcador del mapa a "Cofre Abierto / Saqueado" (`🔓`) y presentando de forma inmediata el modal de "¡TESORO ASEGURADO!".
-- **Sello Autoritativo de Sala y Cierre para Clientes No-Anfitriones (`finish_game_victory`):** Si un jugador que no inició la sala completa el sexto cerrojo, la sala se sella de forma atómica e irreversible mediante la función RPC PostgreSQL con `SECURITY DEFINER` `finish_game_victory(p_game_id, p_winner_nickname)` (respaldada por la política RLS `games_update_participants`), registrando `status = 'victory'`, `ended_at = now()`, `chest_opened = true` y el apodo del ganador. Los miembros que reciben el broadcast de victoria también invocan la persistencia en base de datos.
-- **Política Estricta Anti-Reconexión a Partidas Finalizadas:** Al registrarse la victoria o derrota, se purga de inmediato el snapshot local de sesión (`clearPlayerSessionSnapshot`) y la clave de sala activa (`utopia_active_room`). El explorador de partidas (`GameExplorer`) y el verificador de reconexión del lobby filtran estrictamente por `.is('ended_at', null)` y descartan partidas en estado `victory`, `defeat` o `cancelled`, impidiendo que salas concluidas continúen apareciendo como activas o reanudables tras recargar la página.
-- **Furia Defensiva del Monstruo:** Cuando cualquier agente inicia el desbloqueo del cofre, el monstruo entra en modo `defend_chest` y realiza un sprint a 3.8 m/s directamente hacia las coordenadas del cofre.
+- **Resolución Atómica y Transición a Victoria:** Al resolver el sexto cerrojo del Cofre 3, se confirma el estado en 6/6 cerrojos superados, sellando la partida en `victory`, registrando las estadísticas en Supabase y presentando el modal de "¡TESORO ASEGURADO!".
+- **Sello Autoritativo de Sala y Cierre para Clientes No-Anfitriones (`finish_game_victory`):** Si un jugador que no inició la sala completa el sexto cerrojo del cofre final, la sala se sella de forma atómica e irreversible mediante la función RPC PostgreSQL con `SECURITY DEFINER` `finish_game_victory(p_game_id, p_winner_nickname)`.
+- **Furia Defensiva del Monstruo:** Cuando cualquier agente inicia el desbloqueo de cualquier cofre activo, el monstruo entra en modo `defend_chest` y corre directamente hacia las coordenadas del cofre.
 - **Aislamiento por Partida:** Estado de desbloqueo estricto por ID único de sala (`game.id`), evitando que nuevas partidas hereden progreso residual.
 
 ---
@@ -150,10 +163,10 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 ### 📱 8. Optimización Mobile-First y HUD Táctico
 - **Vista Satélite por Defecto y Selector Táctico FAB (Terreno Real vs. Modo Oscuro):** La simulación táctica arranca predeterminadamente con ortofoto satelital de alta resolución (ArcGIS World Imagery), permitiendo reconocer calles, edificios y terreno real en el teatro de operaciones. Las 7 capas GeoJSON de influencia táctica (perímetro, zona del cofre, visión del jugador, suministros, hospitales/refugios, radios de interacción y línea de auxilio médico) se proyectan con alto contraste lumínico (cian `#00f2fe`, esmeralda `#10b981` y ámbar `#ffd000`) de forma persistente y sin pérdidas sobre la fotografía aérea. El botón flotante de acción rápida (FAB) reubicado en la columna derecha (`top-28 right-3 z-30` bajo la brújula NORTE) permite conmutar en cualquier momento entre la vista satelital y el mapa vectorial oscuro táctico (OpenFreeMap). En móviles se adapta como botón circular compacto de 38x38px (`w-[38px] h-[38px] rounded-full`) mostrando el icono dinámico (📡 para volver a TÁCTICO / 🌍 para SATÉLITE) con respuesta sonora (`playRadarPing`) y háptica (`vibrate`).
 - **Alerta Unificada de Instalación Médica:** Tarjeta horizontal compacta (`IndoorStatusBanner.tsx`, altura máx. 44px `max-h-11` en móvil) que unifica el estado de salud y el acceso directo al Pod de Regeneración (`"INGRESAR"`), eliminando banners superpuestos en la cabecera del mapa.
-- **Micro-Píldora Táctica en Móvil y Dock Lateral en PC para el Cofre del Tesoro:** Widget de progreso de victoria (`ChestCountdown.tsx`) desacoplado del centro superior de la pantalla: en móviles se transforma en una micro-píldora flotante compacta de una sola línea anclada en `left-3 top-[88px] z-20` (`h-7`, 👑, `X/6`, micro-barra de 3px y botón dinámico `ABRIR` en rango) con popover táctico temporal de 3 segundos; en PC se ancla en el lateral superior izquierdo (`top-24 left-4 z-20 w-56`) con panel semitransparente, dejando la franja central (`top-20 z-40`) totalmente despejada y con prioridad de capa para las alertas médicas del hospital, perímetros de operación y estado de huida.
+- **Micro-Píldora Táctica en Móvil y Dock Lateral en PC para el Cofre del Tesoro:** Widget de progreso de victoria (`ChestCountdown.tsx`) desacoplado del centro superior de la pantalla con soporte para la cadena de 3 cofres (`COFRE [X/3] • Cerrojos (X/6)`): en móviles se transforma en una micro-píldora flotante compacta de una sola línea anclada en `left-3 top-[88px] z-20` (`h-7`, 👑, `[X/3] (X/6)`, micro-barra de 3px y botón dinámico `ABRIR` en rango) con popover táctico temporal de 3 segundos; en PC se ancla en el lateral superior izquierdo (`top-24 left-4 z-20 w-64`) con panel semitransparente, dejando la franja central (`top-20 z-40`) totalmente despejada y con prioridad de capa para las alertas médicas del hospital, perímetros de operación y estado de huida.
 - **Barra de Acciones Inferior Unificada (Flexbox Táctico):** Integración en una sola fila responsive (`fixed bottom-4 left-3 right-3 flex items-center gap-2 z-30 pointer-events-none`) del botón de Mochila (`w-12 h-12 shrink-0`), la tarjeta de Arma Equipada (`flex-1 min-w-0` con textos adaptables que evitan truncamientos agresivos) y el botón circular de Habilidad/Cura (`w-12 h-12 sm:w-14 sm:h-14 shrink-0`), garantizando cero solapamientos entre la munición y las acciones del cazador.
 - **Soporte para Safe Area:** Separación inferior del panel de armas (`pb-[env(safe-area-inset-bottom)]`) evitando colisiones con la barra de navegación del sistema operativo móvil.
-- **Contenedor Flex Vertical de Alertas Tácticas Centrales:** Notificaciones de respawn, alertas de hospital y perímetros apiladas en columna central (`top-20 z-40 flex-col gap-2`) completamente despejadas y sin solapamiento con otros controles.
+- **Contenedor Flex Vertical de Alertas Tácticas Centrales:** Alertas médicas de hospital y avisos de límites de perímetro apiladas en columna central (`top-20 z-40 flex-col gap-2`) completamente despejadas y sin solapamiento con otros controles (reemplazando banners invasivos de respawn por reapariciones silenciosas).
 - **Autocierre de Mensajes de Bitácora:** Desvanecimiento temporal del log de combate (`CombatLog.tsx`) tras 3.5 segundos de inactividad para mantener despejada la vista de mapa.
 - **Renderizado Seguro de Marcadores en MapLibre:** Guardia estricta de ciclo de vida del mapa WebGL y revelación diferida mediante doble `requestAnimationFrame` que elimina cualquier parpadeo de marcadores en la coordenada `(0, 0)`.
 

@@ -4,6 +4,8 @@ import { Crown, AlertTriangle, KeyRound, ShieldAlert } from 'lucide-react';
 interface ChestCountdownProps {
   currentPhase: number; // 1, 2, 3
   currentStep: number;  // 0, 1
+  currentChestIndex?: number; // 1, 2, 3
+  totalChests?: number; // default: 3
   isInChestZone: boolean;
   isMonsterInChestZone?: boolean;
   isMonsterDefending?: boolean;
@@ -19,6 +21,8 @@ interface ChestCountdownProps {
 export const ChestCountdown: React.FC<ChestCountdownProps> = ({
   currentPhase,
   currentStep,
+  currentChestIndex = 1,
+  totalChests = 3,
   isInChestZone,
   isMonsterInChestZone = false,
   isMonsterDefending,
@@ -87,7 +91,7 @@ export const ChestCountdown: React.FC<ChestCountdownProps> = ({
             }`}
           />
           <span className="text-[11px] font-mono font-bold text-amber-300">
-            {totalCompleted}/6
+            [{currentChestIndex}/{totalChests}] {totalCompleted}/6
           </span>
 
           {/* Micro-barra de progreso (anchura 40px, altura 3px) */}
@@ -127,7 +131,7 @@ export const ChestCountdown: React.FC<ChestCountdownProps> = ({
                 <div className="flex items-center gap-1.5">
                   <Crown className="w-4 h-4 text-amber-400" />
                   <span className="text-[11px] font-mono font-black text-amber-300 uppercase">
-                    COFRE ({totalCompleted}/6)
+                    COFRE [{currentChestIndex}/{totalChests}] • ({totalCompleted}/6)
                   </span>
                 </div>
                 <span className="text-[9px] font-mono text-slate-400">
@@ -203,16 +207,16 @@ export const ChestCountdown: React.FC<ChestCountdownProps> = ({
       {/* 2. ESCRITORIO (>= 640px): WIDGET DOCK LATERAL IZQ   */}
       {/* ==================================================== */}
       <div className="hidden sm:block w-56 bg-slate-950/80 backdrop-blur-sm border border-amber-500/40 rounded-lg p-2 shadow-xl shadow-amber-950/20">
-        {/* Fila superior: 👑 COFRE DEL TESORO (X/6) */}
+        {/* Fila superior: 👑 COFRE [X/3] • Cerrojos (X/6) */}
         <div className="flex items-center justify-between gap-1.5 mb-1.5">
           <div className="flex items-center gap-1.5 min-w-0">
             <Crown className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span className="text-xs font-mono font-semibold text-amber-400 truncate">
-              COFRE DEL TESORO
+              COFRE [{currentChestIndex}/{totalChests}]
             </span>
           </div>
           <span className="text-xs font-mono font-semibold text-amber-400 shrink-0">
-            ({totalCompleted}/6)
+            Cerrojos ({totalCompleted}/6)
           </span>
         </div>
 

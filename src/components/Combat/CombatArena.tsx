@@ -441,7 +441,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
             <div className="flex items-center gap-2">
               <Skull className="w-4 h-4 text-red-400" />
               <span className="font-mono font-black text-sm text-red-100 uppercase tracking-wider">
-                Goliardus Rex
+                {monster.name || 'Goliardus Rex'}
               </span>
             </div>
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-red-900/60 text-red-300 font-bold border border-red-700/50">

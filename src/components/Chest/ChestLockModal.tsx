@@ -7,6 +7,8 @@ interface ChestLockModalProps {
   onClose: () => void;
   currentPhase: number; // 1, 2, 3
   currentStep: number;  // 0, 1
+  currentChestIndex?: number;
+  totalChests?: number;
   onStepSuccess: (nextPhase: number, nextStep: number) => void;
   onVictory: () => void;
   distToMonster: number;
@@ -18,6 +20,8 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
   onClose,
   currentPhase,
   currentStep,
+  currentChestIndex = 1,
+  totalChests = 3,
   onStepSuccess,
   onVictory,
   distToMonster,
@@ -320,11 +324,11 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
             </div>
             <div className="flex flex-col">
               <span className="font-mono font-black text-sm text-white uppercase tracking-wider">
-                Desencriptando Cofre
+                Desencriptando Cofre [{currentChestIndex}/{totalChests}]
               </span>
               <span className="text-[11px] font-mono text-amber-400">
                 {isVictorious
-                  ? 'Fase 3 de 3 • ¡Cerrojo 2/2 Superado (6/6)!'
+                  ? (currentChestIndex >= totalChests ? '¡Fase Final Superada (6/6)!' : '¡Cofre Descifrado (6/6)!')
                   : `Fase ${currentPhase} de 3 • Cerrojo ${currentStep + 1}/2`}
               </span>
             </div>
@@ -547,11 +551,15 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
                   <>
                     <CheckCircle2 className="w-12 h-12 text-emerald-400 animate-bounce" />
                     <span className="font-mono font-black text-base uppercase tracking-wider text-center">
-                      {isVictorious ? '¡TESORO ASEGURADO! ¡MISIÓN CUMPLIDA!' : '¡CERROJO SUPERADO!'}
+                      {isVictorious
+                        ? (currentChestIndex >= totalChests ? '¡TESORO ASEGURADO! ¡MISIÓN CUMPLIDA!' : `¡COFRE [${currentChestIndex}/${totalChests}] DESCIFRADO!`)
+                        : '¡CERROJO SUPERADO!'}
                     </span>
                     {isVictorious && (
                       <span className="text-xs font-mono text-emerald-200">
-                        Cerrojos 6/6 completados • Abriendo cofre...
+                        {currentChestIndex >= totalChests
+                          ? 'Cerrojos 6/6 completados • Abriendo cofre final...'
+                          : 'Cerrojos 6/6 completados • Desplegando siguiente cofre...'}
                       </span>
                     )}
                   </>

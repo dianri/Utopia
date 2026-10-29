@@ -138,6 +138,8 @@ export interface Player {
 export type MonsterState = 'patrol' | 'chase' | 'enraged' | 'dead' | 'defend_chest';
 
 export interface Monster {
+  id?: string;
+  name?: string;
   lat: number;
   lng: number;
   hp: number;
@@ -219,6 +221,7 @@ export interface GameRoom {
   chestUnlockedSteps?: number;
   chestCurrentPhase?: number;
   chestProgressPct?: number;
+  currentChestIndex?: number;
   startedAt?: string | null;
   endedAt?: string | null;
   winner?: string | null;

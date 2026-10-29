@@ -1,5 +1,5 @@
 import type { Monster, Coordinates, Player } from '../types/game';
-import { getDistanceMeters, getDestinationPoint, stepTowards, getBearing } from './geoUtils';
+import { getDistanceMeters, getDestinationPoint, stepTowards, getBearing, getRandomPointInCircle } from './geoUtils';
 import { soundEffects } from './soundEffects';
 
 export interface MonsterAIUpdateResult {
@@ -14,17 +14,26 @@ export interface MonsterAIUpdateResult {
 
 export class MonsterAIController {
   private treasureLocation: Coordinates;
+  private centerLocation?: Coordinates;
+  private playAreaRadius?: number;
   private patrolRadiusMeters: number = 55;
   private lastAttackTimestamp: number = 0;
   private hadEnraged: boolean = false;
   private forcedTargetPlayerId: string | null = null;
 
-  constructor(treasureLocation: Coordinates) {
+  constructor(treasureLocation: Coordinates, centerLocation?: Coordinates, playAreaRadius?: number) {
     this.treasureLocation = treasureLocation;
+    this.centerLocation = centerLocation;
+    this.playAreaRadius = playAreaRadius;
   }
 
   public setTreasureLocation(coord: Coordinates) {
     this.treasureLocation = coord;
+  }
+
+  public setPlayArea(center: Coordinates, radius: number) {
+    this.centerLocation = center;
+    this.playAreaRadius = radius;
   }
 
   public setAggroTarget(playerId: string) {
@@ -51,26 +60,31 @@ export class MonsterAIController {
 
     const now = Date.now();
 
-    // 1. GESTIÓN DE MUERTE TEMPORAL Y REAPARICIÓN (60 SEGUNDOS)
+    // 1. GESTIÓN DE MUERTE TEMPORAL Y REAPARICIÓN SILENCIOSA (60 SEGUNDOS)
     if (monster.hp <= 0 || monster.state === 'dead') {
       const remaining = (monster.respawnTimeRemaining ?? 60) - 1;
       if (remaining <= 0) {
-        // Reaparición completa en el cofre
+        // Reaparición silenciosa en una posición alejada dentro del área jugable
         result.justRespawned = true;
         this.hadEnraged = false;
+        const respawnPos =
+          this.centerLocation && this.playAreaRadius
+            ? getRandomPointInCircle(this.centerLocation, this.playAreaRadius * 0.75)
+            : this.treasureLocation;
+
         result.updatedMonster = {
           ...monster,
-          lat: this.treasureLocation.lat,
-          lng: this.treasureLocation.lng,
+          lat: respawnPos.lat,
+          lng: respawnPos.lng,
           hp: monster.maxHp,
           state: 'patrol',
           targetPlayerId: null,
-          speedMps: 1.1,
+          speedMps: monster.speedMps || 2.8,
           respawnTimeRemaining: undefined,
           isEnraged: false,
           isRespawning: false,
         };
-        soundEffects.playMonsterRoar();
+        // Reaparición silenciosa: sin rugido ni alertas de interrupción
       } else {
         result.updatedMonster = {
           ...monster,
