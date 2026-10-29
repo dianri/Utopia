@@ -1141,7 +1141,7 @@ export const App: React.FC = () => {
         }
         localStorage.removeItem('utopia_active_room');
         setSavedActiveRoomCode(null);
-        setRoom((prev) => (prev ? { ...prev, status: 'victory', endedAt: new Date().toISOString() } : null));
+        setRoom((prev) => (prev ? { ...prev, status: 'victory', winner: unlockedBy || prev.winner, endedAt: new Date().toISOString() } : null));
         addLog(`¡${unlockedBy || 'La escuadra'} ha desbloqueado el sexto cerrojo! ¡TESORO ASEGURADO!`, 'victory');
         soundEffects.playVictoryFanfare();
       },
@@ -1576,6 +1576,8 @@ export const App: React.FC = () => {
                 ? {
                     ...prev,
                     status: updated.status,
+                    ...(updated.winner ? { winner: updated.winner } : {}),
+                    ...(updated.ended_at ? { endedAt: updated.ended_at } : {}),
                     ...(updatedSpeed ? { playerSpeed: updatedSpeed } : {}),
                     ...(updated?.treasure_lat && updated?.treasure_lng
                       ? {
@@ -1644,6 +1646,8 @@ export const App: React.FC = () => {
                   revivesDone: existing ? existing.revivesDone : d.revives_done,
                   cratesOpened: existing ? existing.cratesOpened : d.crates_opened,
                   monsterKills: existing ? existing.monsterKills : d.monster_kills,
+                  chestsOpened: d.chests_opened ?? existing?.chestsOpened ?? existing?.chests_opened ?? 0,
+                  chests_opened: d.chests_opened ?? existing?.chests_opened ?? existing?.chestsOpened ?? 0,
                   isHost: d.user_id === room.hostId,
                   pets: existing?.pets ?? d.pets ?? [],
                   inventory: existing?.inventory ?? d.inventory ?? [],
@@ -2824,10 +2828,21 @@ export const App: React.FC = () => {
     let winnerNickname = finalWinnerNickname;
     if (!winnerNickname) {
       const allSorted = [...playersRef.current].sort((a, b) => {
-        const aChests = a.chests_opened || a.chestsOpened || 0;
-        const bChests = b.chests_opened || b.chestsOpened || 0;
+        const aChests = a.chests_opened ?? a.chestsOpened ?? 0;
+        const bChests = b.chests_opened ?? b.chestsOpened ?? 0;
         if (bChests !== aChests) return bChests - aChests;
-        return (b.damageDealt || 0) - (a.damageDealt || 0);
+
+        const killsA = (a as any).kills ?? a.monsterKills ?? (a as any).monsters_slain ?? 0;
+        const killsB = (b as any).kills ?? b.monsterKills ?? (b as any).monsters_slain ?? 0;
+        if (killsB !== killsA) return killsB - killsA;
+
+        const dmgA = a.damageDealt ?? 0;
+        const dmgB = b.damageDealt ?? 0;
+        if (dmgB !== dmgA) return dmgB - dmgA;
+
+        const woundsA = (a as any).times_wounded ?? (a as any).timesWounded ?? (a.isCriticallyWounded ? 1 : 0);
+        const woundsB = (b as any).times_wounded ?? (b as any).timesWounded ?? (b.isCriticallyWounded ? 1 : 0);
+        return woundsA - woundsB;
       });
       winnerNickname = allSorted[0]?.nickname || myPlayerRef.current?.nickname || 'Vencedor';
     }
@@ -3074,10 +3089,21 @@ export const App: React.FC = () => {
       const allPlayersRanked = [...playersRef.current].map((p) =>
         p.id === myId ? { ...p, chests_opened: updatedChests, chestsOpened: updatedChests } : p
       ).sort((a, b) => {
-        const aChests = a.chests_opened || a.chestsOpened || 0;
-        const bChests = b.chests_opened || b.chestsOpened || 0;
+        const aChests = a.chests_opened ?? a.chestsOpened ?? 0;
+        const bChests = b.chests_opened ?? b.chestsOpened ?? 0;
         if (bChests !== aChests) return bChests - aChests;
-        return (b.damageDealt || 0) - (a.damageDealt || 0);
+
+        const killsA = (a as any).kills ?? a.monsterKills ?? (a as any).monsters_slain ?? 0;
+        const killsB = (b as any).kills ?? b.monsterKills ?? (b as any).monsters_slain ?? 0;
+        if (killsB !== killsA) return killsB - killsA;
+
+        const dmgA = a.damageDealt ?? 0;
+        const dmgB = b.damageDealt ?? 0;
+        if (dmgB !== dmgA) return dmgB - dmgA;
+
+        const woundsA = (a as any).times_wounded ?? (a as any).timesWounded ?? (a.isCriticallyWounded ? 1 : 0);
+        const woundsB = (b as any).times_wounded ?? (b as any).timesWounded ?? (b.isCriticallyWounded ? 1 : 0);
+        return woundsA - woundsB;
       });
 
       const champion = allPlayersRanked[0];
@@ -5001,6 +5027,8 @@ export const App: React.FC = () => {
       {room && room.status === 'victory' && (
         <VictoryModal
           players={players}
+          myPlayer={myPlayer}
+          currentUserId={myPlayer?.id || myPlayer?.userId}
           startedAt={room.startedAt}
           winnerNickname={room.winner}
           onRestart={() => {
