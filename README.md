@@ -149,6 +149,7 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
     - **Cofre 2 (Fase 2):** Al descifrar el cofre 1 por completo (6/6), este desaparece del mapa y engendra inmediatamente un segundo cofre en una coordenada aleatoria válida dentro del área jugable, reseteando los cerrojos a 0/6 y desplegando al **Devorador Alfa**.
     - **Cofre 3 (Fase 3):** Al descifrar el cofre 2 (6/6), desaparece del terreno y genera el tercer y último cofre, convocando al **Coloso de Sombra**.
   - **Victoria Definitiva:** La partida **solo finaliza con victoria** (`status: 'victory'`) al descifrar por completo el tercer cofre (Cofre [3/3]).
+- **Apertura Inmediata por Coordenadas y Clic Táctico (`CHEST_TRIGGER_RADIUS = 15m`):** Al desplazarse y cruzar el umbral de 15 metros del cofre activo, el movimiento se detiene automáticamente y se abre de inmediato la interfaz de descifrado (`ChestLockModal`), sin bloqueos por banderas ni requerir búsquedas en el HUD. Adicionalmente, pulsar directamente sobre el marcador de TESORO (👑) en el mapa aproxima al jugador e inicia la desencriptación al llegar al perímetro.
 - **Minijuegos Cooperativos por Fases:**
   1. **Fase 1 (Sincronización QTE):** Puntería temporal sobre zonas oscilantes.
   2. **Fase 2 (Código Lumínico / Simón Dice):** Secuencia de memoria táctica de 3 a 4 colores con feedback audiovisual inmediato interactivo.

@@ -1134,6 +1134,38 @@ export const App: React.FC = () => {
         }
       }
 
+      // Detección y apertura inmediata del cofre por proximidad táctica (<= 15m)
+      const CHEST_TRIGGER_RADIUS = 15;
+      const currentRoom = roomRef.current;
+      const treasureLoc =
+        currentRoom && currentRoom.treasureLat != null && currentRoom.treasureLng != null
+          ? { lat: currentRoom.treasureLat, lng: currentRoom.treasureLng }
+          : null;
+
+      const isAliveAndActive =
+        myPlayerRef.current.isAlive &&
+        !myPlayerRef.current.isCriticallyWounded &&
+        myPlayerRef.current.status !== 'critically_wounded';
+
+      if (
+        treasureLoc &&
+        currentRoom?.status === 'playing' &&
+        isAliveAndActive &&
+        !isChestLockModalOpenRef.current &&
+        !isCombatArenaOpenRef.current &&
+        !isHospitalModalOpenRef.current
+      ) {
+        const distanceToChest = getDistanceMeters(coords, treasureLoc);
+        if (distanceToChest <= CHEST_TRIGGER_RADIUS) {
+          cancelMovementRef.current();
+          setIsChestLockModalOpen(true);
+          isChestLockModalOpenRef.current = true;
+          realtime.broadcastChestInteracting(true);
+          soundEffects.playCrateLoot();
+          addLog('¡En rango del cofre táctico! Iniciando desencriptación de cerrojos.', 'info');
+        }
+      }
+
       setMyPlayer((prev) =>
         prev
           ? {
@@ -1996,34 +2028,74 @@ export const App: React.FC = () => {
 
   // Manejadores del Cofre Cooperativo
   const handleOpenChestModal = useCallback(() => {
-    if (!room || !myPlayer) return;
+    const currentRoom = roomRef.current;
+    const player = myPlayerRef.current;
+    if (!currentRoom || !player) return;
+
     const pCoord = {
-      lat: myPlayer.lat ?? room.centerLat,
-      lng: myPlayer.lng ?? room.centerLng,
+      lat: player.lat ?? currentRoom.centerLat,
+      lng: player.lng ?? currentRoom.centerLng,
     };
     const treasureCoord = {
-      lat: room.treasureLat,
-      lng: room.treasureLng,
+      lat: currentRoom.treasureLat,
+      lng: currentRoom.treasureLng,
     };
     const distToChest = getDistanceMeters(pCoord, treasureCoord);
-    const distMonsterToChest = getDistanceMeters(treasureCoord, monsterRef.current);
-    const isMonsterDefending = isMonsterAlive(monsterRef.current) && distMonsterToChest <= 20;
 
-    if (distToChest > 20) {
-      addLog('Debes acercarte a menos de 20m del cofre para abrirlo.', 'warning');
+    if (distToChest > 25) {
+      handleMapClickRef.current?.(treasureCoord);
+      addLog('Desplazándose hacia las coordenadas del cofre del tesoro...', 'info');
       return;
     }
 
-    if (isMonsterDefending) {
-      addLog('¡El monstruo está custodiando el cofre! Atráelo lejos o derrótalo.', 'warning');
-      return;
-    }
-
+    cancelMovementRef.current();
     setIsChestLockModalOpen(true);
     isChestLockModalOpenRef.current = true;
     realtimeRef.current.broadcastChestInteracting(true);
+    soundEffects.playCrateLoot();
     addLog('Iniciando desencriptación del cofre táctico. ¡La escuadra debe proteger el perímetro!', 'info');
-  }, [room, myPlayer, addLog]);
+  }, [addLog]);
+
+  // Apertura automática del cofre cuando el jugador ya está dentro del radio (<= 15m)
+  useEffect(() => {
+    if (!room || room.status !== 'playing') return;
+    if (
+      !myPlayer ||
+      !myPlayer.isAlive ||
+      myPlayer.isCriticallyWounded ||
+      myPlayer.status === 'critically_wounded'
+    ) {
+      return;
+    }
+    if (isChestLockModalOpen || isCombatArenaOpen || isHospitalModalOpen) return;
+    if (room.treasureLat == null || room.treasureLng == null) return;
+
+    const myCoords = { lat: myPlayer.lat ?? room.centerLat, lng: myPlayer.lng ?? room.centerLng };
+    const treasureCoords = { lat: room.treasureLat, lng: room.treasureLng };
+    const dist = getDistanceMeters(myCoords, treasureCoords);
+
+    if (dist <= 15) {
+      cancelMovementRef.current();
+      setIsChestLockModalOpen(true);
+      isChestLockModalOpenRef.current = true;
+      realtimeRef.current.broadcastChestInteracting(true);
+      soundEffects.playCrateLoot();
+      addLog('¡En rango del cofre táctico! Iniciando desencriptación de cerrojos.', 'info');
+    }
+  }, [
+    myPlayer?.lat,
+    myPlayer?.lng,
+    myPlayer?.isAlive,
+    myPlayer?.isCriticallyWounded,
+    myPlayer?.status,
+    room?.treasureLat,
+    room?.treasureLng,
+    room?.status,
+    isChestLockModalOpen,
+    isCombatArenaOpen,
+    isHospitalModalOpen,
+    addLog,
+  ]);
 
   const handleCloseChestModal = useCallback(() => {
     setIsChestLockModalOpen(false);
@@ -3808,8 +3880,11 @@ export const App: React.FC = () => {
     [room?.centerLat, room?.centerLng]
   );
   const mapTreasureLocation = useMemo(
-    () => ({ lat: room?.treasureLat ?? 0, lng: room?.treasureLng ?? 0 }),
-    [room?.treasureLat, room?.treasureLng]
+    () => ({
+      lat: room?.treasureLat && room.treasureLat !== 0 ? room.treasureLat : room?.centerLat ?? 0,
+      lng: room?.treasureLng && room.treasureLng !== 0 ? room.treasureLng : room?.centerLng ?? 0,
+    }),
+    [room?.treasureLat, room?.treasureLng, room?.centerLat, room?.centerLng]
   );
 
   // ==========================================
@@ -3841,6 +3916,7 @@ export const App: React.FC = () => {
           onMapClick={handleMapClick}
           onPickDroppedItem={handlePickDroppedItem}
           onAdoptWildPet={handleAdoptWildPet}
+          onOpenChest={handleOpenChestModal}
         />
       ) : (
         /* PANTALLA DE INICIO / LOBBY PRINCIPAL */
