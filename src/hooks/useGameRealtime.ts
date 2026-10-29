@@ -253,6 +253,14 @@ export function useGameRealtime(
       callbacksRef.current.onPvPEncounter?.(payload);
     });
 
+    channel.on('broadcast', { event: 'pvp_combat_initiated' }, ({ payload }) => {
+      callbacksRef.current.onPvPEncounter?.({
+        combatId: payload.combatId,
+        player1Id: payload.attackerId || payload.player1Id,
+        player2Id: payload.defenderId || payload.player2Id,
+      });
+    });
+
     channel.on('broadcast', { event: 'pvp_encounter_end' }, ({ payload }) => {
       callbacksRef.current.onPvPEncounterEnd?.(payload);
     });
@@ -551,12 +559,24 @@ export function useGameRealtime(
   }, []);
 
   const broadcastPvPEncounter = useCallback(
-    (payload: { combatId: string; player1Id: string; player2Id: string }) => {
+    (payload: { combatId: string; player1Id: string; player2Id: string; attackerId?: string; defenderId?: string }) => {
       if (!channelRef.current || !isSubscribedRef.current) return;
+      const fullPayload = {
+        combatId: payload.combatId,
+        player1Id: payload.player1Id,
+        player2Id: payload.player2Id,
+        attackerId: payload.attackerId || payload.player1Id,
+        defenderId: payload.defenderId || payload.player2Id,
+      };
       channelRef.current.send({
         type: 'broadcast',
         event: 'pvp_encounter',
-        payload,
+        payload: fullPayload,
+      });
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'pvp_combat_initiated',
+        payload: fullPayload,
       });
     },
     []
