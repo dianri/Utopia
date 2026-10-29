@@ -53,6 +53,7 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
   onAddLog,
 }) => {
   const activePlayer = player || myPlayer;
+  const handleExitHospital = onClose;
 
   // Estado local para animación continua e interpolación
   const [currentHp, setCurrentHp] = useState<number>(activePlayer?.hp ?? 100);
@@ -281,42 +282,40 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
       <div className="absolute inset-0 bg-[linear-gradient(rgba(16,185,129,0.04)_1px,transparent_1px),linear-gradient(90deg,rgba(16,185,129,0.04)_1px,transparent_1px)] bg-[size:24px_24px] pointer-events-none" />
 
       {/* 2. CABECERA TÁCTICA */}
-      <div className="w-full max-w-xl flex items-center justify-between bg-slate-900/90 border-2 border-emerald-500/50 rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 shadow-[0_0_25px_rgba(16,185,129,0.2)] z-20">
-        <div className="flex items-center gap-2.5 sm:gap-3">
-          {/* Icono de cruz médica pulsante */}
-          <div className="relative flex items-center justify-center">
-            <div className="absolute w-9 h-9 sm:w-10 sm:h-10 bg-emerald-500/30 rounded-xl animate-ping" />
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-600 border border-emerald-300 flex items-center justify-center shadow-[0_0_15px_rgba(16,185,129,0.6)] text-white">
-              <Plus className="w-5 h-5 stroke-[3]" />
-            </div>
+      <div className="w-full mx-auto flex max-w-xl items-center justify-between gap-4 rounded-xl border border-emerald-500/50 bg-slate-950/90 p-3 shadow-[0_0_20px_rgba(16,185,129,0.2)] backdrop-blur-md z-20">
+        {/* 1. Bloque Izquierdo: Icono + Información */}
+        <div className="flex min-w-0 items-center gap-3">
+          {/* Icono médico contenido */}
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-400/60 bg-emerald-950/80 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]">
+            <span className="text-xl font-bold">+</span>
           </div>
 
-          <div className="flex flex-col">
+          {/* Textos informativos */}
+          <div className="flex min-w-0 flex-col">
             <div className="flex items-center gap-2">
-              <span className="font-mono font-black text-xs sm:text-sm text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+              <h3 className="truncate text-xs font-bold font-mono tracking-wider text-emerald-300 uppercase sm:text-sm">
                 UNIDAD MÉDICA AVANZADA
-              </span>
-              <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/90 text-emerald-300 font-bold border border-emerald-500/60 hidden sm:inline-block">
+              </h3>
+              <span className="hidden rounded border border-emerald-500/40 bg-emerald-950/50 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-400 sm:inline-block">
                 BAHÍA DE REGENERACIÓN
               </span>
             </div>
-            <span className="text-[10px] font-mono text-cyan-400/90 flex items-center gap-1">
-              <Activity className="w-3 h-3 text-emerald-400 animate-pulse" />
-              SOPORTE VITAL EN CURSO (+15 HP/s)
-            </span>
+            <p className="flex items-center gap-1 text-[11px] font-medium text-emerald-400/80">
+              <span className="animate-pulse">📈</span>
+              <span>SOPORTE VITAL EN CURSO (+15 HP/s)</span>
+            </p>
           </div>
         </div>
 
-        {/* Botón voluntario de salida */}
+        {/* 2. Bloque Derecho: Botón Salir */}
         <button
           type="button"
-          onClick={onClose}
+          onClick={handleExitHospital}
           disabled={isDischarged}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono text-xs font-bold bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 active:scale-95 transition-all shadow-md"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800/80 px-3 py-2 text-xs font-semibold text-slate-200 shadow hover:border-red-500/60 hover:bg-red-950/40 hover:text-red-300 transition-all disabled:opacity-50"
         >
-          <X className="w-3.5 h-3.5 text-slate-400" />
-          <span className="hidden sm:inline">SALIR DE LA BAHÍA</span>
-          <span className="sm:hidden">SALIR</span>
+          <span className="text-xs">✕</span>
+          <span className="text-center leading-tight">SALIR DE LA BAHÍA</span>
         </button>
       </div>
 
