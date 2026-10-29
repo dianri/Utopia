@@ -5,6 +5,10 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ## [Unreleased]
 ### Added
+- **Added: Required form input validation with glowing red borders and tactical error alerts for lobby creation and joining (`CreateRoomModal.tsx`, `JoinRoomModal.tsx`, `index.css`, `README.md`):**
+  - **Validación Visual Reactiva por Campo:** Prevención de bloqueos silenciosos al pulsar "CREAR PARTIDA" o "UNIRSE A LA PARTIDA". El sistema ahora resalta inmediatamente los inputs obligatorios vacíos (Nombre de Agente en creación y unión, Código de Sala en unión) con borde carmesí brillante (`border-red-500`), fondo tintado (`bg-red-950/25`), resplandor táctico (`shadow-[0_0_12px_rgba(239,68,68,0.35)]`) y autofoco automático en el primer campo no completado.
+  - **Microtexto Explicativo Táctico:** Inclusión de avisos contextuales bajo los campos obligatorios (*"⚠️ El nombre de agente es obligatorio para desplegarte en la zona"* y *"⚠️ El código de sala es obligatorio para unirte a la operación"*), con animación fluida `animate-fadeIn`.
+  - **Despeje Reactivo en Tiempo Real:** En cuanto el usuario introduce el primer carácter en cualquiera de los campos con error, el estado visual se restaura al instante al diseño estándar con enfoque cian táctico (`border-slate-700 bg-slate-900/80 focus:border-cyan-400`).
 - **Added: Strict defensive perimeter lock against chest decoding when a live monster is guarding the area (`App.tsx`, `GameMap.tsx`, `ChestLockModal.tsx`, `README.md`):**
   - **Perímetro Defensivo del Cofre (Radio $\le 25\text{m}$):** Implementada comprobación reactiva y sincrónica que evalúa si algún monstruo con vida patrulla o defiende el cofre activo a 25 metros o menos (`isChestGuarded = true`).
   - **Bloqueo Estricto de Apertura:** Se inhibe tajantemente tanto la apertura automática por proximidad como la apertura manual al hacer clic sobre el marcador del mapa, emitiendo una alarma sonora y un toast táctico (*"ACCESO DENEGADO // Zona hostil activa: debes abatir o alejar al monstruo guardián para descifrar el cofre"*).

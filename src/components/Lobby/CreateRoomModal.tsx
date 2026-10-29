@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { MovementMode, PlayerRole, Coordinates, PlayerSpeed } from '../../types/game';
 import { Shield, HeartPulse, Eye, Crosshair, MapPin, Navigation, Play, Globe, Lock, Gauge } from 'lucide-react';
 
@@ -30,6 +30,10 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
   });
   const [isLoadingGps, setIsLoadingGps] = useState<boolean>(false);
   const [gpsObtained, setGpsObtained] = useState<boolean>(false);
+  const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState<boolean>(false);
+  const playerNameInputRef = useRef<HTMLInputElement>(null);
+
+  const isPlayerNameValid = nickname.trim().length > 0;
 
   const fetchCurrentLocation = () => {
     if (navigator.geolocation) {
@@ -93,10 +97,15 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nickname.trim()) return;
+    setHasAttemptedSubmit(true);
+
+    if (!isPlayerNameValid) {
+      playerNameInputRef.current?.focus();
+      return;
+    }
 
     onConfirm({
-      roomName,
+      roomName: roomName.trim() || 'Las Meriendas Hunt',
       isPublic,
       radiusMeters,
       movementMode,
@@ -125,36 +134,44 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
           {/* NOMBRE DE SALA Y APODO */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-mono text-hud-muted mb-1">
-                Nombre de la Sala
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-300">
+                NOMBRE DE LA SALA
               </label>
               <input
                 type="text"
                 value={roomName}
                 onChange={(e) => setRoomName(e.target.value)}
-                required
-                className="w-full bg-hud-panel border border-hud-border rounded-lg px-3 py-2 text-sm font-mono text-white focus:outline-none focus:border-hud-cyan"
+                className="w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:border-cyan-400 transition-all outline-none"
                 placeholder="Ej. Las Meriendas Hunt"
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-mono text-hud-muted mb-1">
-                Tu Apodo (Host)
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-slate-300">
+                NOMBRE DE AGENTE <span className="text-red-400">*</span>
               </label>
               <input
+                ref={playerNameInputRef}
                 type="text"
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
-                required
                 maxLength={16}
-                className="w-full bg-hud-panel border border-hud-border rounded-lg px-3 py-2 text-sm font-mono text-hud-cyan font-bold focus:outline-none focus:border-hud-cyan"
-                placeholder="Ej. Capitán_Fox"
+                placeholder="Introduce tu alias o indicativo..."
+                className={`w-full rounded-lg border px-3.5 py-2.5 text-sm transition-all outline-none ${
+                  hasAttemptedSubmit && !isPlayerNameValid
+                    ? 'border-red-500 bg-red-950/25 text-red-200 placeholder-red-400/50 shadow-[0_0_12px_rgba(239,68,68,0.35)] focus:border-red-400 focus:ring-red-500/50'
+                    : 'border-slate-700 bg-slate-900/80 text-slate-100 placeholder-slate-500 focus:border-cyan-400'
+                }`}
               />
+              {hasAttemptedSubmit && !isPlayerNameValid && (
+                <span className="flex items-center gap-1 text-[11px] font-medium text-red-400 animate-fadeIn">
+                  ⚠️ El nombre de agente es obligatorio para desplegarte en la zona.
+                </span>
+              )}
             </div>
           </div>
 
@@ -431,11 +448,10 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
           {/* BOTÓN CREAR */}
           <button
             type="submit"
-            disabled={!nickname.trim()}
-            className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-hud-cyan to-teal-400 text-black font-mono font-black text-sm uppercase tracking-wider shadow-lg shadow-hud-cyan/30 hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-hud-cyan to-teal-400 text-black font-mono font-black text-sm uppercase tracking-wider shadow-lg shadow-hud-cyan/30 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2"
           >
             <Play className="w-4 h-4 fill-current" />
-            <span>Crear Sala y Generar Código</span>
+            <span>Crear Partida</span>
           </button>
         </form>
       </div>
