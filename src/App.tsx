@@ -3613,29 +3613,32 @@ export const App: React.FC = () => {
             onLeaveGame={handleLeaveGame}
           />
 
-          <WeaponWheel
-            weapon={myPlayer.equippedWeapon || DEFAULT_WEAPONS_BY_ROLE[myPlayer.role]}
-            distToMonster={distToMonster}
-            isInRange={
-              distToMonster <=
-              ((myPlayer.equippedWeapon?.rangeMeters ?? 25) *
-                (isRoleSkillActive && myPlayer.role === 'marksman' ? 1.5 : 1))
-            }
-            isFiring={isFiringWeapon}
-            isCriticallyWounded={myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded'}
-            backpackItemCount={myPlayer.inventory?.length ?? 2}
-            onOpenBackpack={() => setIsBackpackOpen(true)}
-            onAttack={manualAttack}
-          />
+          {/* BARRA DE ACCIONES INFERIOR ORGANIZADA (MOCHILA + ARMA + HABILIDAD/CURA) */}
+          <div className="fixed bottom-4 left-3 right-3 flex items-center gap-2 z-30 pointer-events-none pb-[env(safe-area-inset-bottom,0.5rem)]">
+            <WeaponWheel
+              weapon={myPlayer.equippedWeapon || DEFAULT_WEAPONS_BY_ROLE[myPlayer.role]}
+              distToMonster={distToMonster}
+              isInRange={
+                distToMonster <=
+                ((myPlayer.equippedWeapon?.rangeMeters ?? 25) *
+                  (isRoleSkillActive && myPlayer.role === 'marksman' ? 1.5 : 1))
+              }
+              isFiring={isFiringWeapon}
+              isCriticallyWounded={myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded'}
+              backpackItemCount={myPlayer.inventory?.length ?? 2}
+              onOpenBackpack={() => setIsBackpackOpen(true)}
+              onAttack={manualAttack}
+            />
 
-          <RoleSkillButton
-            role={myPlayer.role}
-            cooldownRemaining={roleSkillCooldown}
-            isActive={isRoleSkillActive || isRadarActive}
-            onActivate={handleActivateRoleSkill}
-            isAlive={myPlayer.isAlive}
-            isCriticallyWounded={myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded'}
-          />
+            <RoleSkillButton
+              role={myPlayer.role}
+              cooldownRemaining={roleSkillCooldown}
+              isActive={isRoleSkillActive || isRadarActive}
+              onActivate={handleActivateRoleSkill}
+              isAlive={myPlayer.isAlive}
+              isCriticallyWounded={myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded'}
+            />
+          </div>
 
           {/* MODAL DE MOCHILA E INVENTARIO */}
           <BackpackModal
@@ -3666,10 +3669,15 @@ export const App: React.FC = () => {
             {/* BANNER DE ESTADO EN INTERIOR DE ESTRUCTURA (HOSPITAL O REFUGIO) */}
             {currentBuilding &&
               !isHospitalModalOpen &&
+              !isCombatArenaOpen &&
               !(myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded') && (
                 <IndoorStatusBanner
                   building={currentBuilding}
                   isFullyHealed={isSquadFullyHealed}
+                  onEnterHospital={() => {
+                    setIsHospitalModalOpen(true);
+                    cancelMovementRef.current();
+                  }}
                 />
               )}
 
@@ -3705,36 +3713,6 @@ export const App: React.FC = () => {
                 </span>
               </div>
             )}
-
-            {/* AVISO / BOTÓN TÁCTICO: HOSPITAL DE CAMPAÑA (BAHÍA MÉDICA) - Solo visible si la escuadra necesita curación */}
-            {myPlayer.insideBuildingType === 'hospital' &&
-              !isHospitalModalOpen &&
-              !isCombatArenaOpen &&
-              !isSquadFullyHealed && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsHospitalModalOpen(true);
-                    cancelMovementRef.current();
-                  }}
-                  className="pointer-events-auto w-full bg-emerald-950/90 border-2 border-emerald-400 text-emerald-200 px-3 py-2 rounded-xl shadow-2xl backdrop-blur-md flex items-center justify-between gap-2.5 animate-pulse hover:bg-emerald-900/90 active:scale-95 transition-all"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">🏥</span>
-                    <div className="text-left">
-                      <span className="font-mono font-black text-xs text-emerald-300 block uppercase tracking-wider">
-                        BAHÍA MÉDICA ACTIVA
-                      </span>
-                      <span className="font-mono text-[10px] text-cyan-300">
-                        Toca para acceder al Pod de Regeneración (+15 HP/s)
-                      </span>
-                    </div>
-                  </div>
-                  <span className="font-mono font-bold text-xs bg-emerald-800/80 px-2.5 py-1 rounded-lg text-white border border-emerald-400/50 shadow-sm">
-                    INGRESAR
-                  </span>
-                </button>
-              )}
 
             {room.status === 'playing' && (chestPhase < 3 || chestStep < 2) && (
               <ChestCountdown

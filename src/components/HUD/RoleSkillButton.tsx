@@ -9,6 +9,7 @@ interface RoleSkillButtonProps {
   onActivate: () => void;
   isAlive: boolean;
   isCriticallyWounded?: boolean;
+  className?: string;
 }
 
 export const RoleSkillButton: React.FC<RoleSkillButtonProps> = ({
@@ -18,6 +19,7 @@ export const RoleSkillButton: React.FC<RoleSkillButtonProps> = ({
   onActivate,
   isAlive,
   isCriticallyWounded = false,
+  className,
 }) => {
   if (!isAlive) return null;
 
@@ -72,11 +74,11 @@ export const RoleSkillButton: React.FC<RoleSkillButtonProps> = ({
   const strokeDashoffset = circumference * progressPercent;
 
   return (
-    <div className="fixed bottom-6 right-4 z-30 pb-[env(safe-area-inset-bottom,1rem)] pointer-events-auto flex flex-col items-center select-none">
+    <div className={`shrink-0 pointer-events-auto flex flex-col items-center select-none ${className || ''}`}>
       <button
         onClick={onActivate}
         disabled={!isReady}
-        className={`relative w-16 h-16 sm:w-18 sm:h-18 rounded-full border-2 flex flex-col items-center justify-center shadow-2xl transition-all ${
+        className={`relative w-12 h-12 sm:w-14 sm:h-14 rounded-full border-2 flex flex-col items-center justify-center shadow-2xl transition-all ${
           isCriticallyWounded
             ? 'bg-red-950/90 border-red-500/80 text-red-400 cursor-not-allowed opacity-80'
             : isActive
@@ -122,24 +124,24 @@ export const RoleSkillButton: React.FC<RoleSkillButtonProps> = ({
         {/* Contenido interior: Icono y etiqueta o temporizador */}
         {isCriticallyWounded ? (
           <div className="flex flex-col items-center justify-center">
-            <Lock className="w-6 h-6 text-red-400" />
-            <span className="text-[8px] font-mono font-bold text-red-400 uppercase tracking-tight mt-0.5">
+            <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-red-400" />
+            <span className="text-[7px] sm:text-[8px] font-mono font-bold text-red-400 uppercase tracking-tight mt-0.5">
               BLOQ
             </span>
           </div>
         ) : isReady || isActive ? (
           <>
-            <IconComponent className={`w-7 h-7 sm:w-8 sm:h-8 ${isActive ? 'animate-bounce' : ''}`} />
-            <span className="text-[10px] font-mono font-black uppercase tracking-wider mt-0.5 leading-none">
+            <IconComponent className={`w-5 h-5 sm:w-6 sm:h-6 ${isActive ? 'animate-bounce' : ''}`} />
+            <span className="text-[7px] sm:text-[8px] font-mono font-black uppercase tracking-tighter mt-0.5 leading-none">
               {isActive ? 'ACTIVO' : roleConfig.name}
             </span>
           </>
         ) : (
           <div className="flex flex-col items-center justify-center">
-            <span className="text-sm sm:text-base font-mono font-black text-white leading-tight">
+            <span className="text-xs sm:text-sm font-mono font-black text-white leading-tight">
               {cooldownRemaining}s
             </span>
-            <span className="text-[8px] font-mono text-hud-muted uppercase tracking-tighter">
+            <span className="text-[7px] font-mono text-hud-muted uppercase tracking-tighter leading-none">
               {roleConfig.name}
             </span>
           </div>
