@@ -38,6 +38,11 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - **Atmósfera Amenazante en la Arena de Combate (`CombatArena.tsx`):** La cabecera táctica del duelo, el encabezado de la carta y el avatar central de la carta de combate proyectan la bestia vectorial con contorno carmesí pulsante y destellos amenazantes, reforzando la inmersión de amenaza biomecánica hostil.
 
 ### Fixed
+- **Fixed: Defending player is now immediately kicked out of chest lock modal when engaged by an opponent in PvP combat (`App.tsx`, `useGameRealtime.ts`, `ChestLockModal.tsx`, `README.md`):**
+  - **Sincronización Bidireccional de Encuentro PvP:** Soporte ampliado en Supabase Realtime para eventos de inicio de combate (`pvp_encounter` y `pvp_combat_initiated`) propagando simultáneamente `player1Id`, `player2Id`, `attackerId` y `defenderId`.
+  - **Expulsión Inmediata del Defensor:** Al recibir el evento de combate o detectarse proximidad ($\le 12\text{m}$) de un rival hacia un agente estático, el jugador defensor es expulsado de inmediato de `ChestLockModal`, se detiene su desplazamiento y se monta automáticamente la arena de combate `PvPArena` cara a cara con el atacante.
+  - **Salvaguarda Reactiva Global:** Añadida una guarda de estado en `App.tsx` que inhabilita e impide el renderizado de cualquier modal de desencriptación de cofre mientras haya un combate activo (PvE o PvP).
+  - **Preservación Íntegra del Progreso:** Los cerrojos previamente resueltos (ej. 3/6) se conservan intactos en el estado local y en `localStorage`, permitiendo reanudar el hackeo tras concluir el duelo sin penalización.
 - **Fixed: Stale closure in treasure marker click handler causing auto-walk to navigate to previous chest coordinates (`GameMap.tsx`, `App.tsx`, `README.md`):**
   - **Referencia mutable sincrónica (`activeChestCoordsRef`):** En `GameMap.tsx`, se mantiene una referencia mutable viva en tiempo real actualizada en cada render con las coordenadas autoritarias del cofre actual (`treasureLocation`).
   - **Eliminación del closure desactualizado en el listener:** El callback de clic del marcador del tesoro (`handleChestMarkerClick`) lee directamente `activeChestCoordsRef.current` y se refresca de forma continua tanto en la creación del marcador como en cada cambio de coordenadas (`el.onclick`).

@@ -1145,24 +1145,40 @@ export const App: React.FC = () => {
         addLog(`¡${unlockedBy || 'La escuadra'} ha desbloqueado el sexto cerrojo! ¡TESORO ASEGURADO!`, 'victory');
         soundEffects.playVictoryFanfare();
       },
-      onPvPEncounter: ({ combatId, player1Id, player2Id }) => {
+      onPvPEncounter: ({ combatId, player1Id, player2Id, attackerId, defenderId }: any) => {
         const me = myPlayerRef.current;
         if (!me) return;
-        if (player1Id === me.id || player2Id === me.id) {
-          const oppId = player1Id === me.id ? player2Id : player1Id;
+        const p1 = player1Id || attackerId;
+        const p2 = player2Id || defenderId;
+        if (p1 === me.id || p2 === me.id) {
+          const oppId = p1 === me.id ? p2 : p1;
           const allStructures = structuresRef.current;
           if (isPlayerInSafeZone(me, allStructures)) return; // Protección estricta en zonas seguras
 
+          // 1. Expulsar de inmediato de la pantalla de desencriptación
+          setIsChestLockModalOpen(false);
+          isChestLockModalOpenRef.current = false;
+          realtimeRef.current.broadcastChestInteracting(false);
+
+          // 2. Detener cualquier desplazamiento residual
+          if (typeof cancelMovementRef.current === 'function') {
+            cancelMovementRef.current();
+          }
+
+          // 3. Abrir la arena de combate PvP fijando al rival
           setPvpCombatId(combatId);
           pvpCombatIdRef.current = combatId;
           setPvpOpponentPlayerId(oppId);
           pvpOpponentPlayerIdRef.current = oppId;
           setIsPvPModalOpen(true);
           isPvPModalOpenRef.current = true;
-          cancelMovementRef.current();
+
+          // 4. Feedback sonoro y táctico de interrupción
+          soundEffects.playAlarm();
+          soundEffects.vibrate([100, 50, 150]);
 
           const opp = playersRef.current.find((p) => p.id === oppId);
-          addLog(`¡Encuentro hostil sincronizado con ${opp?.nickname || 'oponente'}! Iniciando duelo PvP.`, 'combat');
+          addLog(`¡EMBOSCADA! Duelo PvP iniciado por ${opp?.nickname || 'un agente rival'}. ¡Descifrado interrumpido!`, 'combat');
         }
       },
       onPvPEncounterEnd: ({ combatId }) => {
@@ -1410,6 +1426,12 @@ export const App: React.FC = () => {
               pvpOpponentPlayerIdRef.current = other.id;
               setIsPvPModalOpen(true);
               isPvPModalOpenRef.current = true;
+
+              // Expulsar de cualquier modal de desencriptación
+              setIsChestLockModalOpen(false);
+              isChestLockModalOpenRef.current = false;
+              realtime.broadcastChestInteracting(false);
+
               if (typeof cancelMovementRef.current === 'function') {
                 cancelMovementRef.current();
               }
@@ -1417,6 +1439,8 @@ export const App: React.FC = () => {
                 combatId,
                 player1Id: myPlayerRef.current.id,
                 player2Id: other.id,
+                attackerId: myPlayerRef.current.id,
+                defenderId: other.id,
               });
               addLog(`¡Encuentro hostil con ${other.nickname}! Duelo PvP iniciado.`, 'combat');
               break;
@@ -2628,6 +2652,97 @@ export const App: React.FC = () => {
     isChestGuarded,
     activeChestLat,
     activeChestLng,
+    addLog,
+  ]);
+
+  // Salvaguarda reactiva global: ningún modal de hackeo de cofre puede coexistir con combate activo (PvE o PvP)
+  useEffect(() => {
+    if (isCombatArenaOpen || isPvPModalOpen) {
+      if (isChestLockModalOpenRef.current || isChestLockModalOpen) {
+        setIsChestLockModalOpen(false);
+        isChestLockModalOpenRef.current = false;
+        realtimeRef.current.broadcastChestInteracting(false);
+      }
+    }
+  }, [isCombatArenaOpen, isPvPModalOpen, isChestLockModalOpen]);
+
+  // Detección reactiva de encuentro PvP para jugadores estáticos (ej. manipulando el cofre)
+  useEffect(() => {
+    if (
+      room?.status !== 'playing' ||
+      !myPlayer?.isAlive ||
+      myPlayer.isCriticallyWounded ||
+      myPlayer.status === 'critically_wounded' ||
+      (myPlayer.status !== 'active' && myPlayer.status != null) ||
+      Date.now() < fleeImmunityUntilRef.current ||
+      isPvPModalOpenRef.current ||
+      isCombatArenaOpenRef.current ||
+      isHospitalModalOpenRef.current ||
+      !myPlayer.lat ||
+      !myPlayer.lng ||
+      isPlayerInSafeZone(myPlayer, structuresRef.current)
+    ) {
+      return;
+    }
+
+    const myCoord = { lat: myPlayer.lat, lng: myPlayer.lng };
+    const otherPlayers = players.filter((p) => p.id !== myPlayer.id);
+
+    for (const other of otherPlayers) {
+      if (
+        other.isAlive &&
+        !other.isCriticallyWounded &&
+        (other.status === 'active' || !other.status) &&
+        other.lat != null &&
+        other.lng != null &&
+        !isPlayerInSafeZone(other, structuresRef.current)
+      ) {
+        const dist = getDistanceMeters(myCoord, { lat: other.lat, lng: other.lng });
+        if (dist <= 12) {
+          const combatId = [myPlayer.id, other.id].sort().join('_');
+          setPvpCombatId(combatId);
+          pvpCombatIdRef.current = combatId;
+          setPvpOpponentPlayerId(other.id);
+          pvpOpponentPlayerIdRef.current = other.id;
+
+          // 1. Expulsar de inmediato de la pantalla de desencriptación
+          setIsChestLockModalOpen(false);
+          isChestLockModalOpenRef.current = false;
+          realtimeRef.current.broadcastChestInteracting(false);
+
+          // 2. Detener desplazamiento
+          if (typeof cancelMovementRef.current === 'function') {
+            cancelMovementRef.current();
+          }
+
+          // 3. Abrir arena PvP
+          setIsPvPModalOpen(true);
+          isPvPModalOpenRef.current = true;
+
+          // 4. Notificar a la sala
+          realtimeRef.current.broadcastPvPEncounter({
+            combatId,
+            player1Id: myPlayer.id,
+            player2Id: other.id,
+            attackerId: other.id,
+            defenderId: myPlayer.id,
+          });
+
+          soundEffects.playAlarm();
+          soundEffects.vibrate([100, 50, 150]);
+          addLog(`¡EMBOSCADA! Duelo PvP iniciado con ${other.nickname}. ¡Descifrado interrumpido!`, 'combat');
+          break;
+        }
+      }
+    }
+  }, [
+    players,
+    myPlayer?.lat,
+    myPlayer?.lng,
+    myPlayer?.isAlive,
+    myPlayer?.isCriticallyWounded,
+    myPlayer?.status,
+    room?.status,
     addLog,
   ]);
 
@@ -5070,9 +5185,9 @@ export const App: React.FC = () => {
         />
       )}
 
-      {Boolean(myPlayer && isChestLockModalOpen) && (
+      {Boolean(myPlayer && isChestLockModalOpen && !isCombatArenaOpen && !isPvPModalOpen) && (
         <ChestLockModal
-          isOpen={isChestLockModalOpen}
+          isOpen={isChestLockModalOpen && !isCombatArenaOpen && !isPvPModalOpen}
           currentPhase={chestPhase}
           currentStep={chestStep}
           currentChestIndex={currentChestIndex}
