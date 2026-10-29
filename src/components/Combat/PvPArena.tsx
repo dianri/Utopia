@@ -200,8 +200,25 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
     },
   });
 
-  // Manejador de ataque del jugador
-  const handleAttack = useCallback(() => {
+  const getRoleAvatar = (role?: string) => {
+    switch (role) {
+      case 'tank':
+        return '🛡️';
+      case 'scout':
+        return '👁️';
+      case 'marksman':
+        return '🎯';
+      case 'medic':
+        return '✚';
+      default:
+        return '👤';
+    }
+  };
+
+  const isOpponentHit = cardHitAnim;
+
+  // Manejador de ataque del jugador (pulsación sobre avatar central o botón inferior)
+  const handleExecuteAttackOnOpponent = useCallback(() => {
     if (!isOpen || duelOutcome !== 'ongoing' || opponentHpRef.current <= 0) return;
 
     const now = Date.now();
@@ -270,6 +287,8 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
       setCardHitAnim(false);
     }, 200);
   }, [isOpen, duelOutcome, equippedWeapon, effectiveDamage, sendAttack, onOpponentDamaged, sendDefeat, onPvPVictory]);
+
+  const handleAttack = handleExecuteAttackOnOpponent;
 
   // Barra de cooldown de ataque
   useEffect(() => {
@@ -392,65 +411,108 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
           </div>
         )}
 
-        {/* Tarjeta del Oponente */}
-        <div
-          onClick={handleAttack}
-          className={`relative rounded-xl border-2 border-red-500/40 bg-gray-950/80 p-3 sm:p-4 cursor-pointer transition-all ${
-            cardHitAnim ? 'scale-95 border-red-400 bg-red-950/40 shadow-[0_0_20px_rgba(239,68,68,0.5)]' : 'hover:border-red-400'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-red-950/80 border border-red-500/40 flex items-center justify-center text-lg font-black text-red-400">
-                ☠️
-              </div>
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-sm sm:text-base font-black text-white">{opponentPlayer.nickname}</span>
-                  <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-red-500/20 text-red-300 uppercase border border-red-500/30">
-                    {opponentPlayer.role}
-                  </span>
+        {/* 1. SECCIÓN DEL RIVAL: BARRA DE SALUD SUPERIOR + AVATAR CENTRAL INTERACTIVO */}
+        <div className="flex flex-col gap-2 relative">
+          {/* Cabecera y Barra de Vida del Rival */}
+          <div className="rounded-xl border border-red-500/40 bg-gray-950/80 p-3 sm:p-3.5 shadow-lg">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{getRoleAvatar(opponentPlayer.role)}</span>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm sm:text-base font-black text-white tracking-wide">
+                      {opponentPlayer.nickname}
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-red-500/20 text-red-300 uppercase border border-red-500/30 font-bold">
+                      {opponentPlayer.role}
+                    </span>
+                  </div>
+                  <div className="text-[10px] sm:text-[11px] text-gray-400 flex items-center gap-1">
+                    <span>Cofres conquistados:</span>
+                    <span className="font-bold text-amber-400">
+                      👑 {opponentPlayer.chests_opened || opponentPlayer.chestsOpened || 0}/3
+                    </span>
+                  </div>
                 </div>
-                <div className="text-[11px] text-gray-400 flex items-center gap-1">
-                  <span>Cofres conquistados:</span>
-                  <span className="font-bold text-amber-400">{opponentPlayer.chests_opened || opponentPlayer.chestsOpened || 0}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] font-mono text-gray-400 uppercase tracking-wider block">SALUD RIVAL</span>
+                <div className="text-sm sm:text-base font-black font-mono text-red-400">
+                  {opponentHp} / {opponentMaxHp}
                 </div>
               </div>
             </div>
-            <div className="text-right">
-              <span className="text-xs font-mono text-gray-400">SALUD</span>
-              <div className="text-sm sm:text-base font-black font-mono text-red-400">
-                {opponentHp} / {opponentMaxHp}
-              </div>
-            </div>
-          </div>
 
-          {/* Barra de Vida del Oponente */}
-          <div className="w-full h-3 bg-gray-800 rounded-full overflow-hidden border border-gray-700">
-            <div
-              className={`h-full transition-all duration-300 ${
-                opponentHpPct > 50 ? 'bg-gradient-to-r from-red-600 to-red-400' : 'bg-red-500'
-              }`}
-              style={{ width: `${opponentHpPct}%` }}
-            />
-          </div>
-
-          <div className="mt-2 text-center text-[10px] font-mono text-red-400/80 uppercase tracking-widest">
-            {attackCooldown > 0 ? 'RECARGANDO ARMA...' : 'TOCA AQUÍ O EL BOTÓN PARA ATACAR AL OPONENTE'}
-          </div>
-
-          {/* Daño flotante saliente / entrante */}
-          <div className="absolute inset-0 pointer-events-none overflow-hidden">
-            {damageNumbers.map((d) => (
-              <span
-                key={d.id}
-                className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-lg sm:text-2xl font-black font-mono transition-transform duration-700 animate-bounce ${
-                  d.isIncoming ? 'text-red-500' : d.isPet ? 'text-cyan-400' : 'text-amber-300'
+            {/* Barra de Vida del Rival */}
+            <div className="w-full h-3 bg-gray-900 rounded-full overflow-hidden border border-gray-700/80">
+              <div
+                className={`h-full transition-all duration-300 ${
+                  opponentHpPct > 50
+                    ? 'bg-gradient-to-r from-red-600 via-orange-500 to-red-400'
+                    : opponentHpPct > 25
+                    ? 'bg-gradient-to-r from-red-600 to-amber-500'
+                    : 'bg-red-600 animate-pulse'
                 }`}
-              >
-                {d.text}
-              </span>
-            ))}
+                style={{ width: `${opponentHpPct}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Avatar Central Interactivo del Rival (Tap-to-Attack) */}
+          <div className="flex flex-col items-center justify-center gap-2.5 my-1 sm:my-2 relative">
+            {/* Números de daño flotantes sobre el avatar */}
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-30 overflow-hidden">
+              {damageNumbers.map((d) => (
+                <span
+                  key={d.id}
+                  className={`absolute font-black font-mono text-2xl sm:text-3xl transition-transform duration-700 animate-bounce ${
+                    d.isIncoming
+                      ? 'text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]'
+                      : d.isPet
+                      ? 'text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.9)]'
+                      : 'text-amber-300 drop-shadow-[0_0_8px_rgba(252,211,77,0.9)]'
+                  }`}
+                >
+                  {d.text}
+                </span>
+              ))}
+            </div>
+
+            {/* Contenedor Clicable / Táctil del Rival */}
+            <button
+              type="button"
+              onClick={handleExecuteAttackOnOpponent}
+              onTouchStart={(e) => {
+                e.preventDefault();
+                handleExecuteAttackOnOpponent();
+              }}
+              disabled={isAttacking || opponentHp <= 0 || duelOutcome !== 'ongoing'}
+              aria-label={`Atacar a ${opponentPlayer.nickname}`}
+              className={`group relative flex h-32 w-32 sm:h-36 sm:w-36 items-center justify-center rounded-full border-2 transition-all duration-150 select-none focus:outline-none cursor-pointer ${
+                isOpponentHit
+                  ? 'border-red-400 bg-red-900/60 shadow-[0_0_35px_rgba(239,68,68,0.85)] scale-95 animate-hitShake'
+                  : 'border-red-500/80 bg-red-950/40 shadow-[0_0_25px_rgba(239,68,68,0.4)] hover:border-red-400 hover:shadow-[0_0_35px_rgba(239,68,68,0.7)] active:scale-90'
+              } disabled:opacity-50 disabled:pointer-events-none`}
+            >
+              {/* Resplandor pulsante de combate */}
+              <div className="absolute inset-0 rounded-full bg-red-500/10 animate-ping pointer-events-none" />
+
+              {/* Avatar / Icono del Rival */}
+              <div className="text-5xl sm:text-6xl font-black text-red-100 drop-shadow-[0_0_10px_rgba(239,68,68,0.8)] transition-transform group-hover:scale-105">
+                {(opponentPlayer as any).avatar || getRoleAvatar(opponentPlayer.role)}
+              </div>
+
+              {/* Efecto de impacto visual si recibe daño reciente */}
+              {isOpponentHit && (
+                <div className="absolute inset-0 rounded-full bg-white/40 animate-flash pointer-events-none" />
+              )}
+            </button>
+
+            {/* Pista táctica inferior */}
+            <span className="rounded-full border border-red-500/30 bg-slate-950/80 px-3 py-1 text-[10px] sm:text-[11px] font-bold tracking-wider text-red-300 uppercase shadow-md flex items-center gap-1.5 animate-pulse">
+              <Crosshair className="w-3.5 h-3.5 text-red-400" />
+              <span>{attackCooldown > 0 ? 'RECARGANDO ARMA...' : 'TOCA EL OBJETIVO PARA ATACAR'}</span>
+            </span>
           </div>
         </div>
 
