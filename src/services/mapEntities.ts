@@ -1,5 +1,5 @@
 import type { Pet, PetType, WildPet, Coordinates, SupplyCrate, CrateType, Weapon, Monster } from '../types/game';
-import { getRandomPointInCircle, getDistanceMeters } from './geoUtils';
+import { getRandomPointInCircle, getDistanceMeters, getBearing, getDestinationPoint } from './geoUtils';
 import { WEAPON_REGISTRY } from './combatEngine';
 
 /**
@@ -471,35 +471,49 @@ export function generateNextChestLocation(
   arg3?: Coordinates | number,
   playerLocation?: Coordinates
 ): Coordinates {
-  let previousChest: Coordinates | undefined;
+  let previousChest: Coordinates;
   let center: Coordinates;
   let radiusMeters: number;
+  let playerLoc: Coordinates | undefined = playerLocation;
 
   if (typeof arg2 === 'number') {
     // Firma: (center, playAreaRadius, previousLocation, playerLocation)
     center = arg1;
     radiusMeters = arg2;
-    previousChest = typeof arg3 === 'object' ? arg3 : undefined;
+    previousChest = typeof arg3 === 'object' && arg3 !== null ? arg3 : arg1;
   } else {
     // Firma: (previousLocation, center, radiusMeters, playerLocation)
     previousChest = arg1;
-    center = arg2;
+    center = typeof arg2 === 'object' && arg2 !== null ? arg2 : arg1;
     radiusMeters = typeof arg3 === 'number' ? arg3 : 100;
   }
 
+  // Sanitización estricta de radio y coordenadas
+  if (!radiusMeters || radiusMeters <= 0 || isNaN(radiusMeters)) {
+    radiusMeters = 100;
+  }
+  if (!center || typeof center.lat !== 'number' || typeof center.lng !== 'number' || isNaN(center.lat) || isNaN(center.lng) || (center.lat === 0 && center.lng === 0)) {
+    if (previousChest && typeof previousChest.lat === 'number' && typeof previousChest.lng === 'number' && (previousChest.lat !== 0 || previousChest.lng !== 0)) {
+      center = previousChest;
+    } else {
+      center = { lat: 37.4018, lng: -2.1565 };
+    }
+  }
+  if (!previousChest || typeof previousChest.lat !== 'number' || typeof previousChest.lng !== 'number' || isNaN(previousChest.lat) || isNaN(previousChest.lng)) {
+    previousChest = center;
+  }
+
   // Separación mínima obligatoria: 70 metros (ajustada si el radio de partida es menor a 100m)
-  const MIN_DISTANCE_FROM_PREVIOUS = Math.min(70, Math.max(radiusMeters * 0.5, 30));
+  const MIN_DISTANCE_FROM_PREVIOUS = Math.min(70, Math.max(radiusMeters * 0.6, 40));
   let bestPoint = getRandomPointInCircle(center, radiusMeters * 0.85);
   let maxMinDist = -1;
   let attempts = 0;
 
   do {
     const candidate = getRandomPointInCircle(center, radiusMeters * 0.85);
-    const distPrev = previousChest
-      ? getDistanceMeters(candidate, previousChest)
-      : Infinity;
-    const distPlayer = playerLocation
-      ? getDistanceMeters(candidate, playerLocation)
+    const distPrev = getDistanceMeters(candidate, previousChest);
+    const distPlayer = playerLoc && typeof playerLoc.lat === 'number' && !isNaN(playerLoc.lat)
+      ? getDistanceMeters(candidate, playerLoc)
       : Infinity;
 
     const minDist = Math.min(distPrev, distPlayer);
@@ -513,6 +527,12 @@ export function generateNextChestLocation(
     }
     attempts++;
   } while (attempts < 50);
+
+  // Si tras 50 intentos ningún punto superó MIN_DISTANCE_FROM_PREVIOUS, forzar determinísticamente un punto opuesto
+  if (maxMinDist < 40 && previousChest.lat !== 0) {
+    const bearing = getBearing(previousChest, center) || 180;
+    return getDestinationPoint(previousChest, MIN_DISTANCE_FROM_PREVIOUS, bearing);
+  }
 
   return bestPoint;
 }
