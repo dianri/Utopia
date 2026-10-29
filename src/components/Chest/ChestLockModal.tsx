@@ -14,6 +14,7 @@ interface ChestLockModalProps {
   onVictory?: () => void;
   distToMonster: number;
   isMonsterAlive?: boolean;
+  isGuarded?: boolean;
 }
 
 export const ChestLockModal: React.FC<ChestLockModalProps> = ({
@@ -28,6 +29,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
   onVictory,
   distToMonster,
   isMonsterAlive = true,
+  isGuarded = false,
 }) => {
   // Estado local para mensajes de acierto/fallo
   const [feedback, setFeedback] = useState<'idle' | 'success' | 'fail'>('idle');
@@ -77,6 +79,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
   }, [isOpen, currentPhase]);
 
   const handleQteClick = useCallback(() => {
+    if (isGuarded) return;
     const { min, max } = qteTargetRange.current;
     if (qteCursorPos >= min && qteCursorPos <= max) {
       // ¡Éxito!
@@ -175,7 +178,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
   }, [isOpen, currentPhase, currentStep]);
 
   const handleLightPress = (color: LightColor) => {
-    if (isShowingSequence || feedback !== 'idle' || isProcessingInputRef.current) return;
+    if (isGuarded || isShowingSequence || feedback !== 'idle' || isProcessingInputRef.current) return;
 
     // 1. Activar iluminación visual inmediata
     setActiveFlashingLight(color);
@@ -271,7 +274,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
   const isNearSweetSpot = diffFromSweetSpot <= 12;
 
   const handleConfirmDial = () => {
-    if (feedback !== 'idle' || isVictorious) return;
+    if (isGuarded || feedback !== 'idle' || isVictorious) return;
     if (isInSweetSpot) {
       setFeedback('success');
       soundEffects.playCrateLoot();
@@ -313,8 +316,18 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/90 backdrop-blur-md select-none">
       <div className="w-full max-w-md bg-slate-900 border-2 border-amber-500/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col relative animate-in fade-in zoom-in-95 duration-200">
         
-        {/* AVISO DE PROXIMIDAD DEL MONSTRUO (Franja táctica compacta) */}
-        {isMonsterAlive && distToMonster <= 45 && (
+        {/* AVISO DE CUSTODIA O PROXIMIDAD DEL MONSTRUO */}
+        {isGuarded ? (
+          <div className="bg-red-950/95 border-b-2 border-red-500 px-3 py-1.5 flex items-center justify-between text-red-200 animate-pulse text-[11px] font-mono font-bold shadow-lg shadow-red-500/30">
+            <span className="flex items-center gap-1.5 min-w-0">
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+              <span className="truncate uppercase">ACCESO DENEGADO: PERÍMETRO CUSTODIADO (≤ 25m)</span>
+            </span>
+            <span className="bg-red-900 px-1.5 py-0.5 rounded text-[10px] text-red-200 border border-red-500 shrink-0">
+              HOSTIL CERCA
+            </span>
+          </div>
+        ) : isMonsterAlive && distToMonster <= 45 ? (
           <div className="bg-red-950/90 border-b border-red-500/80 px-2.5 py-1 flex items-center justify-between text-red-200 animate-pulse text-[11px] font-mono font-bold">
             <span className="flex items-center gap-1.5 min-w-0 truncate">
               <ShieldAlert className="w-3.5 h-3.5 text-red-400 shrink-0" />
@@ -324,7 +337,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
               {Math.round(distToMonster)}m
             </span>
           </div>
-        )}
+        ) : null}
 
         {/* CABECERA: COFRE Y PROGRESO COOPERATIVO */}
         <div className="p-2.5 sm:p-3 bg-gradient-to-r from-amber-950/70 via-slate-900 to-amber-950/70 border-b border-amber-500/40 flex items-center justify-between">
@@ -418,9 +431,14 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
               <button
                 type="button"
                 onClick={handleQteClick}
-                className="w-full py-2.5 rounded-xl font-mono font-black text-xs sm:text-sm uppercase tracking-wider bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-lg shadow-emerald-900/40 border border-emerald-400/50 active:scale-95 transition-all"
+                disabled={isGuarded}
+                className={`w-full py-2.5 rounded-xl font-mono font-black text-xs sm:text-sm uppercase tracking-wider transition-all ${
+                  isGuarded
+                    ? 'bg-red-950/60 border border-red-500/50 text-red-300 opacity-60 cursor-not-allowed'
+                    : 'bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-lg shadow-emerald-900/40 border border-emerald-400/50 active:scale-95'
+                }`}
               >
-                ¡DESACTIVAR PERNO!
+                {isGuarded ? '🔒 PERÍMETRO CUSTODIADO // ACCESO BLOQUEADO' : '¡DESACTIVAR PERNO!'}
               </button>
             </div>
           )}
@@ -468,11 +486,17 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
                     <button
                       key={col}
                       type="button"
-                      disabled={isShowingSequence}
+                      disabled={isGuarded || isShowingSequence}
                       onClick={() => handleLightPress(col)}
                       className={`h-12 sm:h-14 rounded-xl border-2 font-mono font-black text-xs uppercase tracking-wider flex items-center justify-center transition-all duration-100 ${
                         isFlashing ? colorStyles[col].active : colorStyles[col].base
-                      } ${!isShowingSequence ? 'hover:brightness-125 active:scale-95 cursor-pointer' : 'cursor-not-allowed opacity-80'}`}
+                      } ${
+                        isGuarded
+                          ? 'cursor-not-allowed opacity-50'
+                          : !isShowingSequence
+                          ? 'hover:brightness-125 active:scale-95 cursor-pointer'
+                          : 'cursor-not-allowed opacity-80'
+                      }`}
                     >
                       {col}
                     </button>
@@ -537,13 +561,16 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
                 <button
                   type="button"
                   onClick={handleConfirmDial}
-                  className={`w-full py-2.5 rounded-xl font-mono font-black text-xs sm:text-sm uppercase tracking-wider shadow-lg transition-all active:scale-95 ${
-                    isInSweetSpot
-                      ? 'bg-gradient-to-r from-emerald-600 to-green-500 text-white shadow-emerald-900/50 border border-emerald-400'
-                      : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'
+                  disabled={isGuarded}
+                  className={`w-full py-2.5 rounded-xl font-mono font-black text-xs sm:text-sm uppercase tracking-wider shadow-lg transition-all ${
+                    isGuarded
+                      ? 'bg-red-950/60 border border-red-500/50 text-red-300 opacity-60 cursor-not-allowed'
+                      : isInSweetSpot
+                      ? 'bg-gradient-to-r from-emerald-600 to-green-500 text-white shadow-emerald-900/50 border border-emerald-400 active:scale-95'
+                      : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white active:scale-95'
                   }`}
                 >
-                  CONFIRMAR FRECUENCIA
+                  {isGuarded ? '🔒 PERÍMETRO CUSTODIADO // ACCESO BLOQUEADO' : 'CONFIRMAR FRECUENCIA'}
                 </button>
               </div>
             </div>
