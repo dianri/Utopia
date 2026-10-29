@@ -103,6 +103,7 @@ export type Database = {
       }
       match_stats: {
         Row: {
+          chests_opened?: number
           crates_opened: number
           created_at: string
           damage_dealt: number
@@ -116,6 +117,7 @@ export type Database = {
           won: boolean
         }
         Insert: {
+          chests_opened?: number
           crates_opened?: number
           created_at?: string
           damage_dealt?: number
@@ -129,6 +131,7 @@ export type Database = {
           won?: boolean
         }
         Update: {
+          chests_opened?: number
           crates_opened?: number
           created_at?: string
           damage_dealt?: number
@@ -153,6 +156,7 @@ export type Database = {
       }
       players: {
         Row: {
+          chests_opened?: number
           crates_opened: number
           damage_dealt: number
           game_id: string
@@ -173,6 +177,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          chests_opened?: number
           crates_opened?: number
           damage_dealt?: number
           game_id: string
@@ -193,6 +198,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          chests_opened?: number
           crates_opened?: number
           damage_dealt?: number
           game_id?: string

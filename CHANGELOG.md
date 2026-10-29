@@ -4,6 +4,20 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Unreleased]
+### Added
+- **Sistema de Combate Jugador contra Jugador (PvP) en Tiempo Real y Modo Competitivo por Conquista de Cofres (`PvPArena.tsx`, `usePvPCombat.ts`, `App.tsx`, `GameMap.tsx`, `useGameRealtime.ts`, `VictoryModal.tsx`, `types/game.ts`, `types/supabase.ts`, `README.md`):**
+  - **Modo Competitivo por Mayoría de Cofres:** El juego evoluciona a un formato competitivo individual. Cada uno de los 3 cofres secuenciales (Fases 1, 2 y 3) es reclamado por el jugador que resuelva su último cerrojo, sumando 1 punto de cofre (`player.chests_opened`). Al completarse el tercer cofre, gana la partida el jugador con mayor cantidad de cofres conquistados (desempatando por daño infligido).
+  - **Detección y Desencadenante Automático de Duelo PvP (Radio <= 12m):** Al encontrarse dos avatares activos a 12 metros o menos en el mapa exterior, se dispara de forma imperativa la arena de combate PvP para ambos participantes (`isPvPModalOpen: true`, `opponentPlayerId`) y se cancelan las trayectorias de movimiento de ambos avatares.
+  - **Zonas Seguras Estrictas (Refugios y Hospital de Campaña):** Si cualquiera de los dos jugadores está dentro del perímetro de un Refugio o del Hospital, el combate PvP no puede iniciarse bajo ninguna circunstancia. Si un jugador en persecución entra a una zona segura antes de abrir la arena, queda protegido.
+  - **Aislamiento Táctico y Cola de Monstruos ("Burbuja de Duelo"):** Mientras los dos jugadores luchan en la arena PvP, los monstruos no pueden intervenir ni interrumpir la pelea. Si un monstruo entra en rango durante el duelo, queda en espera exterior en el mapa (en cola de combate). Al concluir el duelo, el vencedor (si permanece en rango) inicia secuencialmente el combate 1 vs 1 contra el monstruo en cola.
+  - **Canal de Combate Efímero en Supabase Realtime (`pvp_combat_${combatId}`):** Sincronización bidireccional de ataques con cálculo de daño basado en armas equipadas y bonificaciones de rol, soporte para ataques automáticos de mascotas en duelo, sincronización de salud, animaciones de impacto y estados de victoria, retirada y caída en combate.
+  - **Podio y Clasificación de Vencedor en el Modal de Fin de Partida:** `VictoryModal.tsx` destaca al Vencedor de la Operación con su recuento de cofres y muestra la tabla de clasificación ordenada por cofres conquistados (`👑 X Cofres`) y daño total.
+
+### Database
+- **Migración Incremental para Conquista de Cofres (`20261029103000_add_chests_opened_to_players.sql`):**
+  - Añadida columna `chests_opened INTEGER NOT NULL DEFAULT 0` a la tabla `players`.
+  - Añadida columna `chests_opened INTEGER NOT NULL DEFAULT 0` a la tabla `match_stats`.
+
 ### Fixed
 - **Fixed: Completely removed manual decrypt HUD button and fixed coordinate keys mismatch for instant automatic chest opening (`ChestCountdown.tsx`, `App.tsx`, `GameMap.tsx`, `types/game.ts`, `README.md`):**
   - **Eliminación Total del Botón y Tarjeta del HUD Exterior:** Retirado por completo el widget `<ChestCountdown>` y el botón "DESENCRIPTAR FASE X" de la interfaz gráfica exterior. La desencriptación ya no requiere pulsar ningún botón en pantalla, dejando la esquina superior izquierda y el mapa 100% despejados.

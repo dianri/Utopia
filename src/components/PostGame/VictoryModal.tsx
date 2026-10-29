@@ -9,6 +9,7 @@ interface VictoryModalProps {
   onRestart: () => void;
   onOpenLeaderboard: () => void;
   startedAt?: string | null;
+  winnerNickname?: string | null;
 }
 
 export const VictoryModal: React.FC<VictoryModalProps> = ({
@@ -16,6 +17,7 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
   onRestart,
   onOpenLeaderboard,
   startedAt,
+  winnerNickname,
 }) => {
   useEffect(() => {
     soundEffects.playVictoryFanfare();
@@ -61,11 +63,17 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
 
   const gameDurationStr = calculateDuration();
 
-  // Encontrar el MVP (mayor daño infligido o revividos)
-  const sortedPlayers = [...players].sort(
-    (a, b) => b.damageDealt + b.revivesDone * 50 - (a.damageDealt + a.revivesDone * 50)
-  );
-  const mvp = sortedPlayers[0];
+  // Encontrar el Vencedor de la partida (Mayor cantidad de cofres conquistados, desempatando por daño)
+  const sortedByChests = [...players].sort((a, b) => {
+    const aChests = a.chests_opened || a.chestsOpened || 0;
+    const bChests = b.chests_opened || b.chestsOpened || 0;
+    if (bChests !== aChests) return bChests - aChests;
+    return b.damageDealt - a.damageDealt;
+  });
+
+  const sessionWinner = winnerNickname
+    ? players.find((p) => p.nickname === winnerNickname) || sortedByChests[0]
+    : sortedByChests[0];
 
   return (
     <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-lg flex items-center justify-center p-4 overflow-y-auto">
@@ -76,10 +84,10 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
             <Trophy className="w-8 h-8" />
           </div>
           <h1 className="text-2xl font-mono font-black text-yellow-300 tracking-wider uppercase">
-            ¡TESORO ASEGURADO!
+            ¡FIN DE LA COMPETICIÓN!
           </h1>
           <p className="text-xs font-mono text-slate-300 mt-0.5">
-            Misión Cumplida • El cofre de Las Meriendas ha sido desencriptado con éxito.
+            Los 3 cofres tácticos han sido conquistados. Victoria por mayoría de cofres.
           </p>
         </div>
 
@@ -90,36 +98,39 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
             <span className="text-xs font-black text-yellow-300">{gameDurationStr}</span>
           </div>
           <div className="flex flex-col border-x border-slate-800">
-            <span className="text-[9px] text-slate-400 uppercase tracking-wider">Cerrojos</span>
-            <span className="text-xs font-black text-emerald-400">6 / 6 (100%)</span>
+            <span className="text-[9px] text-slate-400 uppercase tracking-wider">Cofres Totales</span>
+            <span className="text-xs font-black text-emerald-400">3 / 3 (100%)</span>
           </div>
           <div className="flex flex-col">
-            <span className="text-[9px] text-slate-400 uppercase tracking-wider">Escuadra</span>
+            <span className="text-[9px] text-slate-400 uppercase tracking-wider">Jugadores</span>
             <span className="text-xs font-black text-cyan-300">
-              {players.filter((p) => p.isAlive).length}/{players.length} Activos
+              {players.length} Competidores
             </span>
           </div>
         </div>
 
-        {/* MVP PODIO */}
-        {mvp && (
-          <div className="bg-hud-panel border border-yellow-500/50 p-3 rounded-xl flex items-center justify-between shadow-md">
+        {/* PODIO DEL VENCEDOR */}
+        {sessionWinner && (
+          <div className="bg-hud-panel border-2 border-yellow-400 p-3.5 rounded-xl flex items-center justify-between shadow-[0_0_20px_rgba(250,204,21,0.25)]">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-lg bg-yellow-500/20 text-yellow-400 flex items-center justify-center font-black">
-                <Medal className="w-5 h-5" />
+              <div className="w-10 h-10 rounded-lg bg-yellow-500/20 text-yellow-400 flex items-center justify-center font-black text-xl">
+                👑
               </div>
               <div className="flex flex-col text-left">
-                <span className="text-[10px] font-mono text-yellow-400 font-bold uppercase">
-                  JUGADOR MVP DE LA PARTIDA
+                <span className="text-[10px] font-mono text-yellow-400 font-bold uppercase tracking-wider">
+                  VENCEDOR DE LA OPERACIÓN
                 </span>
-                <span className="text-sm font-mono font-black text-white">
-                  {mvp.nickname} ({mvp.role})
+                <span className="text-base font-mono font-black text-white">
+                  {sessionWinner.nickname}
                 </span>
               </div>
             </div>
             <div className="text-right">
-              <span className="text-xs font-mono font-black text-hud-cyan">
-                {mvp.damageDealt} DMG
+              <span className="text-xs font-mono font-black text-yellow-300 block">
+                {sessionWinner.chests_opened || sessionWinner.chestsOpened || 0} COFRES
+              </span>
+              <span className="text-[10px] font-mono text-gray-400">
+                {sessionWinner.damageDealt} DMG
               </span>
             </div>
           </div>
@@ -128,21 +139,25 @@ export const VictoryModal: React.FC<VictoryModalProps> = ({
         {/* DESGLOSE DE ESTADÍSTICAS DEL EQUIPO */}
         <div className="flex flex-col gap-2">
           <span className="text-[11px] font-mono text-hud-muted uppercase tracking-wider text-left">
-            Informe de Combate
+            Clasificación de la Partida
           </span>
           <div className="flex flex-col gap-1.5 max-h-40 overflow-y-auto pr-1">
-            {players.map((p) => (
+            {sortedByChests.map((p, idx) => (
               <div
                 key={p.id}
-                className="bg-hud-panel/80 border border-hud-border p-2.5 rounded-lg flex items-center justify-between text-xs font-mono"
+                className={`border p-2.5 rounded-lg flex items-center justify-between text-xs font-mono ${
+                  idx === 0
+                    ? 'bg-yellow-950/30 border-yellow-500/50 text-yellow-200'
+                    : 'bg-hud-panel/80 border-hud-border text-white'
+                }`}
               >
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-white">{p.nickname}</span>
+                  <span className="font-bold">{idx + 1}. {p.nickname}</span>
                   <span className="text-[10px] text-hud-muted uppercase">({p.role})</span>
                 </div>
                 <div className="flex items-center gap-3 text-[11px]">
+                  <span className="text-yellow-400 font-bold">👑 {p.chests_opened || p.chestsOpened || 0}</span>
                   <span className="text-red-400">💥 {p.damageDealt}</span>
-                  <span className="text-emerald-400">✚ {p.revivesDone}</span>
                   <span className="text-amber-400">📦 {p.cratesOpened}</span>
                 </div>
               </div>

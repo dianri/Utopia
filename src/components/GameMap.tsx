@@ -66,6 +66,7 @@ interface GameMapProps {
   inCombat?: boolean;
   isChestOpened?: boolean;
   isVictory?: boolean;
+  isChestLockModalOpen?: boolean;
   onMapClick: (coords: Coordinates) => void;
   onReviveAttempt?: (targetPlayer: Player) => void;
   onPickDroppedItem?: (dropped: DroppedItem) => void;
@@ -92,6 +93,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   inCombat = false,
   isChestOpened = false,
   isVictory = false,
+  isChestLockModalOpen = false,
   onMapClick,
   onPickDroppedItem,
   onAdoptWildPet,
@@ -123,6 +125,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
   const onOpenChestRef = useRef(onOpenChest);
   onOpenChestRef.current = onOpenChest;
+  const hasTriggeredChestInMapRef = useRef<boolean>(false);
 
   const myPlayerRef = useRef(myPlayer);
   myPlayerRef.current = myPlayer;
@@ -860,10 +863,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         };
         const dist = getDistanceMeters(myPos, treasureLocation);
         if (dist <= 25) {
+          hasTriggeredChestInMapRef.current = true;
           onOpenChestRef.current?.();
         } else {
           onMapClickRef.current?.(treasureLocation);
-          onOpenChestRef.current?.();
         }
       });
 
@@ -885,12 +888,17 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // ==========================================
   useEffect(() => {
     if (!myPlayer.lat || !myPlayer.lng || !treasureLocation.lat || !treasureLocation.lng) return;
-    if (inCombat || isMeWounded || isChestOpened || isVictory) return;
+    if (inCombat || isMeWounded || isChestOpened || isVictory || isChestLockModalOpen) return;
 
     const myPos = { lat: myPlayer.lat, lng: myPlayer.lng };
     const dist = getDistanceMeters(myPos, treasureLocation);
     if (dist <= 15) {
-      onOpenChestRef.current?.();
+      if (!hasTriggeredChestInMapRef.current) {
+        hasTriggeredChestInMapRef.current = true;
+        onOpenChestRef.current?.();
+      }
+    } else {
+      hasTriggeredChestInMapRef.current = false;
     }
   }, [
     myPlayer.lat,
@@ -901,6 +909,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     isMeWounded,
     isChestOpened,
     isVictory,
+    isChestLockModalOpen,
   ]);
 
   // ==========================================
@@ -1465,11 +1474,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         ? roleColors[p.role]
         : 'bg-gray-700 border-gray-400';
 
+      const chestsConquered = p.chests_opened || p.chestsOpened || 0;
       const statusLabel = isCriticallyWounded
         ? `${p.nickname} [HERIDO]`
         : isInside
         ? `${p.nickname} [${p.insideBuildingType === 'hospital' ? 'HOSPITAL' : 'A CUBIERTO'}]`
-        : `${p.nickname}${isMe ? ' (Tú)' : ''}`;
+        : `${p.nickname}${isMe ? ' (Tú)' : ''}${chestsConquered > 0 ? ` [👑${chestsConquered}]` : ''}`;
 
       if (!playerMarkersRef.current.has(p.id)) {
         const el = document.createElement('div');

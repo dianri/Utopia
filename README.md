@@ -143,20 +143,24 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 
 ---
 
-### 🗝️ 7. Apertura Cooperativa y Cadena de 3 Cofres Secuenciales
-- **Condición de Victoria de 3 Cofres Secuenciales:**
-  - El objetivo principal consta de una cadena de **3 cofres en total** que aparecen de uno en uno:
-    - **Cofre 1 (Fase 1):** Aparece al iniciar la partida con 6 cerrojos distribuidos en 3 fases de minijuegos.
-    - **Cofre 2 (Fase 2):** Al descifrar el cofre 1 por completo (6/6), este desaparece del mapa y engendra inmediatamente un segundo cofre en una coordenada aleatoria válida dentro del área jugable, reseteando los cerrojos a 0/6 y desplegando al **Devorador Alfa**.
-    - **Cofre 3 (Fase 3):** Al descifrar el cofre 2 (6/6), desaparece del terreno y genera el tercer y último cofre, convocando al **Coloso de Sombra**.
-  - **Victoria Definitiva:** La partida **solo finaliza con victoria** (`status: 'victory'`) al descifrar por completo el tercer cofre (Cofre [3/3]).
+### ⚔️ 7. Modo Competitivo, Combate PvP en Tiempo Real y Conquista de Cofres
+- **Victoria por Mayoría de Cofres (Modo Competitivo Individual):**
+  - El juego evoluciona a un formato competitivo donde cada cazador compite individualmente por el dominio de la zona.
+  - La partida mantiene la cadena de **3 cofres secuenciales** en el mapa (Fase 1, 2 y 3):
+    - **Cofre 1 (Fase 1):** Aparece al iniciar la partida con 6 cerrojos distribuidos en minijuegos tácticos.
+    - **Cofre 2 (Fase 2):** Al ser descifrado, desaparece del mapa y otorga **1 punto de cofre** al jugador que superó el último cerrojo (`chests_opened`). Se engendra el Cofre 2 y convoca al Devorador Alfa.
+    - **Cofre 3 (Fase 3):** Al completarse el cofre 2, se otorga el punto al jugador que lo descifró, desaparece y se despliega el tercer y último cofre junto al Coloso de Sombra.
+  - **Vencedor Oficial de la Sesión:** Al descifrar el tercer cofre, gana la partida el jugador con **mayor cantidad de cofres abiertos** (ejemplo: 2 de 3 o recuento final). En caso de empate, se desempata por daño infligido. El podio y marcador final (`VictoryModal.tsx`) proclaman al vencedor oficial.
+- **Duelo PvP Automático en Tiempo Real (`PvPArena.tsx` / `usePvPCombat.ts`):**
+  - **Radio de Encuentro Agresivo (<= 12m):** Si dos jugadores activos (`status === 'active'`) se encuentran a 12 metros o menos en el mapa exterior, se dispara de inmediato la arena de combate PvP para ambos participantes, cancelando las trayectorias de movimiento.
+  - **Zonas Seguras Inviolables (Refugios y Hospital de Campaña):** Si cualquiera de los dos jugadores está dentro del perímetro de un Refugio o del Hospital, **el combate PvP no puede iniciarse bajo ninguna circunstancia**. Si un jugador en persecución entra a una zona segura antes de abrirse la arena, queda protegido.
+  - **Aislamiento Táctico y Cola de Monstruos ("Burbuja de Duelo"):** Mientras los dos jugadores luchan en la arena PvP, los monstruos no pueden intervenir ni interrumpir la pelea. Si un monstruo entra en rango durante el duelo, queda en espera exterior en el mapa (en cola de combate). Al concluir el duelo, el vencedor (si permanece en rango) inicia secuencialmente el combate 1 vs 1 contra el monstruo en cola.
+  - **Canal de Sincronización Bidireccional (`pvp_combat_${combatId}`):** Comunicación efímera por Supabase Realtime donde cada participante transmite disparos, daño de armas equipadas, bonificaciones de clase, ataques automáticos de mascotas compañeras, sincronización de salud y desenlaces (victoria, derrota crítica o retirada táctica).
 - **Apertura Inmediata por Coordenadas y Clic Táctico (`CHEST_TRIGGER_RADIUS = 15m`):** Al desplazarse y cruzar el umbral de 15 metros del cofre activo, el movimiento se detiene automáticamente y se abre de inmediato la interfaz de descifrado (`ChestLockModal`), sin bloqueos por banderas ni requerir búsquedas en el HUD. Adicionalmente, pulsar directamente sobre el marcador de TESORO (👑) en el mapa aproxima al jugador e inicia la desencriptación al llegar al perímetro.
 - **Minijuegos Cooperativos por Fases:**
   1. **Fase 1 (Sincronización QTE):** Puntería temporal sobre zonas oscilantes.
   2. **Fase 2 (Código Lumínico / Simón Dice):** Secuencia de memoria táctica de 3 a 4 colores con feedback audiovisual inmediato interactivo.
   3. **Fase 3 (Frecuencia Magnética):** Dial rotatorio sintonizador con respuesta háptica.
-- **Resolución Atómica y Transición a Victoria:** Al resolver el sexto cerrojo del Cofre 3, se confirma el estado en 6/6 cerrojos superados, sellando la partida en `victory`, registrando las estadísticas en Supabase y presentando el modal de "¡TESORO ASEGURADO!".
-- **Sello Autoritativo de Sala y Cierre para Clientes No-Anfitriones (`finish_game_victory`):** Si un jugador que no inició la sala completa el sexto cerrojo del cofre final, la sala se sella de forma atómica e irreversible mediante la función RPC PostgreSQL con `SECURITY DEFINER` `finish_game_victory(p_game_id, p_winner_nickname)`.
 - **Furia Defensiva del Monstruo:** Cuando cualquier agente inicia el desbloqueo de cualquier cofre activo, el monstruo entra en modo `defend_chest` y corre directamente hacia las coordenadas del cofre.
 - **Aislamiento por Partida:** Estado de desbloqueo estricto por ID único de sala (`game.id`), evitando que nuevas partidas hereden progreso residual.
 

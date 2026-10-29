@@ -37,6 +37,9 @@ export function useGeolocation({
   const currentPosRef = useRef<Coordinates | null>(currentPosition);
   currentPosRef.current = currentPosition;
 
+  const targetPositionRef = useRef<Coordinates | null>(null);
+  const isHandlingPositionChangeRef = useRef<boolean>(false);
+
   const baseSpeedMpsRef = useRef<number>(baseSpeedMps);
   baseSpeedMpsRef.current = baseSpeedMps;
 
@@ -49,6 +52,7 @@ export function useGeolocation({
         lastKeyRef.current = positionKey;
         setCurrentPosition(initialPosition);
         currentPosRef.current = initialPosition;
+        targetPositionRef.current = null;
         setTargetPosition(null);
       }
     }
@@ -56,17 +60,34 @@ export function useGeolocation({
 
   // Permitir reseteo explícito de posición (por ejemplo al spawnear en una sala)
   const resetPosition = useCallback((coords: Coordinates) => {
+    targetPositionRef.current = null;
     setCurrentPosition(coords);
     currentPosRef.current = coords;
     setTargetPosition(null);
-    onPositionChangeRef.current(coords, true);
+    if (isHandlingPositionChangeRef.current) return;
+    isHandlingPositionChangeRef.current = true;
+    try {
+      onPositionChangeRef.current(coords, true);
+    } finally {
+      isHandlingPositionChangeRef.current = false;
+    }
   }, []);
 
   // Cancelar inmediatamente cualquier desplazamiento activo y fijar posición
   const cancelMovement = useCallback(() => {
+    const wasMoving = targetPositionRef.current !== null;
+    targetPositionRef.current = null;
     setTargetPosition(null);
+    // Si no había movimiento activo o ya estamos dentro de un ciclo de cambio de posición,
+    // NO re-disparar onPositionChange sincrónicamente para prevenir llamadas recursivas y desbordamiento de pila
+    if (!wasMoving || isHandlingPositionChangeRef.current) return;
     if (currentPosRef.current) {
-      onPositionChangeRef.current(currentPosRef.current, true);
+      isHandlingPositionChangeRef.current = true;
+      try {
+        onPositionChangeRef.current(currentPosRef.current, true);
+      } finally {
+        isHandlingPositionChangeRef.current = false;
+      }
     }
   }, []);
 
@@ -101,7 +122,13 @@ export function useGeolocation({
         setIsGpsActive(true);
         setGpsError(null);
         setCurrentPosition(coords);
-        onPositionChangeRef.current(coords, true);
+        if (isHandlingPositionChangeRef.current) return;
+        isHandlingPositionChangeRef.current = true;
+        try {
+          onPositionChangeRef.current(coords, true);
+        } finally {
+          isHandlingPositionChangeRef.current = false;
+        }
       },
       (err) => {
         console.warn('Error GPS:', err.message);
@@ -126,6 +153,7 @@ export function useGeolocation({
   const setManualDestination = useCallback(
     (target: Coordinates) => {
       if (mode !== 'manual' || !isAlive || isMovingBlocked) return;
+      targetPositionRef.current = target;
       setTargetPosition(target);
     },
     [mode, isAlive, isMovingBlocked]
@@ -156,11 +184,19 @@ export function useGeolocation({
       );
 
       setCurrentPosition(position);
-      onPositionChangeRef.current(position, arrived);
+      if (!isHandlingPositionChangeRef.current) {
+        isHandlingPositionChangeRef.current = true;
+        try {
+          onPositionChangeRef.current(position, arrived);
+        } finally {
+          isHandlingPositionChangeRef.current = false;
+        }
+      }
 
       if (!arrived && !isMovingBlocked) {
         animFrame = requestAnimationFrame(loop);
       } else {
+        targetPositionRef.current = null;
         setTargetPosition(null);
       }
     };
