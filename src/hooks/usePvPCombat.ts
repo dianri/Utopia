@@ -21,6 +21,7 @@ export interface PvPHpSyncPayload {
 export interface PvPDefeatPayload {
   winnerId: string;
   loserId: string;
+  timestamp?: number;
 }
 
 export interface PvPFleePayload {
@@ -107,8 +108,11 @@ export function usePvPCombat({
       }
     });
 
-    // 4. Derrota en duelo
+    // 4. Derrota en duelo (soporte para pvp_defeat y pvp_player_defeated)
     channel.on('broadcast', { event: 'pvp_defeat' }, ({ payload }) => {
+      callbacksRef.current.onOpponentDefeated?.(payload as PvPDefeatPayload);
+    });
+    channel.on('broadcast', { event: 'pvp_player_defeated' }, ({ payload }) => {
       callbacksRef.current.onOpponentDefeated?.(payload as PvPDefeatPayload);
     });
 
@@ -196,17 +200,24 @@ export function usePvPCombat({
     [myPlayerId]
   );
 
-  // Emitir evento de derrota
+  // Emitir evento de derrota (notificando pvp_defeat y pvp_player_defeated)
   const sendDefeat = useCallback(
     (winnerId: string, loserId: string) => {
       if (!channelRef.current || !isSubscribedRef.current) return;
+      const payload: PvPDefeatPayload = {
+        winnerId,
+        loserId,
+        timestamp: Date.now(),
+      };
       channelRef.current.send({
         type: 'broadcast',
         event: 'pvp_defeat',
-        payload: {
-          winnerId,
-          loserId,
-        },
+        payload,
+      });
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'pvp_player_defeated',
+        payload,
       });
     },
     []

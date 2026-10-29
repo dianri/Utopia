@@ -511,6 +511,31 @@ export const App: React.FC = () => {
     });
   }, []);
 
+  const canEngageInPvP = useCallback((playerA: Player | null, playerB: Player | null, mapStructures: MapStructure[]): boolean => {
+    if (!playerA || !playerB) return false;
+    if (playerA.id === playerB.id) return false;
+
+    // Ninguno de los dos puede estar abatido, muerto ni herido de muerte (hp <= 0 o critically_wounded)
+    if (!playerA.isAlive || playerA.hp <= 0 || playerA.isCriticallyWounded || playerA.status === 'critically_wounded') {
+      return false;
+    }
+    if (!playerB.isAlive || playerB.hp <= 0 || playerB.isCriticallyWounded || playerB.status === 'critically_wounded') {
+      return false;
+    }
+
+    // Estado operativo activo
+    if (playerA.status && playerA.status !== 'active') return false;
+    if (playerB.status && playerB.status !== 'active') return false;
+
+    // Zonas seguras (Refugios y Hospital de Campaña)
+    if ((playerA as any).in_safe_zone || (playerB as any).in_safe_zone) return false;
+    if (isPlayerInSafeZone(playerA, mapStructures) || isPlayerInSafeZone(playerB, mapStructures)) {
+      return false;
+    }
+
+    return true;
+  }, [isPlayerInSafeZone]);
+
   const hospitalStructure = useMemo(
     () => structures.find((s) => s.type === 'hospital') || null,
     [structures]
@@ -1191,6 +1216,36 @@ export const App: React.FC = () => {
           pvpOpponentPlayerIdRef.current = null;
         }
       },
+      onPvPPlayerDefeated: ({ winnerId, loserId }: any) => {
+        // Actualizar el estado local de los jugadores al instante
+        setPlayers((prev) =>
+          prev.map((p) =>
+            p.id === loserId
+              ? { ...p, hp: 0, isCriticallyWounded: true, status: 'critically_wounded' }
+              : p
+          )
+        );
+
+        if (myPlayerRef.current?.id === loserId) {
+          setMyPlayer((prev) =>
+            prev
+              ? { ...prev, hp: 0, isCriticallyWounded: true, status: 'critically_wounded' }
+              : null
+          );
+        }
+
+        // Si el usuario local estaba combatiendo contra este rival, cerrar la arena y declarar victoria de duelo
+        if (myPlayerRef.current?.id === winnerId && pvpOpponentPlayerIdRef.current === loserId) {
+          setIsPvPModalOpen(false);
+          isPvPModalOpenRef.current = false;
+          setPvpCombatId(null);
+          pvpCombatIdRef.current = null;
+          setPvpOpponentPlayerId(null);
+          pvpOpponentPlayerIdRef.current = null;
+          soundEffects.playVictoryFanfare();
+          addLog('¡ENEMIGO NEUTRALIZADO! El agente rival ha caído en combate.', 'combat');
+        }
+      },
       onChestClaimed: ({ playerId, playerNickname, chestIndex }) => {
         setPlayers((prev) =>
           prev.map((p) =>
@@ -1399,23 +1454,18 @@ export const App: React.FC = () => {
       const PVP_TRIGGER_RADIUS = 12;
       if (
         currentRoom?.status === 'playing' &&
-        isAliveAndActive &&
-        (myPlayerRef.current.status === 'active' || !myPlayerRef.current.status) &&
         Date.now() >= fleeImmunityUntilRef.current &&
         !isPvPModalOpenRef.current &&
         !isCombatArenaOpenRef.current &&
         !isHospitalModalOpenRef.current &&
-        !isPlayerInSafeZone(myPlayerRef.current, structuresRef.current)
+        canEngageInPvP(myPlayerRef.current, myPlayerRef.current, structuresRef.current)
       ) {
         const otherPlayers = playersRef.current.filter((p) => p.id !== myPlayerRef.current?.id);
         for (const other of otherPlayers) {
           if (
-            other.isAlive &&
-            !other.isCriticallyWounded &&
-            (other.status === 'active' || !other.status) &&
             other.lat != null &&
             other.lng != null &&
-            !isPlayerInSafeZone(other, structuresRef.current)
+            canEngageInPvP(myPlayerRef.current, other, structuresRef.current)
           ) {
             const distToOther = getDistanceMeters(coords, { lat: other.lat, lng: other.lng });
             if (distToOther <= PVP_TRIGGER_RADIUS) {
@@ -2220,6 +2270,33 @@ export const App: React.FC = () => {
       setPvpOpponentPlayerId(null);
       pvpOpponentPlayerIdRef.current = null;
 
+      // 1. Actualizar inmediatamente el estado local del oponente vencido como abatido con 0 HP
+      setPlayers((prev) =>
+        prev.map((p) =>
+          p.id === opponent.id
+            ? { ...p, hp: 0, isCriticallyWounded: true, status: 'critically_wounded' }
+            : p
+        )
+      );
+
+      // 2. Difundir broadcast de derrota a toda la sala
+      realtimeRef.current.broadcastPvPPlayerDefeated({
+        winnerId: myPlayerRef.current?.id || '',
+        loserId: opponent.id,
+      });
+
+      // 3. Persistir de forma atómica en Supabase
+      if (roomRef.current?.id && opponent.id) {
+        supabase
+          .from('players')
+          .update({
+            hp: 0,
+            status: 'critically_wounded',
+          })
+          .eq('id', opponent.id)
+          .then();
+      }
+
       soundEffects.playVictoryFanfare();
       addLog(`¡Victoria en duelo táctico! Has neutralizado a ${opponent.nickname}.`, 'combat');
 
@@ -2262,19 +2339,19 @@ export const App: React.FC = () => {
       queuedMonsterRef.current = null;
       setQueuedMonster(null);
 
-      // El perdedor queda críticamente herido con 1 HP
+      // El perdedor queda abatido con 0 HP y estado críticamente herido
       setMyPlayer((prev) => {
         if (!prev) return null;
         return {
           ...prev,
-          hp: 1,
+          hp: 0,
           isAlive: true,
           isCriticallyWounded: true,
           status: 'critically_wounded',
         };
       });
       if (myPlayerRef.current) {
-        myPlayerRef.current.hp = 1;
+        myPlayerRef.current.hp = 0;
         myPlayerRef.current.isCriticallyWounded = true;
         myPlayerRef.current.status = 'critically_wounded';
       }
@@ -2282,14 +2359,20 @@ export const App: React.FC = () => {
       setPlayers((prev) =>
         prev.map((p) =>
           p.id === myPlayerRef.current?.id
-            ? { ...p, hp: 1, isCriticallyWounded: true, status: 'critically_wounded' }
+            ? { ...p, hp: 0, isCriticallyWounded: true, status: 'critically_wounded' }
             : p
         )
       );
 
+      // Difundir broadcast de derrota a toda la sala
+      realtimeRef.current.broadcastPvPPlayerDefeated({
+        winnerId: opponent.id,
+        loserId: myPlayerRef.current?.id || '',
+      });
+
       if (room?.id && myPlayerRef.current?.id) {
         (supabase.from('players') as any)
-          .update({ hp: 1, status: 'critically_wounded' })
+          .update({ hp: 0, status: 'critically_wounded' })
           .eq('id', myPlayerRef.current.id);
       }
 
@@ -2674,17 +2757,13 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (
       room?.status !== 'playing' ||
-      !myPlayer?.isAlive ||
-      myPlayer.isCriticallyWounded ||
-      myPlayer.status === 'critically_wounded' ||
-      (myPlayer.status !== 'active' && myPlayer.status != null) ||
       Date.now() < fleeImmunityUntilRef.current ||
       isPvPModalOpenRef.current ||
       isCombatArenaOpenRef.current ||
       isHospitalModalOpenRef.current ||
-      !myPlayer.lat ||
-      !myPlayer.lng ||
-      isPlayerInSafeZone(myPlayer, structuresRef.current)
+      !myPlayer?.lat ||
+      !myPlayer?.lng ||
+      !canEngageInPvP(myPlayer, myPlayer, structuresRef.current)
     ) {
       return;
     }
@@ -2694,12 +2773,9 @@ export const App: React.FC = () => {
 
     for (const other of otherPlayers) {
       if (
-        other.isAlive &&
-        !other.isCriticallyWounded &&
-        (other.status === 'active' || !other.status) &&
         other.lat != null &&
         other.lng != null &&
-        !isPlayerInSafeZone(other, structuresRef.current)
+        canEngageInPvP(myPlayer, other, structuresRef.current)
       ) {
         const dist = getDistanceMeters(myCoord, { lat: other.lat, lng: other.lng });
         if (dist <= 12) {
