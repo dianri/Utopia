@@ -27,6 +27,11 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - **Atmósfera Amenazante en la Arena de Combate (`CombatArena.tsx`):** La cabecera táctica del duelo, el encabezado de la carta y el avatar central de la carta de combate proyectan la bestia vectorial con contorno carmesí pulsante y destellos amenazantes, reforzando la inmersión de amenaza biomecánica hostil.
 
 ### Fixed
+- **Fixed: Stale closure in treasure marker click handler causing auto-walk to navigate to previous chest coordinates (`GameMap.tsx`, `App.tsx`, `README.md`):**
+  - **Referencia mutable sincrónica (`activeChestCoordsRef`):** En `GameMap.tsx`, se mantiene una referencia mutable viva en tiempo real actualizada en cada render con las coordenadas autoritarias del cofre actual (`treasureLocation`).
+  - **Eliminación del closure desactualizado en el listener:** El callback de clic del marcador del tesoro (`handleChestMarkerClick`) lee directamente `activeChestCoordsRef.current` y se refresca de forma continua tanto en la creación del marcador como en cada cambio de coordenadas (`el.onclick`).
+  - **Navegación asistida precisa:** Si el jugador se encuentra a más de 15 metros del cofre activo, el clic sobre el marcador en el mapa dirige con exactitud la trayectoria asistida hacia las coordenadas del cofre vigente (ej. Cofre 3 en Fase 3) en lugar de retornar a la posición del cofre previo (Cofre 2).
+  - **Desbloqueo de auto-walk en `handleOpenChestModal`:** Se reordenó la comprobación de distancia en `App.tsx` para permitir que si el cofre nuevo está a más de 15m, el jugador inicie de inmediato el desplazamiento hacia el nuevo objetivo sin que la proximidad residual al cofre recién resuelto (`lastDecryptedChestLocationRef`) bloquee la orden.
 - **Fixed: Corrected flexbox layout, padding, and alignment in advanced medical bay HUD card (`HospitalModal.tsx`, `README.md`):**
   - **Estructura Flexbox Limpia de 3 Bloques:** Reorganizada la cabecera táctica de la unidad médica avanzada (`HospitalModal.tsx`) en un layout auto-alineado y sin posicionamiento absoluto ni márgenes negativos (Icono médico contenido | Información de soporte vital | Botón de acción).
   - **Contención del Icono Médico:** El contenedor del icono (`+`) implementa dimensiones fijas (`h-10 w-10 shrink-0`) con bordes esmeralda suaves, erradicando solapamientos sobre el título.
