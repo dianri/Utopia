@@ -3715,7 +3715,7 @@ export const App: React.FC = () => {
             />
           )}
 
-          {/* CONTENEDOR FLEXBOX VERTICAL PARA ALERTAS CENTRALES (Evita solapamientos) */}
+          {/* CONTENEDOR FLEXBOX VERTICAL PARA ALERTAS CENTRALES (Prioridad z-40, centro superior despejado) */}
           <div className="fixed top-20 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 z-40 pointer-events-none w-full max-w-sm px-4">
             {/* BANNER DE ESTADO EN INTERIOR DE ESTRUCTURA (HOSPITAL O REFUGIO) */}
             {currentBuilding &&
@@ -3765,31 +3765,32 @@ export const App: React.FC = () => {
               </div>
             )}
 
-            {room.status === 'playing' && (chestPhase < 3 || chestStep < 2) && (
-              <ChestCountdown
-                currentPhase={chestPhase}
-                currentStep={chestStep}
-                isInChestZone={
-                  getDistanceMeters(
-                    { lat: myPlayer.lat ?? room.centerLat, lng: myPlayer.lng ?? room.centerLng },
-                    { lat: room.treasureLat, lng: room.treasureLng }
-                  ) <= 20
-                }
-                isMonsterDefending={
-                  isMonsterAlive(monster) &&
-                  getDistanceMeters(
-                    { lat: room.treasureLat, lng: room.treasureLng },
-                    monster
-                  ) <= 20
-                }
-                isMonsterAlive={isMonsterAlive(monster)}
-                isChestInteracted={isChestInteractedGlobally || isChestLockModalOpen}
-                onOpenChestModal={handleOpenChestModal}
-              />
-            )}
-
             <RespawnTimer secondsRemaining={monster.respawnTimeRemaining} />
           </div>
+
+          {/* WIDGET LATERAL / MICRO-PÍLDORA TÁCTICA DE PROGRESO DEL COFRE (Desacoplado del centro) */}
+          {room.status === 'playing' && (chestPhase < 3 || chestStep < 2) && (
+            <ChestCountdown
+              currentPhase={chestPhase}
+              currentStep={chestStep}
+              isInChestZone={
+                getDistanceMeters(
+                  { lat: myPlayer.lat ?? room.centerLat, lng: myPlayer.lng ?? room.centerLng },
+                  { lat: room.treasureLat, lng: room.treasureLng }
+                ) <= 20
+              }
+              isMonsterDefending={
+                isMonsterAlive(monster) &&
+                getDistanceMeters(
+                  { lat: room.treasureLat, lng: room.treasureLng },
+                  monster
+                ) <= 20
+              }
+              isMonsterAlive={isMonsterAlive(monster)}
+              isChestInteracted={isChestInteractedGlobally || isChestLockModalOpen}
+              onOpenChestModal={handleOpenChestModal}
+            />
+          )}
 
           {!isHospitalModalOpen && <CombatLog messages={combatLogs} onDismiss={handleDismissLog} />}
 
