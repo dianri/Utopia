@@ -17,7 +17,7 @@ import type {
 import { PLAYER_SPEED_MPS } from '../types/game';
 import { createGeoJsonCircle, getDistanceMeters } from '../services/geoUtils';
 import { getVisionRadius, getCrateVisualInfo } from '../services/combatEngine';
-import { MAX_PETS_PER_PLAYER } from '../services/mapEntities';
+import { MAX_PETS_PER_PLAYER, getMonsterVisualConfig } from '../services/mapEntities';
 import { soundEffects } from '../services/soundEffects';
 import { Locate, Compass } from 'lucide-react';
 
@@ -1356,18 +1356,24 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         m.state !== 'dead' &&
         m.hp > 0;
 
+      const visual = getMonsterVisualConfig(m);
       let marker = monsterMarkersRef.current.get(monsterKey);
       if (!marker) {
         const el = document.createElement('div');
         el.className = 'monster-map-marker select-none pointer-events-none';
         el.innerHTML = `
-          <div class="relative flex items-center justify-center pointer-events-none">
-            <div class="w-12 h-12 bg-red-600/30 rounded-full animate-ping absolute"></div>
-            <div class="w-10 h-10 bg-red-950 border-2 border-red-500 rounded-full flex items-center justify-center shadow-lg shadow-red-500/50">
-              <span class="text-xl">👹</span>
+          <div class="relative flex items-center justify-center pointer-events-none transition-transform duration-200 ${visual.scaleClass}">
+            <div class="w-12 h-12 ${visual.pingBg} rounded-full animate-ping absolute"></div>
+            <div class="w-10 h-10 ${visual.coreBg} border-2 ${visual.borderColor} rounded-full flex items-center justify-center shadow-lg ${visual.glowColor}">
+              <span class="text-xl">${visual.icon}</span>
             </div>
-            <div class="absolute -top-4 w-14 bg-black/80 rounded h-1.5 overflow-hidden border border-red-500/40">
-              <div id="monster-hp-bar-${monsterKey}" class="bg-red-500 h-full transition-all duration-300" style="width: 100%"></div>
+            <!-- Placa táctica con distintivo y nombre de la amenaza -->
+            <div id="monster-badge-${monsterKey}" class="absolute -bottom-5 whitespace-nowrap px-1.5 py-0.5 rounded text-[9px] font-mono font-bold tracking-wider ${visual.badgeBg} border ${visual.borderColor}/60 shadow-md pointer-events-none">
+              ${m.name || visual.label}
+            </div>
+            <!-- Barra de vida -->
+            <div class="absolute -top-4 w-14 bg-black/80 rounded h-1.5 overflow-hidden border ${visual.hpBorderColor}">
+              <div id="monster-hp-bar-${monsterKey}" class="${visual.hpBarColor} h-full transition-all duration-300" style="width: 100%"></div>
             </div>
           </div>
         `;
@@ -1385,6 +1391,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const hpBar = document.getElementById(`monster-hp-bar-${monsterKey}`);
         if (hpBar) {
           hpBar.style.width = `${Math.max(0, (m.hp / m.maxHp) * 100)}%`;
+        }
+        const badge = document.getElementById(`monster-badge-${monsterKey}`);
+        if (badge && m.name && badge.textContent !== m.name) {
+          badge.textContent = m.name;
         }
       }
 

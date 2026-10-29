@@ -168,7 +168,8 @@ export const App: React.FC = () => {
   // MONSTRUO Y ESTADO (SISTEMA SECUENCIAL)
   const [monster, setMonster] = useState<Monster>({
     id: 'monster_1',
-    name: 'Goliardus Rex',
+    name: 'Rastreador Sombrío',
+    type: 'stalker',
     lat: 0,
     lng: 0,
     hp: 1200,
@@ -181,7 +182,8 @@ export const App: React.FC = () => {
   const [monsters, setMonsters] = useState<Monster[]>([
     {
       id: 'monster_1',
-      name: 'Goliardus Rex',
+      name: 'Rastreador Sombrío',
+      type: 'stalker',
       lat: 0,
       lng: 0,
       hp: 1200,

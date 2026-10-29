@@ -118,6 +118,8 @@ export interface Player {
   damageDealt: number;
   revivesDone: number;
   cratesOpened: number;
+  chestsOpened?: number;
+  chests_opened?: number;
   monsterKills: number;
   isHost?: boolean;
   equippedWeapon?: Weapon;
@@ -137,9 +139,12 @@ export interface Player {
 
 export type MonsterState = 'patrol' | 'chase' | 'enraged' | 'dead' | 'defend_chest';
 
+export type MonsterType = 'stalker' | 'alpha' | 'colossus';
+
 export interface Monster {
   id?: string;
   name?: string;
+  type?: MonsterType | string;
   lat: number;
   lng: number;
   hp: number;
@@ -248,10 +253,24 @@ export interface MatchStatEntry {
   damage_dealt: number;
   revives_done: number;
   crates_opened?: number;
+  chests_opened?: number;
   monster_kills?: number;
   won: boolean;
   score?: number;
   created_at?: string;
+}
+
+export interface PvPAttackPayload {
+  attackerId: string;
+  damage: number;
+  weaponId: string;
+  timestamp: number;
+}
+
+export interface PvPCombatState {
+  combatId: string;
+  opponentId: string;
+  isOpen: boolean;
 }
 
 export interface TacticalLogMessage {
