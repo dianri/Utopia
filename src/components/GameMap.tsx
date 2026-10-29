@@ -881,6 +881,29 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   }, [treasureLocation.lat, treasureLocation.lng, isMeWounded, isChestOpened, isVictory]);
 
   // ==========================================
+  // 5.1. APERTURA AUTOMÁTICA DEL COFRE POR PROXIMIDAD DIRECTA EN MAPA (<= 15m)
+  // ==========================================
+  useEffect(() => {
+    if (!myPlayer.lat || !myPlayer.lng || !treasureLocation.lat || !treasureLocation.lng) return;
+    if (inCombat || isMeWounded || isChestOpened || isVictory) return;
+
+    const myPos = { lat: myPlayer.lat, lng: myPlayer.lng };
+    const dist = getDistanceMeters(myPos, treasureLocation);
+    if (dist <= 15) {
+      onOpenChestRef.current?.();
+    }
+  }, [
+    myPlayer.lat,
+    myPlayer.lng,
+    treasureLocation.lat,
+    treasureLocation.lng,
+    inCombat,
+    isMeWounded,
+    isChestOpened,
+    isVictory,
+  ]);
+
+  // ==========================================
   // 6. MARCADORES Y RADIOS DE CAJAS DE SUMINISTROS (AIRDROPS)
   // ==========================================
   useEffect(() => {

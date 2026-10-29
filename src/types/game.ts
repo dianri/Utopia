@@ -216,6 +216,11 @@ export interface GameRoom {
   centerLng: number;
   treasureLat: number;
   treasureLng: number;
+  center_lat?: number;
+  center_lng?: number;
+  treasure_lat?: number;
+  treasure_lng?: number;
+  settings?: any;
   chestPhase?: number;
   chestStep?: number;
   chestUnlockedSteps?: number;
