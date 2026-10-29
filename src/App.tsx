@@ -66,6 +66,8 @@ import { MonsterAIController } from './services/monsterAI';
 import { useGameRealtime } from './hooks/useGameRealtime';
 import { useGeolocation } from './hooks/useGeolocation';
 import { useCombatLoop } from './hooks/useCombatLoop';
+import { useHostElection } from './hooks/useHostElection';
+import { useMonsterAI } from './hooks/useMonsterAI';
 
 import { GameMap } from './components/GameMap';
 import { TacticalHeader } from './components/HUD/TacticalHeader';
@@ -1260,6 +1262,23 @@ export const App: React.FC = () => {
         );
         addLog(`¡${playerNickname} ha abierto y conquistado el Cofre [${chestIndex}/3]!`, 'loot');
       },
+      onHostMigrated: ({ newHostPlayerId, newHostUserId, newHostNickname }) => {
+        addLog(`📡 Relevo de anfitrión: ${newHostNickname} asume el control de la misión.`, 'info');
+        setRoom((prev) => (prev ? { ...prev, hostId: newHostUserId } : null));
+        setPlayers((prev) =>
+          prev.map((p) => ({
+            ...p,
+            isHost: p.id === newHostPlayerId,
+          }))
+        );
+        if (myPlayerRef.current?.id === newHostPlayerId) {
+          setMyPlayer((prev) => (prev ? { ...prev, isHost: true } : null));
+          if (myPlayerRef.current) myPlayerRef.current.isHost = true;
+        } else {
+          setMyPlayer((prev) => (prev ? { ...prev, isHost: false } : null));
+          if (myPlayerRef.current) myPlayerRef.current.isHost = false;
+        }
+      },
     },
     !!myPlayer?.isHost,
     room?.id ?? null,
@@ -1272,16 +1291,44 @@ export const App: React.FC = () => {
   const addLogRef = useRef(addLog);
   addLogRef.current = addLog;
 
+  // Protocolo determinista de elección y failover de host vía Presence
+  const { isElectedHost, electedHostId } = useHostElection({
+    room,
+    myPlayer,
+    presenceState: realtime.presenceState,
+    onHostClaimed: (newHostPlayerId, isMe) => {
+      setPlayers((prev) =>
+        prev.map((p) => ({
+          ...p,
+          isHost: p.id === newHostPlayerId,
+        }))
+      );
+      if (isMe) {
+        setMyPlayer((prev) => (prev ? { ...prev, isHost: true } : null));
+        if (myPlayerRef.current) myPlayerRef.current.isHost = true;
+        setRoom((prev) => (prev && myPlayer ? { ...prev, hostId: myPlayer.userId } : prev));
+        addLog('👑 Has sido designado nuevo Anfitrión de la sala. Bucle de IA y monstruos activado.', 'info');
+      } else {
+        setMyPlayer((prev) => (prev ? { ...prev, isHost: false } : null));
+        if (myPlayerRef.current) myPlayerRef.current.isHost = false;
+      }
+    },
+    broadcastHostMigrated: realtime.broadcastHostMigrated,
+  });
+
   const isHost = Boolean(
-    myPlayer?.isHost || (room && myPlayer && room.hostId === myPlayer.userId)
+    isElectedHost ||
+    (electedHostId && myPlayer && electedHostId === myPlayer.id) ||
+    myPlayer?.isHost ||
+    (room && myPlayer && room.hostId === myPlayer.userId)
   );
 
   // Solicitar sincronización de partida al conectarse al canal Realtime si la partida está en curso
   useEffect(() => {
-    if (room?.status === 'playing' && !myPlayer?.isHost && realtime.isConnected) {
+    if (room?.status === 'playing' && !isHost && realtime.isConnected) {
       realtime.broadcastRequestStateSync();
     }
-  }, [room?.status, myPlayer?.isHost, realtime.isConnected]);
+  }, [room?.status, isHost, realtime.isConnected]);
 
   // ==========================================
   // GEOLOCALIZACIÓN Y MOVIMIENTO (GPS O MANUAL)
@@ -1649,6 +1696,7 @@ export const App: React.FC = () => {
               const nextRoom = {
                 ...prev,
                 status: updated.status,
+                ...(updated.host_id ? { hostId: updated.host_id } : {}),
                 ...(updated.winner ? { winner: updated.winner } : {}),
                 ...(updated.ended_at ? { endedAt: updated.ended_at } : {}),
                 ...(updatedSpeed ? { playerSpeed: updatedSpeed } : {}),
@@ -1676,6 +1724,19 @@ export const App: React.FC = () => {
               roomRef.current = nextRoom;
               return nextRoom;
             });
+            if (updated.host_id) {
+              setPlayers((prev) =>
+                prev.map((p) => ({
+                  ...p,
+                  isHost: p.userId === updated.host_id,
+                }))
+              );
+              if (myPlayerRef.current) {
+                const isMeHost = myPlayerRef.current.userId === updated.host_id;
+                setMyPlayer((prev) => (prev ? { ...prev, isHost: isMeHost } : null));
+                myPlayerRef.current.isHost = isMeHost;
+              }
+            }
             if (updated.status === 'cancelled') {
               handleRemoteGameCancelled('Misión abortada por el anfitrión');
             } else if (updated.status === 'victory' || updated.status === 'defeat') {
@@ -1722,7 +1783,7 @@ export const App: React.FC = () => {
                   monsterKills: existing ? existing.monsterKills : d.monster_kills,
                   chestsOpened: d.chests_opened ?? existing?.chestsOpened ?? existing?.chests_opened ?? 0,
                   chests_opened: d.chests_opened ?? existing?.chests_opened ?? existing?.chestsOpened ?? 0,
-                  isHost: d.user_id === room.hostId,
+                  isHost: d.user_id === (roomRef.current?.hostId || room.hostId),
                   pets: existing?.pets ?? d.pets ?? [],
                   inventory: existing?.inventory ?? d.inventory ?? [],
                   equippedWeapon: existing?.equippedWeapon,
@@ -1741,150 +1802,89 @@ export const App: React.FC = () => {
   }, [room?.id, addLog]);
 
   // ==========================================
-  // BUCLE DE IA DEL MONSTRUO (EJECUTADO EN EL CLIENTE HOST CADA 1000MS)
+  // BUCLE DE IA DEL MONSTRUO (CON PROTOCOLO DE FAILOVER Y MIGRACIÓN DETERMINISTA DE HOST)
   // ==========================================
-  useEffect(() => {
-    if (room?.status !== 'playing' || !isHost) return;
-
-    const treasureCoords: Coordinates = {
-      lat: room.treasureLat || room.centerLat,
-      lng: room.treasureLng || room.centerLng,
-    };
-    const centerCoords: Coordinates = {
-      lat: room.centerLat,
-      lng: room.centerLng,
-    };
-
-    if (!monsterAIRef.current) {
-      monsterAIRef.current = new MonsterAIController(treasureCoords, centerCoords, room.playAreaRadius);
-    } else {
-      monsterAIRef.current.setTreasureLocation(treasureCoords);
-      monsterAIRef.current.setPlayArea(centerCoords, room.playAreaRadius);
-    }
-
-    const interval = window.setInterval(() => {
-      const isContest =
-        isChestInteractedGloballyRef.current ||
-        isChestLockModalOpenRef.current;
-
-      const currentMonsters = monstersRef.current.length > 0 ? monstersRef.current : [monsterRef.current];
-      const updatedMonsters: Monster[] = [];
-
-      for (const m of currentMonsters) {
-        const mKey = m.id || 'monster_1';
-        let ai = monsterAIsRef.current.get(mKey);
-        if (!ai) {
-          ai = new MonsterAIController(treasureCoords, centerCoords, room.playAreaRadius);
-          monsterAIsRef.current.set(mKey, ai);
-        } else {
-          ai.setTreasureLocation(treasureCoords);
-          ai.setPlayArea(centerCoords, room.playAreaRadius);
-        }
-
-        const result = ai.update(m, playersRef.current, isContest);
-        updatedMonsters.push(result.updatedMonster);
-
-        // Si el monstruo atacó a un jugador en el mapa
-        if (result.attackedPlayerId && result.attackDamage > 0) {
-          const victim = playersRef.current.find((p) => p.id === result.attackedPlayerId);
-          if (victim) {
-            // Si el jugador local está en la arena de combate, la arena ya ejecuta su propio bucle de daño periódico
-            if (victim.id === myPlayerRef.current?.id && isCombatArenaOpenRef.current) {
-              continue;
-            }
-
-            const isShielded = isRoleSkillActiveRef.current && victim.id === myPlayerRef.current?.id && myPlayerRef.current?.role === 'tank';
-            const damageApplied = isShielded ? Math.round(result.attackDamage * 0.5) : result.attackDamage;
-
-            // Protección secuencial de mascotas en el mapa
-            const victimPets = (victim.id === myPlayerRef.current?.id ? myPlayerRef.current?.pets : victim.pets) || [];
-            const activePetIndex = victimPets.findIndex((p) => !p.isWounded && p.hp > 0);
-
-            if (activePetIndex !== -1) {
-              const targetPet = victimPets[activePetIndex];
-              const petRemainingHp = Math.max(0, targetPet.hp - damageApplied);
-              const petIsWounded = petRemainingHp <= 0;
-              const updatedPets = victimPets.map((p, idx) =>
-                idx === activePetIndex ? { ...p, hp: petRemainingHp, isWounded: petIsWounded } : p
-              );
-
-              if (victim.id === myPlayerRef.current?.id) {
-                setMyPlayer((prev) => (prev ? { ...prev, pets: updatedPets } : null));
-                if (myPlayerRef.current) {
-                  myPlayerRef.current = { ...myPlayerRef.current, pets: updatedPets };
-                }
-                soundEffects.triggerDamageHaptics();
-                soundEffects.playAlarm();
-                addLogRef.current?.(`¡${m.name || 'El monstruo'} atacó a tu mascota ${targetPet.name}! (-${damageApplied} HP)`, 'combat');
-                if (petIsWounded) {
-                  addLogRef.current?.(`¡${targetPet.name} ha caído herida! 💫 El escudo táctico pasa a la siguiente mascota.`, 'warning');
-                }
-              }
-
-              setPlayers((prev) =>
-                prev.map((p) => (p.id === victim.id ? { ...p, pets: updatedPets } : p))
-              );
-              continue;
-            }
-            const currentVictimHp = victim.id === myPlayerRef.current?.id && myPlayerRef.current ? myPlayerRef.current.hp : victim.hp;
-            const calculatedHp = Math.max(0, currentVictimHp - damageApplied);
-            const isWounded = calculatedHp <= 0 || calculatedHp === 1;
-            const newHp = isWounded ? 1 : calculatedHp;
-            const newStatus: PlayerStatus = isWounded ? 'critically_wounded' : (victim.status || 'active');
-
-            realtimeRef.current.broadcastPlayerHit(victim.id, damageApplied, newHp);
-
-            // Si el host es la víctima
-            if (victim.id === myPlayerRef.current?.id) {
-              setMyPlayer((prev) => (prev ? {
-                ...prev,
-                hp: newHp,
-                isAlive: true,
-                isCriticallyWounded: isWounded || prev.isCriticallyWounded,
-                status: newStatus,
-              } : null));
-
-              // Sincronizar simultáneamente en la lista local
-              setPlayers((prev) =>
-                prev.map((p) =>
-                  p.id === victim.id
-                    ? { ...p, hp: newHp, isCriticallyWounded: isWounded || p.isCriticallyWounded, status: newStatus }
-                    : p
-                )
-              );
-
-              soundEffects.triggerDamageHaptics();
-              soundEffects.playAlarm();
-              if (isWounded) {
-                addLogRef.current('¡ATAQUE CRÍTICO! Has quedado Herido de Muerte. ¡Corre al Hospital!', 'warning');
-              } else {
-                addLogRef.current(`¡Has recibido ${damageApplied} de daño!`, 'combat');
-              }
-            }
-          }
-        }
-
-        if (result.justEnraged) {
-          addLogRef.current(`¡${m.name || 'EL MONSTRUO'} SE HA ENFURECIDO (FASE 2)! RUGIDO Y VELOCIDAD +40%`, 'warning');
-        }
-        // Silent respawn: sin carteles ni toasts de reaparición
-      }
-
+  useMonsterAI({
+    room,
+    isHost,
+    myPlayer,
+    players,
+    monsters,
+    monster,
+    isChestInteractedGlobally,
+    isChestLockModalOpen,
+    isCombatArenaOpen,
+    isRoleSkillActive,
+    activeCombatMonsterId,
+    onMonstersUpdated: (updatedMonsters) => {
       setMonsters(updatedMonsters);
-      realtimeRef.current.broadcastMonstersUpdate(updatedMonsters);
-
-      const focused =
-        updatedMonsters.find((m) => m.id === activeCombatMonsterIdRef.current) || updatedMonsters[0];
-      if (focused) {
-        setMonster(focused);
-        realtimeRef.current.broadcastMonsterUpdate(focused);
+    },
+    onMonsterUpdated: (focusedMonster) => {
+      setMonster(focusedMonster);
+    },
+    onPlayerDamagedLocally: (newHp, isWounded, damageApplied, monsterName) => {
+      const newStatus: PlayerStatus = isWounded ? 'critically_wounded' : 'active';
+      setMyPlayer((prev) =>
+        prev
+          ? {
+              ...prev,
+              hp: newHp,
+              isAlive: true,
+              isCriticallyWounded: isWounded || prev.isCriticallyWounded,
+              status: newStatus,
+            }
+          : null
+      );
+      if (myPlayerRef.current) {
+        myPlayerRef.current.hp = newHp;
+        myPlayerRef.current.isCriticallyWounded = isWounded || myPlayerRef.current.isCriticallyWounded;
+        myPlayerRef.current.status = newStatus;
       }
-    }, 1000);
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [room?.status, isHost, room?.treasureLat, room?.treasureLng, room?.centerLat, room?.centerLng]);
+      setPlayers((prev) =>
+        prev.map((p) =>
+          p.id === myPlayerRef.current?.id
+            ? { ...p, hp: newHp, isCriticallyWounded: isWounded || p.isCriticallyWounded, status: newStatus }
+            : p
+        )
+      );
+      soundEffects.triggerDamageHaptics();
+      soundEffects.playAlarm();
+      if (isWounded) {
+        addLogRef.current?.('¡ATAQUE CRÍTICO! Has quedado Herido de Muerte. ¡Corre al Hospital!', 'warning');
+      } else {
+        addLogRef.current?.(`¡Has recibido ${damageApplied} de daño de ${monsterName}!`, 'combat');
+      }
+    },
+    onPetDamagedLocally: (victimId, updatedPets, targetPetName, damageApplied, monsterName, petIsWounded) => {
+      if (victimId === myPlayerRef.current?.id) {
+        setMyPlayer((prev) => (prev ? { ...prev, pets: updatedPets } : null));
+        if (myPlayerRef.current) {
+          myPlayerRef.current = { ...myPlayerRef.current, pets: updatedPets };
+        }
+        soundEffects.triggerDamageHaptics();
+        soundEffects.playAlarm();
+        addLogRef.current?.(`¡${monsterName} atacó a tu mascota ${targetPetName}! (-${damageApplied} HP)`, 'combat');
+        if (petIsWounded) {
+          addLogRef.current?.(`¡${targetPetName} ha caído herida! 💫 El escudo táctico pasa a la siguiente mascota.`, 'warning');
+        }
+      }
+      setPlayers((prev) =>
+        prev.map((p) => (p.id === victimId ? { ...p, pets: updatedPets } : p))
+      );
+    },
+    onBroadcastMonstersUpdate: (updatedMonsters) => {
+      realtimeRef.current.broadcastMonstersUpdate(updatedMonsters);
+    },
+    onBroadcastMonsterUpdate: (focusedMonster) => {
+      realtimeRef.current.broadcastMonsterUpdate(focusedMonster);
+    },
+    onBroadcastPlayerHit: (victimId, damage, newHp) => {
+      realtimeRef.current.broadcastPlayerHit(victimId, damage, newHp);
+    },
+    onLog: (msg, type) => {
+      addLogRef.current?.(msg, type);
+    },
+  });
 
   // ==========================================
   // BUCLE DE COMBATE CONTINUO EN MOVIMIENTO (MANUAL Y AUTOMÁTICO)
@@ -3598,7 +3598,7 @@ export const App: React.FC = () => {
   // Control estricto de densidad: máx 3 armas/loot y máx 3 mascotas silvestres
   // ==========================================
   useEffect(() => {
-    if (!room || room.status !== 'playing' || !myPlayer?.isHost) return;
+    if (!room || room.status !== 'playing' || !isHost) return;
 
     const AIRDROP_INTERVAL_MS = 50000; // Cada 50 segundos
     const PET_INTERVAL_MS = 95000; // Cada 95 segundos
@@ -3695,7 +3695,7 @@ export const App: React.FC = () => {
     room?.centerLat,
     room?.centerLng,
     room?.playAreaRadius,
-    myPlayer?.isHost,
+    isHost,
     syncRoomEntitiesToSupabase,
     addLog,
   ]);
@@ -5132,9 +5132,9 @@ export const App: React.FC = () => {
           room={room}
           players={players}
           myPlayerId={myPlayer.id}
-          isHost={!!myPlayer.isHost}
+          isHost={isHost}
           onStartGame={handleStartGame}
-          onLeaveRoom={myPlayer.isHost ? handleCancelGame : handleLeaveGame}
+          onLeaveRoom={isHost ? handleCancelGame : handleLeaveGame}
         />
       )}
 

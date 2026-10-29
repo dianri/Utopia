@@ -63,6 +63,11 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
   - Al derrotar al monstruo actual, si otro monstruo se encuentra en rango inmediato ($\le 20\text{m}$), se realiza una transición táctica automática e inmediata contra la siguiente amenaza.
 - **Niebla de Guerra y Radar:**
   - El monstruo permanece oculto en el mapa exterior a menos que esté dentro del radio de visión (70m base, 85m con dron, 105m/120m explorador) o que el Explorador active el **Radar Táctico**.
+- **Protocolo de Migración Determinista de Anfitrión / Host Failover (`useHostElection.ts`, `useMonsterAI.ts`):**
+  - **Detección Determinista de Desconexión:** Mediante Supabase Realtime Presence (`sync`, `join`, `leave`), todos los clientes conectados rastrean la presencia del anfitrión activo en tiempo real.
+  - **Criterio de Sucesión sin Carreras:** Si el host actual cierra el navegador o pierde la conexión, el cliente activo con menor marca temporal de unión (`joinedAt`) o menor ID alfanumérico (`playerId.localeCompare`) asume de inmediato la titularidad de la sala.
+  - **Persistencia y Broadcast Inmediato:** El nuevo host electo actualiza la sala en Supabase (`host_id`) y emite un broadcast `host_migrated` al resto de la escuadra.
+  - **Reactivación Instantánea del Bucle de IA y Airdrops:** Al recibir el rol, `useMonsterAI.ts` activa de inmediato el bucle de ticks (1000ms) de IA para todos los monstruos de la partida sin requerir recargar la página ni sufrir congelamiento de patrullas o persecuciones.
 
 ---
 
