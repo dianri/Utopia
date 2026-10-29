@@ -47,6 +47,20 @@ export const MAP_STYLES = {
   },
 };
 
+/**
+ * Guarda defensiva para verificar de forma segura si el mapa y su estilo interno
+ * están completamente cargados y disponibles para interactuar con capas y fuentes GeoJSON.
+ */
+export const isMapStyleLoaded = (
+  mapInstance: maplibregl.Map | null | undefined
+): boolean => {
+  return Boolean(
+    mapInstance &&
+      typeof mapInstance.isStyleLoaded === 'function' &&
+      mapInstance.isStyleLoaded()
+  );
+};
+
 interface GameMapProps {
   center: Coordinates;
   playAreaRadius: number;
@@ -163,7 +177,18 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // ==========================================
   const injectTacticalOverlays = useCallback(
     (map: maplibregl.Map) => {
-      // 1. Capa estática: Área de juego (Perímetro exterior de alto contraste sobre fotografía aérea)
+      if (!isMapStyleLoaded(map)) {
+        const onStyleLoad = () => {
+          if (mapRef.current === map) {
+            injectTacticalOverlaysRef.current?.(map);
+          }
+        };
+        map.once('style.load', onStyleLoad);
+        return;
+      }
+
+      try {
+        // 1. Capa estática: Área de juego (Perímetro exterior de alto contraste sobre fotografía aérea)
       if (!map.getSource('play-area')) {
         const playAreaGeo = createGeoJsonCircle(center, playAreaRadius);
         map.addSource('play-area', {
@@ -500,7 +525,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       // Sincronizar inmediatamente datos de emergencia si corresponde
       updateEmergencyOverlaysRef.current?.(map);
-    },
+    } catch (err) {
+      console.warn('[GameMap] Error al inyectar overlays tácticos:', err);
+    }
+  },
     [
       center,
       playAreaRadius,
@@ -524,7 +552,18 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // Actualización de fuentes GeoJSON tácticas
   const updateEntityInfluenceSources = useCallback(
     (map: maplibregl.Map) => {
-      // 1. Actualizar play-area si procede
+      if (!isMapStyleLoaded(map)) {
+        const onStyleLoad = () => {
+          if (mapRef.current === map) {
+            updateEntityInfluenceSourcesRef.current?.(map);
+          }
+        };
+        map.once('style.load', onStyleLoad);
+        return;
+      }
+
+      try {
+        // 1. Actualizar play-area si procede
       const playAreaSource = map.getSource('play-area') as maplibregl.GeoJSONSource | undefined;
       if (playAreaSource) {
         playAreaSource.setData(createGeoJsonCircle(center, playAreaRadius));
@@ -617,7 +656,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             ];
         rangesSource.setData({ type: 'FeatureCollection', features });
       }
-    },
+    } catch (err) {
+      console.warn('[GameMap] Error al actualizar fuentes de entidades:', err);
+    }
+  },
     [
       center,
       playAreaRadius,
@@ -645,87 +687,119 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // ==========================================
   const updateEmergencyOverlays = useCallback(
     (map: maplibregl.Map) => {
-      const hospital = structures.find((s) => s.type === 'hospital');
-      const myLat = myPlayer.lat ?? center.lat;
-      const myLng = myPlayer.lng ?? center.lng;
+      if (!isMapStyleLoaded(map)) {
+        const onStyleLoad = () => {
+          if (mapRef.current === map) {
+            updateEmergencyOverlaysRef.current?.(map);
+          }
+        };
+        map.once('style.load', onStyleLoad);
+        return;
+      }
 
-      const hasValidPlayerCoords =
-        typeof myLat === 'number' &&
-        typeof myLng === 'number' &&
-        !isNaN(myLat) &&
-        !isNaN(myLng) &&
-        (myLat !== 0 || myLng !== 0);
+      try {
+        const hospital = structures.find((s) => s.type === 'hospital');
+        const myLat = myPlayer.lat ?? center.lat;
+        const myLng = myPlayer.lng ?? center.lng;
 
-      const hasValidHospitalCoords =
-        !!hospital &&
-        typeof hospital.lat === 'number' &&
-        typeof hospital.lng === 'number' &&
-        !isNaN(hospital.lat) &&
-        !isNaN(hospital.lng);
+        const hasValidPlayerCoords =
+          typeof myLat === 'number' &&
+          typeof myLng === 'number' &&
+          !isNaN(myLat) &&
+          !isNaN(myLng) &&
+          (myLat !== 0 || myLng !== 0);
 
-      // 1. Línea directa hacia el hospital
-      const guidelineSource = map.getSource('hospital-guideline') as maplibregl.GeoJSONSource | undefined;
-      const shouldRenderHospitalGuide = Boolean(isMeWounded && hasValidPlayerCoords && hasValidHospitalCoords);
+        const hasValidHospitalCoords =
+          !!hospital &&
+          typeof hospital.lat === 'number' &&
+          typeof hospital.lng === 'number' &&
+          !isNaN(hospital.lat) &&
+          !isNaN(hospital.lng);
 
-      if (guidelineSource) {
-        if (shouldRenderHospitalGuide && hospital) {
-          guidelineSource.setData({
-            type: 'FeatureCollection',
-            features: [
-              {
-                type: 'Feature',
-                properties: {},
-                geometry: {
-                  type: 'LineString',
-                  coordinates: [
-                    [myLng, myLat],
-                    [hospital.lng, hospital.lat],
-                  ],
+        // 1. Línea directa hacia el hospital
+        const guidelineSource = map.getSource('hospital-guideline') as maplibregl.GeoJSONSource | undefined;
+        const shouldRenderHospitalGuide = Boolean(isMeWounded && hasValidPlayerCoords && hasValidHospitalCoords);
+
+        if (guidelineSource) {
+          if (shouldRenderHospitalGuide && hospital) {
+            guidelineSource.setData({
+              type: 'FeatureCollection',
+              features: [
+                {
+                  type: 'Feature',
+                  properties: {},
+                  geometry: {
+                    type: 'LineString',
+                    coordinates: [
+                      [myLng, myLat],
+                      [hospital.lng, hospital.lat],
+                    ],
+                  },
                 },
-              },
-            ],
-          });
-        } else {
-          guidelineSource.setData({
-            type: 'FeatureCollection',
-            features: [],
-          });
+              ],
+            });
+          } else {
+            guidelineSource.setData({
+              type: 'FeatureCollection',
+              features: [],
+            });
+          }
         }
-      }
 
-      const guideVisibility = shouldRenderHospitalGuide ? 'visible' : 'none';
-      if (map.getLayer('hospital-guideline-halo')) {
-        map.setLayoutProperty('hospital-guideline-halo', 'visibility', guideVisibility);
-      }
-      if (map.getLayer('hospital-guideline-line')) {
-        map.setLayoutProperty('hospital-guideline-line', 'visibility', guideVisibility);
-      }
-
-      // 2. Radio perimetral de 12 metros alrededor del jugador herido
-      const perimeterSource = map.getSource('wounded-perimeter') as maplibregl.GeoJSONSource | undefined;
-      const shouldRenderPerimeter = Boolean(isMeWounded && hasValidPlayerCoords);
-
-      if (perimeterSource) {
-        if (shouldRenderPerimeter) {
-          const perimeterCircle = createGeoJsonCircle({ lat: myLat, lng: myLng }, 12);
-          perimeterSource.setData({
-            type: 'FeatureCollection',
-            features: [perimeterCircle],
-          });
-        } else {
-          perimeterSource.setData({
-            type: 'FeatureCollection',
-            features: [],
-          });
+        const guideVisibility = shouldRenderHospitalGuide ? 'visible' : 'none';
+        try {
+          if (map.getLayer('hospital-guideline-halo')) {
+            map.setLayoutProperty('hospital-guideline-halo', 'visibility', guideVisibility);
+          }
+        } catch (err) {
+          console.warn('[GameMap] Aviso al consultar capa hospital-guideline-halo:', err);
         }
-      }
 
-      const perimeterVisibility = shouldRenderPerimeter ? 'visible' : 'none';
-      if (map.getLayer('wounded-perimeter-fill')) {
-        map.setLayoutProperty('wounded-perimeter-fill', 'visibility', perimeterVisibility);
-      }
-      if (map.getLayer('wounded-perimeter-outline')) {
-        map.setLayoutProperty('wounded-perimeter-outline', 'visibility', perimeterVisibility);
+        try {
+          if (map.getLayer('hospital-guideline-line')) {
+            map.setLayoutProperty('hospital-guideline-line', 'visibility', guideVisibility);
+          }
+        } catch (err) {
+          console.warn('[GameMap] Aviso al consultar capa hospital-guideline-line:', err);
+        }
+
+        // 2. Radio perimetral de 12 metros alrededor del jugador herido
+        const perimeterSource = map.getSource('wounded-perimeter') as maplibregl.GeoJSONSource | undefined;
+        const shouldRenderPerimeter = Boolean(isMeWounded && hasValidPlayerCoords);
+
+        if (perimeterSource) {
+          if (shouldRenderPerimeter) {
+            const perimeterCircle = createGeoJsonCircle({ lat: myLat, lng: myLng }, 12);
+            perimeterSource.setData({
+              type: 'FeatureCollection',
+              features: [perimeterCircle],
+            });
+          } else {
+            perimeterSource.setData({
+              type: 'FeatureCollection',
+              features: [],
+            });
+          }
+        }
+
+        const perimeterVisibility = shouldRenderPerimeter ? 'visible' : 'none';
+        try {
+          if (map.getLayer('wounded-perimeter-fill')) {
+            map.setLayoutProperty('wounded-perimeter-fill', 'visibility', perimeterVisibility);
+          }
+        } catch (err) {
+          console.warn('[GameMap] Aviso al consultar capa wounded-perimeter-fill:', err);
+        }
+
+        try {
+          if (map.getLayer('wounded-perimeter-outline')) {
+            map.setLayoutProperty('wounded-perimeter-outline', 'visibility', perimeterVisibility);
+          }
+        } catch (err) {
+          console.warn('[GameMap] Aviso al consultar capa wounded-perimeter-outline:', err);
+        }
+      } catch (err) {
+        console.warn('[GameMap] Error al actualizar overlays de emergencia:', err);
       }
     },
     [structures, myPlayer.lat, myPlayer.lng, center.lat, center.lng, isMeWounded]
@@ -917,16 +991,20 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !isMapLoadedRef.current) return;
+    if (!map || !isMapStyleLoaded(map)) return;
 
-    const playAreaSource = map.getSource('play-area') as maplibregl.GeoJSONSource;
-    if (playAreaSource) {
-      playAreaSource.setData(createGeoJsonCircle(center, playAreaRadius));
-    }
+    try {
+      const playAreaSource = map.getSource('play-area') as maplibregl.GeoJSONSource | undefined;
+      if (playAreaSource) {
+        playAreaSource.setData(createGeoJsonCircle(center, playAreaRadius));
+      }
 
-    const treasureSource = map.getSource('treasure-zone') as maplibregl.GeoJSONSource;
-    if (treasureSource) {
-      treasureSource.setData(createGeoJsonCircle(treasureLocation, 20));
+      const treasureSource = map.getSource('treasure-zone') as maplibregl.GeoJSONSource | undefined;
+      if (treasureSource) {
+        treasureSource.setData(createGeoJsonCircle(treasureLocation, 20));
+      }
+    } catch (err) {
+      console.warn('[GameMap] Error al actualizar capas estáticas:', err);
     }
   }, [center.lat, center.lng, playAreaRadius, treasureLocation.lat, treasureLocation.lng, styleVersion]);
 
@@ -935,23 +1013,27 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !isMapLoadedRef.current) return;
+    if (!map || !isMapStyleLoaded(map)) return;
 
-    const myLat = myPlayer.lat ?? center.lat;
-    const myLng = myPlayer.lng ?? center.lng;
+    try {
+      const myLat = myPlayer.lat ?? center.lat;
+      const myLng = myPlayer.lng ?? center.lng;
 
-    // Evitar recalcular geometría GeoJSON si la posición apenas varió menos de 0.8 metros
-    if (lastVisionPosRef.current) {
-      const dist = getDistanceMeters(lastVisionPosRef.current, { lat: myLat, lng: myLng });
-      if (dist < 0.8 && !isRadarActive) return;
-    }
-    lastVisionPosRef.current = { lat: myLat, lng: myLng };
+      // Evitar recalcular geometría GeoJSON si la posición apenas varió menos de 0.8 metros
+      if (lastVisionPosRef.current) {
+        const dist = getDistanceMeters(lastVisionPosRef.current, { lat: myLat, lng: myLng });
+        if (dist < 0.8 && !isRadarActive) return;
+      }
+      lastVisionPosRef.current = { lat: myLat, lng: myLng };
 
-    const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
-    const visionRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
-    const visionSource = map.getSource('player-vision') as maplibregl.GeoJSONSource;
-    if (visionSource) {
-      visionSource.setData(createGeoJsonCircle({ lat: myLat, lng: myLng }, Math.min(visionRadius, playAreaRadius)));
+      const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
+      const visionRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
+      const visionSource = map.getSource('player-vision') as maplibregl.GeoJSONSource | undefined;
+      if (visionSource) {
+        visionSource.setData(createGeoJsonCircle({ lat: myLat, lng: myLng }, Math.min(visionRadius, playAreaRadius)));
+      }
+    } catch (err) {
+      console.warn('[GameMap] Error al actualizar radio de visión:', err);
     }
   }, [
     myPlayer.lat,
@@ -1167,17 +1249,21 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     if (!map) return;
 
     // Actualizar zonas de interacción de 40m translúcidas en el mapa
-    if (isMapLoadedRef.current) {
-      const source = map.getSource('crates-zones') as maplibregl.GeoJSONSource;
-      if (source) {
-        const activeCrates = crates.filter((c) => !c.opened);
-        const features = activeCrates.map(
-          (c) => createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40)
-        );
-        source.setData({
-          type: 'FeatureCollection',
-          features,
-        });
+    if (isMapStyleLoaded(map)) {
+      try {
+        const source = map.getSource('crates-zones') as maplibregl.GeoJSONSource | undefined;
+        if (source) {
+          const activeCrates = crates.filter((c) => !c.opened);
+          const features = activeCrates.map(
+            (c) => createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40)
+          );
+          source.setData({
+            type: 'FeatureCollection',
+            features,
+          });
+        }
+      } catch (err) {
+        console.warn('[GameMap] Error al actualizar zonas de cajas:', err);
       }
     }
 
@@ -1291,25 +1377,29 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     if (!map) return;
 
     // Actualizar zonas de interacción en el mapa
-    if (isMapLoadedRef.current) {
-      const source = map.getSource('structures-zones') as maplibregl.GeoJSONSource;
-      if (source) {
-        const visibleStructures = isMeWounded ? structures.filter((s) => s.type === 'hospital') : structures;
-        const features = visibleStructures.map((s) => {
-          const circle = createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius);
-          return {
-            ...circle,
-            properties: {
-              ...circle.properties,
-              type: s.type,
-              id: s.id,
-            },
-          };
-        });
-        source.setData({
-          type: 'FeatureCollection',
-          features,
-        });
+    if (isMapStyleLoaded(map)) {
+      try {
+        const source = map.getSource('structures-zones') as maplibregl.GeoJSONSource | undefined;
+        if (source) {
+          const visibleStructures = isMeWounded ? structures.filter((s) => s.type === 'hospital') : structures;
+          const features = visibleStructures.map((s) => {
+            const circle = createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius);
+            return {
+              ...circle,
+              properties: {
+                ...circle.properties,
+                type: s.type,
+                id: s.id,
+              },
+            };
+          });
+          source.setData({
+            type: 'FeatureCollection',
+            features,
+          });
+        }
+      } catch (err) {
+        console.warn('[GameMap] Error al actualizar zonas de estructuras:', err);
       }
     }
 
@@ -1557,35 +1647,39 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !isMapLoadedRef.current) return;
+    if (!map || !isMapStyleLoaded(map)) return;
 
-    const source = map.getSource('interaction-ranges') as maplibregl.GeoJSONSource;
-    if (!source) return;
+    try {
+      const source = map.getSource('interaction-ranges') as maplibregl.GeoJSONSource | undefined;
+      if (!source) return;
 
-    if (isMeWounded) {
-      source.setData({ type: 'FeatureCollection', features: [] });
-      return;
+      if (isMeWounded) {
+        source.setData({ type: 'FeatureCollection', features: [] });
+        return;
+      }
+
+      const features = [
+        ...droppedItems
+          .filter((d) => typeof d.lat === 'number' && typeof d.lng === 'number' && !isNaN(d.lat) && !isNaN(d.lng) && (d.lat !== 0 || d.lng !== 0))
+          .map((d) => ({
+            ...createGeoJsonCircle({ lat: d.lat, lng: d.lng }, 25),
+            properties: { type: 'loot', id: d.id },
+          })),
+        ...wildPets
+          .filter((wp) => typeof wp.lat === 'number' && typeof wp.lng === 'number' && !isNaN(wp.lat) && !isNaN(wp.lng) && (wp.lat !== 0 || wp.lng !== 0))
+          .map((wp) => ({
+            ...createGeoJsonCircle({ lat: wp.lat, lng: wp.lng }, 25),
+            properties: { type: 'pet', id: wp.id },
+          })),
+      ];
+
+      source.setData({
+        type: 'FeatureCollection',
+        features,
+      });
+    } catch (err) {
+      console.warn('[GameMap] Error al actualizar rangos de interacción:', err);
     }
-
-    const features = [
-      ...droppedItems
-        .filter((d) => typeof d.lat === 'number' && typeof d.lng === 'number' && !isNaN(d.lat) && !isNaN(d.lng) && (d.lat !== 0 || d.lng !== 0))
-        .map((d) => ({
-          ...createGeoJsonCircle({ lat: d.lat, lng: d.lng }, 25),
-          properties: { type: 'loot', id: d.id },
-        })),
-      ...wildPets
-        .filter((wp) => typeof wp.lat === 'number' && typeof wp.lng === 'number' && !isNaN(wp.lat) && !isNaN(wp.lng) && (wp.lat !== 0 || wp.lng !== 0))
-        .map((wp) => ({
-          ...createGeoJsonCircle({ lat: wp.lat, lng: wp.lng }, 25),
-          properties: { type: 'pet', id: wp.id },
-        })),
-    ];
-
-    source.setData({
-      type: 'FeatureCollection',
-      features,
-    });
   }, [droppedItems, wildPets, isMeWounded, mapLoaded, styleVersion]);
 
   // ==========================================
@@ -1934,28 +2028,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !isMapLoadedRef.current) return;
+    if (!map) return;
 
-    // 1. Visibilidad de capas de área en el mapa
-    const areaLayers = [
-      'treasure-zone-fill',
-      'treasure-zone-outline',
-      'crates-zones-fill',
-      'crates-zones-outline',
-      'interaction-ranges-fill',
-      'interaction-ranges-outline',
-      'player-vision-outline',
-    ];
-    areaLayers.forEach((layerId) => {
-      if (map.getLayer(layerId)) {
-        map.setLayoutProperty(layerId, 'visibility', isMeWounded ? 'none' : 'visible');
-      }
-    });
-
-    // 2. Overlays tácticos de emergencia (Línea directa al hospital y círculo perimetral)
-    updateEmergencyOverlays(map);
-
-    // 3. Ocultar o restaurar marcadores existentes en el DOM de forma inmediata
+    // 1. Ocultar o restaurar marcadores existentes en el DOM de forma inmediata (sin depender del estilo WebGL)
     if (chestMarkerRef.current) {
       const el = chestMarkerRef.current.getElement();
       if (el) el.style.display = isMeWounded ? 'none' : 'block';
@@ -2016,6 +2091,42 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }
       }
     });
+
+    // 2. Aplicar visibilidad de capas en MapLibre GL protegiendo contra estilo nulo o no cargado
+    const applyMapLayerVisibility = () => {
+      if (!isMapStyleLoaded(map)) return;
+
+      const areaLayers = [
+        'treasure-zone-fill',
+        'treasure-zone-outline',
+        'crates-zones-fill',
+        'crates-zones-outline',
+        'interaction-ranges-fill',
+        'interaction-ranges-outline',
+        'player-vision-outline',
+      ];
+      areaLayers.forEach((layerId) => {
+        try {
+          if (map.getLayer(layerId)) {
+            map.setLayoutProperty(layerId, 'visibility', isMeWounded ? 'none' : 'visible');
+          }
+        } catch (err) {
+          console.warn(`[GameMap] Aviso al consultar capa ${layerId}:`, err);
+        }
+      });
+
+      // Overlays tácticos de emergencia (Línea directa al hospital y círculo perimetral)
+      updateEmergencyOverlays(map);
+    };
+
+    if (!isMapStyleLoaded(map)) {
+      map.once('style.load', applyMapLayerVisibility);
+      return () => {
+        map.off('style.load', applyMapLayerVisibility);
+      };
+    } else {
+      applyMapLayerVisibility();
+    }
   }, [
     isMeWounded,
     myPlayer.lat,

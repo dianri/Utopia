@@ -184,6 +184,7 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 - **Contenedor Flex Vertical de Alertas Tácticas Centrales:** Alertas médicas de hospital y avisos de límites de perímetro apiladas en columna central (`top-20 z-40 flex-col gap-2`) completamente despejadas y sin solapamiento con otros controles (reemplazando banners invasivos de respawn por reapariciones silenciosas).
 - **Autocierre de Mensajes de Bitácora:** Desvanecimiento temporal del log de combate (`CombatLog.tsx`) tras 3.5 segundos de inactividad para mantener despejada la vista de mapa.
 - **Renderizado Seguro de Marcadores en MapLibre:** Guardia estricta de ciclo de vida del mapa WebGL y revelación diferida mediante doble `requestAnimationFrame` que elimina cualquier parpadeo de marcadores en la coordenada `(0, 0)`.
+- **Blindaje contra Desreferenciación Nula en MapLibre GL (`isMapStyleLoaded`):** Protección estricta con guardas de estilo cargado (`isMapStyleLoaded`) y bloques defensivos `try/catch` en todas las consultas de capas y fuentes (`getLayer`, `getSource`, `setLayoutProperty`) de `GameMap.tsx`. Al alternar en caliente entre vista satelital y táctica o durante transiciones reactivas del mapa WebGL, las operaciones que actualizan visibilidad o capas de emergencia se difieren de forma segura mediante `map.once('style.load')` erradicando excepciones `TypeError: Cannot read properties of null (reading 'getLayer')`.
 
 ---
 
