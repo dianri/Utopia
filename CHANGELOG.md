@@ -21,6 +21,9 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - Añadida columna `chests_opened INTEGER NOT NULL DEFAULT 0` a la tabla `match_stats`.
 
 ### Changed
+- **Revert: Restored original wolf visual icon for Monster 1 (`SavageBeastIcon.tsx`, `mapEntities.ts`, `GameMap.tsx`, `CombatArena.tsx`, `App.tsx`, `README.md`):**
+  - **Restauración de Identidad Canónica:** Revertida por completo la experimentación visual del Monstruo 1, eliminando el componente `SavageBeastIcon.tsx` y su marcado SVG geométrico.
+  - **Icono Original del Lobo (`🐺`):** Restablecido el icono `🐺` y la denominación "Rastreador Sombrío" (`RASTREADOR SOMBRÍO`) en `mapEntities.ts`, `GameMap.tsx`, `CombatArena.tsx`, `App.tsx` y la documentación, manteniendo su halo carmesí y aura de combate predeterminada.
 - **Changed: Redesigned SavageBeastIcon SVG path to feature sharp horned beast contours instead of rounded caricature shape (`SavageBeastIcon.tsx`, `CHANGELOG.md`):**
   - **Rediseño del Trazado Vectorial:** Sustituido el contorno redondeado previo por una silueta demoníaca con aristas afiladas, cuernos marcados y mandíbula rasgada (`M12 2L14.5 5.5L18 4L16.5 8.5L20 11L16 13L16.5 17L12 15L7.5 17L8 13L4 11L7.5 8.5L6 4L9.5 5.5L12 2Z`).
   - **Mirada y Colmillos Amenazantes:** Incorporados ojos penetrantes y hendidura bucal angulosa (`polygon points="8,9 10,11 8,11"` / `polygon points="16,9 14,11 16,11"` y fauces afiladas) tanto en el componente React como en la plantilla HTML para MapLibre GL, proyectando ferocidad táctica en combate y mapa exterior.
