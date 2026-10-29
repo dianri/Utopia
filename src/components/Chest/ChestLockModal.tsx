@@ -10,7 +10,8 @@ interface ChestLockModalProps {
   currentChestIndex?: number;
   totalChests?: number;
   onStepSuccess: (nextPhase: number, nextStep: number) => void;
-  onVictory: () => void;
+  onChestDecrypted?: () => void;
+  onVictory?: () => void;
   distToMonster: number;
   isMonsterAlive?: boolean;
 }
@@ -23,6 +24,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
   currentChestIndex = 1,
   totalChests = 3,
   onStepSuccess,
+  onChestDecrypted,
   onVictory,
   distToMonster,
   isMonsterAlive = true,
@@ -284,7 +286,11 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
         setIsVictorious(true);
         setTimeout(() => {
           setFeedback('idle');
-          onVictory();
+          if (onChestDecrypted) {
+            onChestDecrypted();
+          } else if (onVictory) {
+            onVictory();
+          }
         }, 700);
       }
     } else {
@@ -300,33 +306,33 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
   const totalLocksCompleted = isVictorious ? 6 : (currentPhase - 1) * 2 + currentStep;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md select-none">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/90 backdrop-blur-md select-none">
       <div className="w-full max-w-md bg-slate-900 border-2 border-amber-500/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col relative animate-in fade-in zoom-in-95 duration-200">
         
-        {/* AVISO DE PROXIMIDAD DEL MONSTRUO */}
+        {/* AVISO DE PROXIMIDAD DEL MONSTRUO (Franja táctica compacta) */}
         {isMonsterAlive && distToMonster <= 45 && (
-          <div className="bg-red-950/90 border-b border-red-500 px-3 py-1.5 flex items-center justify-between text-red-200 animate-pulse text-xs font-mono font-black">
-            <span className="flex items-center gap-1.5">
-              <ShieldAlert className="w-4 h-4 text-red-400" />
-              ¡MONSTRUO ACERCÁNDOSE A DEFENDER EL COFRE!
+          <div className="bg-red-950/90 border-b border-red-500/80 px-2.5 py-1 flex items-center justify-between text-red-200 animate-pulse text-[11px] font-mono font-bold">
+            <span className="flex items-center gap-1.5 min-w-0 truncate">
+              <ShieldAlert className="w-3.5 h-3.5 text-red-400 shrink-0" />
+              <span className="truncate">¡MONSTRUO DEFENDIENDO EL COFRE!</span>
             </span>
-            <span className="bg-red-900/80 px-2 py-0.5 rounded text-white border border-red-500">
+            <span className="bg-red-900/80 px-1.5 py-0.2 rounded text-[10px] text-white border border-red-500/60 shrink-0">
               {Math.round(distToMonster)}m
             </span>
           </div>
         )}
 
         {/* CABECERA: COFRE Y PROGRESO COOPERATIVO */}
-        <div className="p-4 bg-gradient-to-r from-amber-950/70 via-slate-900 to-amber-950/70 border-b border-amber-500/40 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-amber-500/20 border border-amber-400/60 flex items-center justify-center text-amber-400">
-              <KeyRound className="w-5 h-5" />
+        <div className="p-2.5 sm:p-3 bg-gradient-to-r from-amber-950/70 via-slate-900 to-amber-950/70 border-b border-amber-500/40 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-amber-500/20 border border-amber-400/60 flex items-center justify-center text-amber-400 shrink-0">
+              <KeyRound className="w-4 h-4" />
             </div>
-            <div className="flex flex-col">
-              <span className="font-mono font-black text-sm text-white uppercase tracking-wider">
+            <div className="flex flex-col min-w-0">
+              <span className="font-mono font-black text-xs sm:text-sm text-white uppercase tracking-wider truncate">
                 Desencriptando Cofre [{currentChestIndex}/{totalChests}]
               </span>
-              <span className="text-[11px] font-mono text-amber-400">
+              <span className="text-[10px] sm:text-[11px] font-mono text-amber-400 truncate">
                 {isVictorious
                   ? (currentChestIndex >= totalChests ? '¡Fase Final Superada (6/6)!' : '¡Cofre Descifrado (6/6)!')
                   : `Fase ${currentPhase} de 3 • Cerrojo ${currentStep + 1}/2`}
@@ -337,27 +343,27 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white border border-slate-700"
+            className="p-1 sm:p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white border border-slate-700 shrink-0"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
         </div>
 
-        {/* INDICADOR DE PASOS COOPERATIVOS (6 CERROJOS) */}
-        <div className="px-4 py-2.5 bg-black/40 border-b border-slate-800 flex items-center justify-between">
-          <span className="text-[11px] font-mono font-bold text-slate-300">
-            PROGRESO DE ESCUADRA:
+        {/* INDICADOR DE PASOS COOPERATIVOS (6 CERROJOS COMPACTOS) */}
+        <div className="px-3 py-1.5 bg-black/40 border-b border-slate-800 flex items-center justify-between">
+          <span className="text-[10px] sm:text-[11px] font-mono font-bold text-slate-300">
+            PROGRESO ESCUADRA:
           </span>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 sm:gap-1.5">
             {[0, 1, 2, 3, 4, 5].map((idx) => {
               const isDone = idx < totalLocksCompleted;
               const isCurrent = idx === totalLocksCompleted;
               return (
                 <div
                   key={idx}
-                  className={`w-5 h-5 rounded-md flex items-center justify-center font-mono text-[10px] font-black border transition-all ${
+                  className={`w-4.5 h-4.5 sm:w-5 sm:h-5 rounded flex items-center justify-center font-mono text-[9px] sm:text-[10px] font-black border transition-all ${
                     isDone
-                      ? 'bg-emerald-500 border-emerald-300 text-black shadow-[0_0_8px_rgba(16,185,129,0.5)]'
+                      ? 'bg-emerald-500 border-emerald-300 text-black shadow-[0_0_6px_rgba(16,185,129,0.5)]'
                       : isCurrent
                       ? 'bg-amber-500/30 border-amber-400 text-amber-300 animate-pulse'
                       : 'bg-slate-800 border-slate-700 text-slate-500'
@@ -371,24 +377,24 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
         </div>
 
         {/* CUERPO DEL MINIJUEGO ACTIVO SEGÚN LA FASE */}
-        <div className="p-5 flex flex-col items-center justify-center min-h-[220px]">
+        <div className="p-3.5 sm:p-4 flex flex-col items-center justify-center min-h-[175px]">
           
           {/* ================================================= */}
           {/* FASE 1: QTE DE BARRA OSCILANTE */}
           {/* ================================================= */}
           {currentPhase === 1 && (
-            <div className="w-full flex flex-col items-center gap-4">
+            <div className="w-full flex flex-col items-center gap-3">
               <div className="text-center">
                 <span className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider block">
                   Fase 1: Cerrojo de Frecuencia Temporal
                 </span>
-                <span className="text-[11px] font-mono text-slate-400">
+                <span className="text-[10px] sm:text-[11px] font-mono text-slate-400">
                   Pulsa cuando el cursor móvil caiga dentro de la zona verde
                 </span>
               </div>
 
               {/* Barra de QTE */}
-              <div className="w-full h-8 bg-slate-950 rounded-xl border border-slate-700 relative overflow-hidden p-1 shadow-inner">
+              <div className="w-full h-7 bg-slate-950 rounded-xl border border-slate-700 relative overflow-hidden p-1 shadow-inner">
                 {/* Zona objetivo (verde) */}
                 <div
                   className="absolute top-1 bottom-1 bg-emerald-500/40 border-x-2 border-emerald-400 rounded-sm"
@@ -400,7 +406,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
 
                 {/* Cursor móvil */}
                 <div
-                  className="absolute top-0.5 bottom-0.5 w-2 bg-white rounded shadow-[0_0_10px_#fff]"
+                  className="absolute top-0.5 bottom-0.5 w-2 bg-white rounded shadow-[0_0_8px_#fff]"
                   style={{ left: `${qteCursorPos}%` }}
                 />
               </div>
@@ -408,7 +414,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
               <button
                 type="button"
                 onClick={handleQteClick}
-                className="w-full py-3.5 rounded-xl font-mono font-black text-sm uppercase tracking-wider bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-lg shadow-emerald-900/40 border border-emerald-400/50 active:scale-95 transition-all"
+                className="w-full py-2.5 rounded-xl font-mono font-black text-xs sm:text-sm uppercase tracking-wider bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white shadow-lg shadow-emerald-900/40 border border-emerald-400/50 active:scale-95 transition-all"
               >
                 ¡DESACTIVAR PERNO!
               </button>
@@ -419,38 +425,38 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
           {/* FASE 2: SIMÓN DICE / LUCES TÁCTICAS */}
           {/* ================================================= */}
           {currentPhase === 2 && (
-            <div className="w-full flex flex-col items-center gap-4">
+            <div className="w-full flex flex-col items-center gap-3">
               <div className="text-center">
                 <span className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider block">
                   Fase 2: Cerradura de Código Encriptado
                 </span>
-                <span className="text-[11px] font-mono text-slate-400">
+                <span className="text-[10px] sm:text-[11px] font-mono text-slate-400">
                   {isShowingSequence
                     ? '¡Memoriza la secuencia de luces!'
                     : `Tu turno: Pulsa en orden (${userSequenceIndex}/${sequence.length})`}
                 </span>
               </div>
 
-              {/* Panel de 4 luces tácticas */}
-              <div className="grid grid-cols-2 gap-3 w-full max-w-[240px]">
+              {/* Panel de 4 luces tácticas estilizadas */}
+              <div className="grid grid-cols-2 gap-2.5 w-full max-w-[220px]">
                 {LIGHT_COLORS.map((col) => {
                   const isFlashing = activeFlashingLight === col;
                   const colorStyles: Record<LightColor, { base: string; active: string }> = {
                     cyan: {
                       base: 'bg-cyan-950/60 border-cyan-700 text-cyan-400',
-                      active: 'bg-cyan-400 border-white text-black shadow-[0_0_25px_#22d3ee] scale-105 brightness-125 ring-2 ring-cyan-200',
+                      active: 'bg-cyan-400 border-white text-black shadow-[0_0_20px_#22d3ee] scale-105 brightness-125 ring-2 ring-cyan-200',
                     },
                     emerald: {
                       base: 'bg-emerald-950/60 border-emerald-700 text-emerald-400',
-                      active: 'bg-emerald-400 border-white text-black shadow-[0_0_25px_#34d399] scale-105 brightness-125 ring-2 ring-emerald-200',
+                      active: 'bg-emerald-400 border-white text-black shadow-[0_0_20px_#34d399] scale-105 brightness-125 ring-2 ring-emerald-200',
                     },
                     amber: {
                       base: 'bg-amber-950/60 border-amber-700 text-amber-400',
-                      active: 'bg-amber-400 border-white text-black shadow-[0_0_25px_#fbbf24] scale-105 brightness-125 ring-2 ring-amber-200',
+                      active: 'bg-amber-400 border-white text-black shadow-[0_0_20px_#fbbf24] scale-105 brightness-125 ring-2 ring-amber-200',
                     },
                     purple: {
                       base: 'bg-purple-950/60 border-purple-700 text-purple-400',
-                      active: 'bg-purple-400 border-white text-black shadow-[0_0_25px_#c084fc] scale-105 brightness-125 ring-2 ring-purple-200',
+                      active: 'bg-purple-400 border-white text-black shadow-[0_0_20px_#c084fc] scale-105 brightness-125 ring-2 ring-purple-200',
                     },
                   };
 
@@ -460,7 +466,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
                       type="button"
                       disabled={isShowingSequence}
                       onClick={() => handleLightPress(col)}
-                      className={`h-16 rounded-xl border-2 font-mono font-black text-xs uppercase tracking-wider flex items-center justify-center transition-all duration-100 ${
+                      className={`h-12 sm:h-14 rounded-xl border-2 font-mono font-black text-xs uppercase tracking-wider flex items-center justify-center transition-all duration-100 ${
                         isFlashing ? colorStyles[col].active : colorStyles[col].base
                       } ${!isShowingSequence ? 'hover:brightness-125 active:scale-95 cursor-pointer' : 'cursor-not-allowed opacity-80'}`}
                     >
@@ -476,31 +482,31 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
           {/* FASE 3: DIAL DE PRECISIÓN */}
           {/* ================================================= */}
           {currentPhase === 3 && (
-            <div className="w-full flex flex-col items-center gap-4">
+            <div className="w-full flex flex-col items-center gap-3">
               <div className="text-center">
                 <span className="text-xs font-mono font-bold text-slate-300 uppercase tracking-wider block">
                   Fase 3: Sintonizador de Núcleo Magnético
                 </span>
-                <span className="text-[11px] font-mono text-slate-400">
+                <span className="text-[10px] sm:text-[11px] font-mono text-slate-400">
                   Gira el dial hasta encontrar la frecuencia verde exacta
                 </span>
               </div>
 
               {/* Rueda / Dial Táctico */}
-              <div className="flex flex-col items-center gap-3 w-full">
+              <div className="flex flex-col items-center gap-2.5 w-full">
                 <div
-                  className={`w-24 h-24 rounded-full border-4 flex items-center justify-center transition-all shadow-xl ${
+                  className={`w-18 h-18 sm:w-20 sm:h-20 rounded-full border-4 flex items-center justify-center transition-all shadow-xl ${
                     isInSweetSpot
-                      ? 'border-emerald-400 bg-emerald-950/70 text-emerald-300 shadow-[0_0_30px_rgba(52,211,153,0.7)] scale-105'
+                      ? 'border-emerald-400 bg-emerald-950/70 text-emerald-300 shadow-[0_0_25px_rgba(52,211,153,0.7)] scale-105'
                       : isNearSweetSpot
-                      ? 'border-amber-400 bg-amber-950/60 text-amber-300 shadow-[0_0_20px_rgba(251,191,36,0.4)]'
+                      ? 'border-amber-400 bg-amber-950/60 text-amber-300 shadow-[0_0_18px_rgba(251,191,36,0.4)]'
                       : 'border-slate-700 bg-slate-950 text-slate-500'
                   }`}
                 >
-                  <RotateCw className={`w-8 h-8 ${isInSweetSpot ? 'animate-spin' : ''}`} />
+                  <RotateCw className={`w-7 h-7 sm:w-8 sm:h-8 ${isInSweetSpot ? 'animate-spin' : ''}`} />
                 </div>
 
-                <div className="w-full flex flex-col gap-1.5 px-2">
+                <div className="w-full flex flex-col gap-1 px-2">
                   <input
                     type="range"
                     min="0"
@@ -527,7 +533,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
                 <button
                   type="button"
                   onClick={handleConfirmDial}
-                  className={`w-full py-3.5 rounded-xl font-mono font-black text-sm uppercase tracking-wider shadow-lg transition-all active:scale-95 ${
+                  className={`w-full py-2.5 rounded-xl font-mono font-black text-xs sm:text-sm uppercase tracking-wider shadow-lg transition-all active:scale-95 ${
                     isInSweetSpot
                       ? 'bg-gradient-to-r from-emerald-600 to-green-500 text-white shadow-emerald-900/50 border border-emerald-400'
                       : 'bg-slate-800 text-slate-400 border border-slate-700 hover:text-white'
@@ -546,17 +552,17 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
                 feedback === 'success' ? 'bg-emerald-950/80 text-emerald-300' : 'bg-red-950/80 text-red-300'
               }`}
             >
-              <div className="flex flex-col items-center gap-2">
+              <div className="flex flex-col items-center gap-2 px-4 text-center">
                 {feedback === 'success' ? (
                   <>
-                    <CheckCircle2 className="w-12 h-12 text-emerald-400 animate-bounce" />
-                    <span className="font-mono font-black text-base uppercase tracking-wider text-center">
+                    <CheckCircle2 className="w-10 h-10 text-emerald-400 animate-bounce" />
+                    <span className="font-mono font-black text-sm sm:text-base uppercase tracking-wider text-center">
                       {isVictorious
                         ? (currentChestIndex >= totalChests ? '¡TESORO ASEGURADO! ¡MISIÓN CUMPLIDA!' : `¡COFRE [${currentChestIndex}/${totalChests}] DESCIFRADO!`)
                         : '¡CERROJO SUPERADO!'}
                     </span>
                     {isVictorious && (
-                      <span className="text-xs font-mono text-emerald-200">
+                      <span className="text-[11px] font-mono text-emerald-200">
                         {currentChestIndex >= totalChests
                           ? 'Cerrojos 6/6 completados • Abriendo cofre final...'
                           : 'Cerrojos 6/6 completados • Desplegando siguiente cofre...'}
@@ -565,8 +571,8 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
                   </>
                 ) : (
                   <>
-                    <AlertTriangle className="w-12 h-12 text-red-400 animate-pulse" />
-                    <span className="font-mono font-black text-base uppercase tracking-wider">
+                    <AlertTriangle className="w-10 h-10 text-red-400 animate-pulse" />
+                    <span className="font-mono font-black text-sm sm:text-base uppercase tracking-wider">
                       ¡ERROR DE SINCRONIZACIÓN!
                     </span>
                   </>
