@@ -153,6 +153,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
   const lastCameraPosRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastVisionPosRef = useRef<{ lat: number; lng: number } | null>(null);
+  const updateEmergencyOverlaysRef = useRef<(map: maplibregl.Map) => void>(() => {});
 
   // Estado del jugador local: Herido de Muerte (visión de emergencia hospitalaria)
   const isMeWounded = myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded';
@@ -239,6 +240,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           id: 'player-vision-outline',
           type: 'line',
           source: 'player-vision',
+          layout: {
+            visibility: isMeWounded ? 'none' : 'visible',
+          },
           paint: {
             'line-color': '#00ff88',
             'line-width': 2,
@@ -403,13 +407,35 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         });
       }
 
-      // 7. Capa táctica: Línea de puntos de guía hacia el Hospital (Estado Herido de Muerte)
+      // 7. Capa táctica: Línea directa de evacuación hacia el Hospital (Estado Herido de Muerte)
       if (!map.getSource('hospital-guideline')) {
         map.addSource('hospital-guideline', {
           type: 'geojson',
           data: { type: 'FeatureCollection', features: [] },
         });
+      }
 
+      // Halo oscuro de contraste fotográfico sobre satélite y modo táctico
+      if (!map.getLayer('hospital-guideline-halo')) {
+        map.addLayer({
+          id: 'hospital-guideline-halo',
+          type: 'line',
+          source: 'hospital-guideline',
+          layout: {
+            visibility: isMeWounded ? 'visible' : 'none',
+            'line-join': 'round',
+            'line-cap': 'round',
+          },
+          paint: {
+            'line-color': '#000000',
+            'line-width': 5.5,
+            'line-opacity': 0.75,
+          },
+        });
+      }
+
+      // Línea principal de alta visibilidad cian con patrón discontinuo
+      if (!map.getLayer('hospital-guideline-line')) {
         map.addLayer({
           id: 'hospital-guideline-line',
           type: 'line',
@@ -420,13 +446,60 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             'line-cap': 'round',
           },
           paint: {
-            'line-color': '#10b981',
+            'line-color': '#22d3ee',
             'line-width': 3.5,
-            'line-opacity': 0.95,
-            'line-dasharray': [1.5, 2.5],
+            'line-opacity': 1,
+            'line-dasharray': [2, 2],
           },
         });
       }
+
+      // 8. Capa táctica: Radio perimetral del jugador herido de muerte (12 metros)
+      if (!map.getSource('wounded-perimeter')) {
+        map.addSource('wounded-perimeter', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        });
+      }
+
+      // Relleno carmesí translúcido
+      if (!map.getLayer('wounded-perimeter-fill')) {
+        map.addLayer({
+          id: 'wounded-perimeter-fill',
+          type: 'fill',
+          source: 'wounded-perimeter',
+          layout: {
+            visibility: isMeWounded ? 'visible' : 'none',
+          },
+          paint: {
+            'fill-color': '#ef4444',
+            'fill-opacity': 0.15,
+          },
+        });
+      }
+
+      // Contorno carmesí discontinuo
+      if (!map.getLayer('wounded-perimeter-outline')) {
+        map.addLayer({
+          id: 'wounded-perimeter-outline',
+          type: 'line',
+          source: 'wounded-perimeter',
+          layout: {
+            visibility: isMeWounded ? 'visible' : 'none',
+            'line-join': 'round',
+            'line-cap': 'round',
+          },
+          paint: {
+            'line-color': '#ef4444',
+            'line-width': 2.5,
+            'line-dasharray': [2, 2],
+            'line-opacity': 0.9,
+          },
+        });
+      }
+
+      // Sincronizar inmediatamente datos de emergencia si corresponde
+      updateEmergencyOverlaysRef.current?.(map);
     },
     [
       center,
@@ -568,6 +641,98 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   updateEntityInfluenceSourcesRef.current = updateEntityInfluenceSources;
 
   // ==========================================
+  // ACTUALIZACIÓN DE OVERLAYS DE EMERGENCIA (Hospital y Perímetro Herido)
+  // ==========================================
+  const updateEmergencyOverlays = useCallback(
+    (map: maplibregl.Map) => {
+      const hospital = structures.find((s) => s.type === 'hospital');
+      const myLat = myPlayer.lat ?? center.lat;
+      const myLng = myPlayer.lng ?? center.lng;
+
+      const hasValidPlayerCoords =
+        typeof myLat === 'number' &&
+        typeof myLng === 'number' &&
+        !isNaN(myLat) &&
+        !isNaN(myLng) &&
+        (myLat !== 0 || myLng !== 0);
+
+      const hasValidHospitalCoords =
+        !!hospital &&
+        typeof hospital.lat === 'number' &&
+        typeof hospital.lng === 'number' &&
+        !isNaN(hospital.lat) &&
+        !isNaN(hospital.lng);
+
+      // 1. Línea directa hacia el hospital
+      const guidelineSource = map.getSource('hospital-guideline') as maplibregl.GeoJSONSource | undefined;
+      const shouldRenderHospitalGuide = Boolean(isMeWounded && hasValidPlayerCoords && hasValidHospitalCoords);
+
+      if (guidelineSource) {
+        if (shouldRenderHospitalGuide && hospital) {
+          guidelineSource.setData({
+            type: 'FeatureCollection',
+            features: [
+              {
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                  type: 'LineString',
+                  coordinates: [
+                    [myLng, myLat],
+                    [hospital.lng, hospital.lat],
+                  ],
+                },
+              },
+            ],
+          });
+        } else {
+          guidelineSource.setData({
+            type: 'FeatureCollection',
+            features: [],
+          });
+        }
+      }
+
+      const guideVisibility = shouldRenderHospitalGuide ? 'visible' : 'none';
+      if (map.getLayer('hospital-guideline-halo')) {
+        map.setLayoutProperty('hospital-guideline-halo', 'visibility', guideVisibility);
+      }
+      if (map.getLayer('hospital-guideline-line')) {
+        map.setLayoutProperty('hospital-guideline-line', 'visibility', guideVisibility);
+      }
+
+      // 2. Radio perimetral de 12 metros alrededor del jugador herido
+      const perimeterSource = map.getSource('wounded-perimeter') as maplibregl.GeoJSONSource | undefined;
+      const shouldRenderPerimeter = Boolean(isMeWounded && hasValidPlayerCoords);
+
+      if (perimeterSource) {
+        if (shouldRenderPerimeter) {
+          const perimeterCircle = createGeoJsonCircle({ lat: myLat, lng: myLng }, 12);
+          perimeterSource.setData({
+            type: 'FeatureCollection',
+            features: [perimeterCircle],
+          });
+        } else {
+          perimeterSource.setData({
+            type: 'FeatureCollection',
+            features: [],
+          });
+        }
+      }
+
+      const perimeterVisibility = shouldRenderPerimeter ? 'visible' : 'none';
+      if (map.getLayer('wounded-perimeter-fill')) {
+        map.setLayoutProperty('wounded-perimeter-fill', 'visibility', perimeterVisibility);
+      }
+      if (map.getLayer('wounded-perimeter-outline')) {
+        map.setLayoutProperty('wounded-perimeter-outline', 'visibility', perimeterVisibility);
+      }
+    },
+    [structures, myPlayer.lat, myPlayer.lng, center.lat, center.lng, isMeWounded]
+  );
+  updateEmergencyOverlaysRef.current = updateEmergencyOverlays;
+
+  // ==========================================
   // CONMUTACIÓN DINÁMICA DE ESTILO (TÁCTICO VS SATÉLITE)
   // ==========================================
   const handleToggleSatelliteView = useCallback(() => {
@@ -589,6 +754,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (mapRef.current === map) {
         injectTacticalOverlaysRef.current?.(map);
         updateEntityInfluenceSourcesRef.current?.(map);
+        updateEmergencyOverlaysRef.current?.(map);
         setStyleVersion((v) => v + 1);
       }
       isStyleChangingRef.current = false;
@@ -656,6 +822,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       injectTacticalOverlaysRef.current?.(map);
       updateEntityInfluenceSourcesRef.current?.(map);
+      updateEmergencyOverlaysRef.current?.(map);
     });
 
     // Control de interacción de puntero y arrastre
@@ -1777,6 +1944,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       'crates-zones-outline',
       'interaction-ranges-fill',
       'interaction-ranges-outline',
+      'player-vision-outline',
     ];
     areaLayers.forEach((layerId) => {
       if (map.getLayer(layerId)) {
@@ -1784,57 +1952,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       }
     });
 
-    // 2. Trazado / Ocultación de la línea de puntos hacia el Hospital
-    const hospital = structures.find((s) => s.type === 'hospital');
-    const myLat = myPlayer.lat ?? center.lat;
-    const myLng = myPlayer.lng ?? center.lng;
-
-    const guidelineSource = map.getSource('hospital-guideline') as maplibregl.GeoJSONSource;
-    const hasValidCoords =
-      typeof myLat === 'number' &&
-      typeof myLng === 'number' &&
-      !isNaN(myLat) &&
-      !isNaN(myLng) &&
-      (myLat !== 0 || myLng !== 0) &&
-      !!hospital &&
-      typeof hospital.lat === 'number' &&
-      typeof hospital.lng === 'number' &&
-      !isNaN(hospital.lat) &&
-      !isNaN(hospital.lng);
-
-    if (isMeWounded && hasValidCoords && hospital) {
-      if (guidelineSource) {
-        guidelineSource.setData({
-          type: 'FeatureCollection',
-          features: [
-            {
-              type: 'Feature',
-              properties: {},
-              geometry: {
-                type: 'LineString',
-                coordinates: [
-                  [myLng, myLat],
-                  [hospital.lng, hospital.lat],
-                ],
-              },
-            },
-          ],
-        });
-      }
-      if (map.getLayer('hospital-guideline-line')) {
-        map.setLayoutProperty('hospital-guideline-line', 'visibility', 'visible');
-      }
-    } else {
-      if (guidelineSource) {
-        guidelineSource.setData({
-          type: 'FeatureCollection',
-          features: [],
-        });
-      }
-      if (map.getLayer('hospital-guideline-line')) {
-        map.setLayoutProperty('hospital-guideline-line', 'visibility', 'none');
-      }
-    }
+    // 2. Overlays tácticos de emergencia (Línea directa al hospital y círculo perimetral)
+    updateEmergencyOverlays(map);
 
     // 3. Ocultar o restaurar marcadores existentes en el DOM de forma inmediata
     if (chestMarkerRef.current) {
@@ -1908,6 +2027,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     isRadarActive,
     monsters,
     styleVersion,
+    updateEmergencyOverlays,
   ]);
 
   return (
