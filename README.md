@@ -48,6 +48,7 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
   - Se activa en el instante en que cualquier cazador abre el minijuego de cerrojos del cofre.
   - Cancela la patrulla y corre en **sprint directo hacia el cofre a 3.8 m/s** (4.2 m/s enfurecido).
   - Al llegar a $\le 30\text{m}$, ataca a los defensores en el radio de 25m del tesoro, forzando la apertura de la Arena de Combate e interrumpiendo el minijuego.
+  - **Perímetro Defensivo del Cofre (Zona Contenciosa $\le 25\text{m}$):** Si al menos un monstruo vivo se encuentra a 25 metros o menos del cofre activo, el cofre pasa a estado bloqueado (`isChestGuarded = true`). El marcador del mapa exterior muta a un candado carmesí (`🔒 ⚠️ Custodiado`), se inhabilita la apertura manual y automática por proximidad emitiendo un toast táctico (*"ACCESO DENEGADO // Zona hostil activa"*), y si un monstruo penetra en el perímetro mientras el modal de cerrojos está abierto, el minijuego se cierra de forma inmediata interrumpiendo el descifrado.
 - **Muerte Temporal y Reaparición Silenciosa (`dead` / `respawning`):**
   - Al caer a 0 HP, el monstruo queda abatido temporalmente durante **60 segundos** sin emitir alertas ni carteles de respawn intrusivos en el HUD.
   - Al expirar los 60s, reaparece silenciosamente en una posición alejada dentro del área de juego con su salud restablecida, reanudando su patrulla sin ruidos ni avisos sonoros molestos.

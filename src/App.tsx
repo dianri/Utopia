@@ -1333,6 +1333,29 @@ export const App: React.FC = () => {
 
         const distanceToChest = getDistanceMeters(coords, { lat: targetChestLat, lng: targetChestLng });
         if (distanceToChest <= CHEST_TRIGGER_RADIUS) {
+          // Comprobar si hay un monstruo hostil custodiando el perímetro del cofre (<= 25m)
+          const allActiveMonsters =
+            monstersRef.current && monstersRef.current.length > 0
+              ? monstersRef.current
+              : (monsterRef.current ? [monsterRef.current] : []);
+          const isGuarded = allActiveMonsters.some((m) => {
+            if (!isMonsterAlive(m) || (m as any).isDead) return false;
+            const distMonsterToChest = getDistanceMeters(
+              { lat: m.lat, lng: m.lng },
+              { lat: targetChestLat, lng: targetChestLng }
+            );
+            return distMonsterToChest <= 25;
+          });
+
+          if (isGuarded) {
+            if (isChestLockModalOpenRef.current) {
+              setIsChestLockModalOpen(false);
+              isChestLockModalOpenRef.current = false;
+              realtime.broadcastChestInteracting(false);
+            }
+            return;
+          }
+
           if (
             !isChestTransitioningRef.current &&
             !hasTriggeredChestOpenRef.current &&
@@ -2431,6 +2454,29 @@ export const App: React.FC = () => {
       lastDecryptedChestLocationRef.current = null;
     }
 
+    // COMPROBACIÓN DE MONSTRUO GUARDIÁN EN EL PERÍMETRO DEL COFRE (<= 25m)
+    const allActiveMonsters = monsters && monsters.length > 0 ? monsters : (monster ? [monster] : []);
+    const isGuarded = allActiveMonsters.some((m) => {
+      if (!isMonsterAlive(m) || (m as any).isDead) return false;
+      const distMonsterToChest = getDistanceMeters(
+        { lat: m.lat, lng: m.lng },
+        treasureCoord
+      );
+      return distMonsterToChest <= 25;
+    });
+
+    if (isGuarded) {
+      setIsChestLockModalOpen(false);
+      isChestLockModalOpenRef.current = false;
+      realtimeRef.current.broadcastChestInteracting(false);
+      soundEffects.playAlarm();
+      addLog(
+        'ACCESO DENEGADO // Zona hostil activa: debes abatir o alejar al monstruo guardián para descifrar el cofre.',
+        'warning'
+      );
+      return;
+    }
+
     if (!hasTriggeredChestOpenRef.current || !isChestLockModalOpenRef.current) {
       hasTriggeredChestOpenRef.current = true;
       isChestLockModalOpenRef.current = true;
@@ -2483,6 +2529,26 @@ export const App: React.FC = () => {
 
     // Si está a 15 metros o menos, abrir imperativamente una sola vez (si no está en período de transición)
     if (dist <= 15) {
+      // Comprobar si hay un monstruo hostil defendiendo el perímetro del cofre (<= 25m)
+      const allActiveMonsters = monsters && monsters.length > 0 ? monsters : (monster ? [monster] : []);
+      const isGuarded = allActiveMonsters.some((m) => {
+        if (!isMonsterAlive(m) || (m as any).isDead) return false;
+        const distMonsterToChest = getDistanceMeters(
+          { lat: m.lat, lng: m.lng },
+          { lat: activeChestLat, lng: activeChestLng }
+        );
+        return distMonsterToChest <= 25;
+      });
+
+      if (isGuarded) {
+        if (isChestLockModalOpenRef.current) {
+          setIsChestLockModalOpen(false);
+          isChestLockModalOpenRef.current = false;
+          realtimeRef.current.broadcastChestInteracting(false);
+        }
+        return;
+      }
+
       if (
         !isChestTransitioningRef.current &&
         !isChestTransitioning &&
@@ -2528,6 +2594,42 @@ export const App: React.FC = () => {
     isChestLockModalOpenRef.current = false;
     realtimeRef.current.broadcastChestInteracting(false);
   }, []);
+
+  // Estado memorizado del perímetro custodiado del cofre (<= 25m)
+  const isChestGuarded = useMemo(() => {
+    if (!activeChestLat || !activeChestLng) return false;
+    const allActiveMonsters = monsters && monsters.length > 0 ? monsters : (monster ? [monster] : []);
+    return allActiveMonsters.some((m) => {
+      if (!isMonsterAlive(m) || (m as any).isDead) return false;
+      const distMonsterToChest = getDistanceMeters(
+        { lat: m.lat, lng: m.lng },
+        { lat: activeChestLat, lng: activeChestLng }
+      );
+      return distMonsterToChest <= 25;
+    });
+  }, [monsters, monster, activeChestLat, activeChestLng]);
+
+  // Monitor continuo del perímetro defensivo del cofre: si un monstruo vivo entra a <= 25m, expulsar de inmediato
+  useEffect(() => {
+    if (!isChestLockModalOpen || !activeChestLat || !activeChestLng) return;
+
+    if (isChestGuarded) {
+      setIsChestLockModalOpen(false);
+      isChestLockModalOpenRef.current = false;
+      realtimeRef.current.broadcastChestInteracting(false);
+      soundEffects.playAlarm();
+      addLog(
+        'ACCESO DENEGADO // Zona hostil activa: el monstruo guardián ha penetrado el perímetro (<= 25m). ¡Descifrado interrumpido!',
+        'warning'
+      );
+    }
+  }, [
+    isChestLockModalOpen,
+    isChestGuarded,
+    activeChestLat,
+    activeChestLng,
+    addLog,
+  ]);
 
   const handleChestStepSuccess = useCallback(
     (nextPhase: number, nextStep: number) => {
@@ -4477,6 +4579,7 @@ export const App: React.FC = () => {
           isVictory={room.status === 'victory'}
           isChestLockModalOpen={isChestLockModalOpen}
           isChestTransitioning={isChestTransitioning}
+          isChestGuarded={isChestGuarded}
           onMapClick={handleMapClick}
           onPickDroppedItem={handlePickDroppedItem}
           onAdoptWildPet={handleAdoptWildPet}
@@ -4976,6 +5079,7 @@ export const App: React.FC = () => {
           totalChests={3}
           distToMonster={distToMonster}
           isMonsterAlive={isMonsterAlive(monster)}
+          isGuarded={isChestGuarded}
           onStepSuccess={handleChestStepSuccess}
           onChestDecrypted={handleChestDecrypted}
           onVictory={handleChestDecrypted}

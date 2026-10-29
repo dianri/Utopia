@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type {
@@ -14,7 +14,7 @@ import type {
   DroppedItem,
   WildPet,
 } from '../types/game';
-import { PLAYER_SPEED_MPS } from '../types/game';
+import { PLAYER_SPEED_MPS, isMonsterAlive } from '../types/game';
 import { createGeoJsonCircle, getDistanceMeters } from '../services/geoUtils';
 import { getVisionRadius, getCrateVisualInfo } from '../services/combatEngine';
 import { MAX_PETS_PER_PLAYER, getMonsterVisualConfig } from '../services/mapEntities';
@@ -68,6 +68,7 @@ interface GameMapProps {
   isVictory?: boolean;
   isChestLockModalOpen?: boolean;
   isChestTransitioning?: boolean;
+  isChestGuarded?: boolean;
   onMapClick: (coords: Coordinates) => void;
   onReviveAttempt?: (targetPlayer: Player) => void;
   onPickDroppedItem?: (dropped: DroppedItem) => void;
@@ -96,6 +97,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   isVictory = false,
   isChestLockModalOpen = false,
   isChestTransitioning = false,
+  isChestGuarded,
   onMapClick,
   onPickDroppedItem,
   onAdoptWildPet,
@@ -846,6 +848,18 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     }
   }, [treasureLocation?.lat, treasureLocation?.lng]);
 
+  // Comprobación reactiva de monstruos hostiles custodiando el perímetro del cofre (<= 25m)
+  const computedIsChestGuarded = useMemo(() => {
+    if (isChestGuarded != null) return isChestGuarded;
+    if (!treasureLocation.lat || !treasureLocation.lng) return false;
+    const all = monsters && monsters.length > 0 ? monsters : (monster ? [monster] : []);
+    return all.some((m) => {
+      if (!isMonsterAlive(m) || (m as any).isDead) return false;
+      const d = getDistanceMeters({ lat: m.lat, lng: m.lng }, treasureLocation);
+      return d <= 25;
+    });
+  }, [isChestGuarded, monsters, monster, treasureLocation.lat, treasureLocation.lng]);
+
   const handleChestMarkerClick = useCallback(
     (e: MouseEvent) => {
       e.stopPropagation();
@@ -858,9 +872,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       };
       const currentDist = getDistanceMeters(myPos, targetCoords);
 
-      // Si ya está a rango (<= 15m), abrir directamente el modal
+      // Si ya está a rango (<= 15m), delegar en el manejador del cofre (comprobando custodia)
       if (currentDist <= 15) {
-        hasTriggeredChestInMapRef.current = true;
+        if (!computedIsChestGuarded) {
+          hasTriggeredChestInMapRef.current = true;
+        }
         onOpenChestRef.current?.();
         return;
       }
@@ -868,7 +884,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       // Si está lejos, iniciar el desplazamiento hacia la coordenada ACTUAL (Cofre 3)
       onMapClickRef.current?.(targetCoords);
     },
-    [center.lat, center.lng]
+    [center.lat, center.lng, computedIsChestGuarded]
   );
   const handleChestMarkerClickRef = useRef(handleChestMarkerClick);
   handleChestMarkerClickRef.current = handleChestMarkerClick;
@@ -896,6 +912,18 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         </div>
         <span class="mt-1 px-2 py-0.5 text-[10px] font-bold bg-hud-dark/90 border border-emerald-500/60 text-emerald-300 rounded uppercase tracking-wider">
           Cofre Abierto / Saqueado
+        </span>
+      `
+      : computedIsChestGuarded
+      ? `
+        <div class="relative flex items-center justify-center">
+          <div class="absolute w-14 h-14 bg-red-600/30 rounded-full animate-ping"></div>
+          <div class="w-10 h-10 bg-red-950 border-2 border-red-500 rounded-lg shadow-lg shadow-red-500/60 flex items-center justify-center text-xl text-red-200 font-black animate-pulse">
+            🔒
+          </div>
+        </div>
+        <span class="mt-0.5 px-1.5 py-0.2 text-[9px] font-bold bg-red-950/90 border border-red-500/70 text-red-300 rounded uppercase tracking-wider">
+          ⚠️ Custodiado
         </span>
       `
       : `
@@ -931,14 +959,14 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.onclick = (e) => handleChestMarkerClickRef.current(e);
       }
     }
-  }, [treasureLocation.lat, treasureLocation.lng, isMeWounded, isChestOpened, isVictory]);
+  }, [treasureLocation.lat, treasureLocation.lng, isMeWounded, isChestOpened, isVictory, computedIsChestGuarded]);
 
   // ==========================================
   // 5.1. APERTURA AUTOMÁTICA DEL COFRE POR PROXIMIDAD DIRECTA EN MAPA (<= 15m)
   // ==========================================
   useEffect(() => {
     if (!myPlayer.lat || !myPlayer.lng || !treasureLocation.lat || !treasureLocation.lng) return;
-    if (inCombat || isMeWounded || isChestOpened || isVictory || isChestLockModalOpen || isChestTransitioning) return;
+    if (inCombat || isMeWounded || isChestOpened || isVictory || isChestLockModalOpen || isChestTransitioning || computedIsChestGuarded) return;
 
     const myPos = { lat: myPlayer.lat, lng: myPlayer.lng };
     const dist = getDistanceMeters(myPos, treasureLocation);
@@ -961,6 +989,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     isVictory,
     isChestLockModalOpen,
     isChestTransitioning,
+    computedIsChestGuarded,
   ]);
 
   // ==========================================

@@ -5,6 +5,11 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
 
 ## [Unreleased]
 ### Added
+- **Added: Strict defensive perimeter lock against chest decoding when a live monster is guarding the area (`App.tsx`, `GameMap.tsx`, `ChestLockModal.tsx`, `README.md`):**
+  - **Perímetro Defensivo del Cofre (Radio $\le 25\text{m}$):** Implementada comprobación reactiva y sincrónica que evalúa si algún monstruo con vida patrulla o defiende el cofre activo a 25 metros o menos (`isChestGuarded = true`).
+  - **Bloqueo Estricto de Apertura:** Se inhibe tajantemente tanto la apertura automática por proximidad como la apertura manual al hacer clic sobre el marcador del mapa, emitiendo una alarma sonora y un toast táctico (*"ACCESO DENEGADO // Zona hostil activa: debes abatir o alejar al monstruo guardián para descifrar el cofre"*).
+  - **Interrupción Inmediata en Caliente:** Si un monstruo entra en el radio de 25m mientras un jugador tiene abierto `ChestLockModal`, el minijuego se cierra de inmediato interrumpiendo el descifrado y cancelando el broadcast de interacción.
+  - **Marcador Táctico de Amenaza en el Mapa (`GameMap.tsx`):** El icono del cofre en el mapa conmuta dinámicamente a un candado carmesí custodiado (`🔒 ⚠️ Custodiado`) con halo de advertencia pulsante cuando el perímetro está comprometido.
 - **Sistema de Combate Jugador contra Jugador (PvP) en Tiempo Real y Modo Competitivo por Conquista de Cofres (`PvPArena.tsx`, `usePvPCombat.ts`, `App.tsx`, `GameMap.tsx`, `useGameRealtime.ts`, `VictoryModal.tsx`, `types/game.ts`, `types/supabase.ts`, `README.md`):**
   - **Modo Competitivo por Mayoría de Cofres:** El juego evoluciona a un formato competitivo individual. Cada uno de los 3 cofres secuenciales (Fases 1, 2 y 3) es reclamado por el jugador que resuelva su último cerrojo, sumando 1 punto de cofre (`player.chests_opened`). Al completarse el tercer cofre, gana la partida el jugador con mayor cantidad de cofres conquistados (desempatando por daño infligido).
   - **Detección y Desencadenante Automático de Duelo PvP (Radio <= 12m):** Al encontrarse dos avatares activos a 12 metros o menos en el mapa exterior, se dispara de forma imperativa la arena de combate PvP para ambos participantes (`isPvPModalOpen: true`, `opponentPlayerId`) y se cancelan las trayectorias de movimiento de ambos avatares.
