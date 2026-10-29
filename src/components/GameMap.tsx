@@ -1391,7 +1391,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           <div class="relative flex items-center justify-center pointer-events-none transition-transform duration-200 ${visual.scaleClass}">
             <div class="w-12 h-12 ${visual.pingBg} rounded-full animate-ping absolute"></div>
             <div class="w-10 h-10 ${visual.coreBg} border-2 ${visual.borderColor} rounded-full flex items-center justify-center shadow-lg ${visual.glowColor}">
-              <span class="text-xl">${visual.icon}</span>
+              ${visual.svgHtml ? visual.svgHtml : `<span class="text-xl">${visual.icon}</span>`}
             </div>
             <!-- Placa táctica con distintivo y nombre de la amenaza -->
             <div id="monster-badge-${monsterKey}" class="absolute -bottom-5 whitespace-nowrap px-1.5 py-0.5 rounded text-[9px] font-mono font-bold tracking-wider ${visual.badgeBg} border ${visual.borderColor}/60 shadow-md pointer-events-none">

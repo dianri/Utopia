@@ -20,6 +20,12 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - Añadida columna `chests_opened INTEGER NOT NULL DEFAULT 0` a la tabla `players`.
   - Añadida columna `chests_opened INTEGER NOT NULL DEFAULT 0` a la tabla `match_stats`.
 
+### Changed
+- **Changed: Replaced docile wolf icon with aggressive predatory beast SVG and menacing red glow for Monster 1 (`SavageBeastIcon.tsx`, `mapEntities.ts`, `GameMap.tsx`, `CombatArena.tsx`, `App.tsx`, `README.md`):**
+  - **Sustitución de Identidad Visual del Monstruo 1:** Se erradicó el emoji convencional de lobo doméstico (`🐺`) y la denominación neutra "Rastreador Sombrío", reemplazándolos por un icono SVG agresivo de silueta de bestia predadora salvaje con colmillos expuestos y mandíbula hostil (`SavageBeastIcon.tsx`), renombrándolo a "Devorador Acechador" (`DEVORADOR ACECHADOR`).
+  - **Marcador Hostil en el Mapa (`GameMap.tsx`):** El contenedor del marcador en el mapa implementa fondo rojo oscuro `bg-red-950/90`, borde carmesí `border-red-600`, resplandor pulsante amenazante `shadow-[0_0_18px_rgba(220,38,38,0.85)] animate-pulse`, e icono vectorial interior con sombra roja brillante `text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]`.
+  - **Atmósfera Amenazante en la Arena de Combate (`CombatArena.tsx`):** La cabecera táctica del duelo, el encabezado de la carta y el avatar central de la carta de combate proyectan la bestia vectorial con contorno carmesí pulsante y destellos amenazantes, reforzando la inmersión de amenaza biomecánica hostil.
+
 ### Fixed
 - **Fixed: Prevented instant sequential chest trigger loop by immediately updating local coordinates and adding a proximity cooldown (`App.tsx`, `ChestLockModal.tsx`, `README.md`):**
   - **Actualización Atómica e Inmediata del Estado Local:** En `handleChestDecrypted`, el cálculo de la nueva ubicación distante del cofre (`generateNextChestLocation`), el cierre inmediato del modal (`setIsChestLockModalOpen(false)`), la activación del período de enfriamiento (`isChestTransitioningRef.current = true`), y la actualización sincrónica de `roomRef.current` y `setRoom` (sincronizando simultáneamente `treasureLat`, `treasureLng`, `treasure_lat`, `treasure_lng`) se ejecutan de forma inmediata al inicio del manejador, previo a cualquier operación asíncrona hacia Supabase.
