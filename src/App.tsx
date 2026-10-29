@@ -248,6 +248,10 @@ export const App: React.FC = () => {
   const pvpOpponentPlayerIdRef = useRef<string | null>(null);
   pvpOpponentPlayerIdRef.current = pvpOpponentPlayerId;
 
+  // RECONEXIÓN Y CONTROL DE TIEMPO REAL
+  const [realtimeEpoch, setRealtimeEpoch] = useState<number>(Date.now());
+  const [lastExternalMonsterTick, setLastExternalMonsterTick] = useState<number>(Date.now());
+
   const [pvpCombatId, setPvpCombatId] = useState<string | null>(null);
   const pvpCombatIdRef = useRef<string | null>(null);
   pvpCombatIdRef.current = pvpCombatId;
@@ -513,30 +517,30 @@ export const App: React.FC = () => {
     });
   }, []);
 
-  const canEngageInPvP = useCallback((playerA: Player | null, playerB: Player | null, mapStructures: MapStructure[]): boolean => {
-    if (!playerA || !playerB) return false;
-    if (playerA.id === playerB.id) return false;
+  const isPlayerEligibleForPvP = useCallback((player: Player | null, mapStructures: MapStructure[]): boolean => {
+    if (!player) return false;
 
-    // Ninguno de los dos puede estar abatido, muerto ni herido de muerte (hp <= 0 o critically_wounded)
-    if (!playerA.isAlive || playerA.hp <= 0 || playerA.isCriticallyWounded || playerA.status === 'critically_wounded') {
-      return false;
-    }
-    if (!playerB.isAlive || playerB.hp <= 0 || playerB.isCriticallyWounded || playerB.status === 'critically_wounded') {
+    // Ningún combatiente puede estar abatido, muerto ni en estado herido grave
+    if (!player.isAlive || player.hp <= 0 || player.isCriticallyWounded || player.status === 'critically_wounded') {
       return false;
     }
 
     // Estado operativo activo
-    if (playerA.status && playerA.status !== 'active') return false;
-    if (playerB.status && playerB.status !== 'active') return false;
+    if (player.status && player.status !== 'active') return false;
 
     // Zonas seguras (Refugios y Hospital de Campaña)
-    if ((playerA as any).in_safe_zone || (playerB as any).in_safe_zone) return false;
-    if (isPlayerInSafeZone(playerA, mapStructures) || isPlayerInSafeZone(playerB, mapStructures)) {
+    if ((player as any).in_safe_zone || isPlayerInSafeZone(player, mapStructures)) {
       return false;
     }
 
     return true;
   }, [isPlayerInSafeZone]);
+
+  const canEngageInPvP = useCallback((playerA: Player | null, playerB: Player | null, mapStructures: MapStructure[]): boolean => {
+    if (!playerA || !playerB) return false;
+    if (playerA.id === playerB.id) return false;
+    return isPlayerEligibleForPvP(playerA, mapStructures) && isPlayerEligibleForPvP(playerB, mapStructures);
+  }, [isPlayerEligibleForPvP]);
 
   const hospitalStructure = useMemo(
     () => structures.find((s) => s.type === 'hospital') || null,
@@ -591,6 +595,92 @@ export const App: React.FC = () => {
   const handleDismissLog = useCallback((id: string) => {
     setCombatLogs((prev) => prev.filter((m) => m.id !== id));
   }, []);
+
+  const initiatePvPCombatWith = useCallback((target: Player) => {
+    const me = myPlayerRef.current;
+    if (!me || target.id === me.id) return;
+
+    const combatId = [me.id, target.id].sort().join('_');
+    setPvpCombatId(combatId);
+    pvpCombatIdRef.current = combatId;
+    setPvpOpponentPlayerId(target.id);
+    pvpOpponentPlayerIdRef.current = target.id;
+    setIsPvPModalOpen(true);
+    isPvPModalOpenRef.current = true;
+
+    // Expulsar de cualquier modal de desencriptación
+    setIsChestLockModalOpen(false);
+    isChestLockModalOpenRef.current = false;
+    realtimeRef.current.broadcastChestInteracting(false);
+
+    if (typeof cancelMovementRef.current === 'function') {
+      cancelMovementRef.current();
+    }
+
+    realtimeRef.current.broadcastPvPEncounter({
+      combatId,
+      player1Id: me.id,
+      player2Id: target.id,
+      attackerId: me.id,
+      defenderId: target.id,
+    });
+    soundEffects.playAlarm();
+    soundEffects.vibrate([100, 50, 150]);
+    addLog(`¡Duelo PvP iniciado contra ${target.nickname}!`, 'combat');
+  }, [addLog]);
+
+  const handlePlayerMarkerClick = useCallback(
+    (targetPlayerId: string) => {
+      const me = myPlayerRef.current;
+      if (!me || targetPlayerId === me.id) return;
+
+      const target = playersRef.current.find((p) => p.id === targetPlayerId);
+      if (!target) return;
+
+      const allStructures = structuresRef.current;
+
+      // 1. Validar que ninguno esté en zona segura ni caído
+      const meInSafeZone = isPlayerInSafeZone(me, allStructures) || (me as any).in_safe_zone;
+      const targetInSafeZone = isPlayerInSafeZone(target, allStructures) || (target as any).in_safe_zone;
+
+      if (meInSafeZone || targetInSafeZone) {
+        addLog('No se permite el combate en zona segura.', 'warning');
+        soundEffects.playAlarm();
+        return;
+      }
+
+      if (
+        me.hp <= 0 ||
+        me.status === 'critically_wounded' ||
+        me.isCriticallyWounded ||
+        target.hp <= 0 ||
+        target.status === 'critically_wounded' ||
+        target.isCriticallyWounded
+      ) {
+        addLog('El agente objetivo o tú estáis fuera de combate.', 'warning');
+        return;
+      }
+
+      if (me.lat == null || me.lng == null || target.lat == null || target.lng == null) return;
+
+      // 2. Comprobar distancia física (<= 15m para combate cuerpo a cuerpo / PvP)
+      const dist = getDistanceMeters(
+        { lat: me.lat, lng: me.lng },
+        { lat: target.lat, lng: target.lng }
+      );
+
+      if (dist <= 15) {
+        initiatePvPCombatWith(target);
+      } else {
+        // Si está lejos, trazar movimiento hacia el rival
+        addLog(`Fijando objetivo táctico: ${target.nickname}. Desplazándose hacia su posición...`, 'info');
+        if (handleMapClickRef.current) {
+          handleMapClickRef.current({ lat: target.lat, lng: target.lng });
+        }
+      }
+    },
+    [isPlayerInSafeZone, addLog, initiatePvPCombatWith]
+  );
 
   // 1. INICIALIZAR SESIÓN ANÓNIMA, VERIFICAR SESIÓN ACTIVA Y DETECTAR URL PARAM ?room=CODE
   useEffect(() => {
@@ -710,6 +800,7 @@ export const App: React.FC = () => {
     currentUserId,
     {
       onMonsterUpdate: (updatedMonster) => {
+        setLastExternalMonsterTick(Date.now());
         setMonster(updatedMonster);
         setMonsters((prev) => {
           const idx = prev.findIndex((m) => (m.id || 'default') === (updatedMonster.id || 'default'));
@@ -722,6 +813,7 @@ export const App: React.FC = () => {
         });
       },
       onMonstersUpdate: (updatedMonsters) => {
+        setLastExternalMonsterTick(Date.now());
         setMonsters(updatedMonsters);
         if (activeCombatMonsterIdRef.current) {
           const duelMonster = updatedMonsters.find((m) => m.id === activeCombatMonsterIdRef.current);
@@ -1279,10 +1371,14 @@ export const App: React.FC = () => {
           if (myPlayerRef.current) myPlayerRef.current.isHost = false;
         }
       },
+      onMonsterAIHeartbeat: () => {
+        setLastExternalMonsterTick(Date.now());
+      },
     },
     !!myPlayer?.isHost,
     room?.id ?? null,
-    room?.status ?? null
+    room?.status ?? null,
+    realtimeEpoch
   );
 
   const realtimeRef = useRef(realtime);
@@ -1505,7 +1601,7 @@ export const App: React.FC = () => {
         !isPvPModalOpenRef.current &&
         !isCombatArenaOpenRef.current &&
         !isHospitalModalOpenRef.current &&
-        canEngageInPvP(myPlayerRef.current, myPlayerRef.current, structuresRef.current)
+        isPlayerEligibleForPvP(myPlayerRef.current, structuresRef.current)
       ) {
         const otherPlayers = playersRef.current.filter((p) => p.id !== myPlayerRef.current?.id);
         for (const other of otherPlayers) {
@@ -1516,30 +1612,7 @@ export const App: React.FC = () => {
           ) {
             const distToOther = getDistanceMeters(coords, { lat: other.lat, lng: other.lng });
             if (distToOther <= PVP_TRIGGER_RADIUS) {
-              const combatId = [myPlayerRef.current.id, other.id].sort().join('_');
-              setPvpCombatId(combatId);
-              pvpCombatIdRef.current = combatId;
-              setPvpOpponentPlayerId(other.id);
-              pvpOpponentPlayerIdRef.current = other.id;
-              setIsPvPModalOpen(true);
-              isPvPModalOpenRef.current = true;
-
-              // Expulsar de cualquier modal de desencriptación
-              setIsChestLockModalOpen(false);
-              isChestLockModalOpenRef.current = false;
-              realtime.broadcastChestInteracting(false);
-
-              if (typeof cancelMovementRef.current === 'function') {
-                cancelMovementRef.current();
-              }
-              realtime.broadcastPvPEncounter({
-                combatId,
-                player1Id: myPlayerRef.current.id,
-                player2Id: other.id,
-                attackerId: myPlayerRef.current.id,
-                defenderId: other.id,
-              });
-              addLog(`¡Encuentro hostil con ${other.nickname}! Duelo PvP iniciado.`, 'combat');
+              initiatePvPCombatWith(other);
               break;
             }
           }
@@ -1807,6 +1880,9 @@ export const App: React.FC = () => {
   useMonsterAI({
     room,
     isHost,
+    presenceState: realtime.presenceState,
+    lastExternalTick: lastExternalMonsterTick,
+    onBroadcastHostHeartbeat: realtime.broadcastMonsterAIHeartbeat,
     myPlayer,
     players,
     monsters,
@@ -2786,7 +2862,7 @@ export const App: React.FC = () => {
       isHospitalModalOpenRef.current ||
       !myPlayer?.lat ||
       !myPlayer?.lng ||
-      !canEngageInPvP(myPlayer, myPlayer, structuresRef.current)
+      !isPlayerEligibleForPvP(myPlayer, structuresRef.current)
     ) {
       return;
     }
@@ -2802,38 +2878,7 @@ export const App: React.FC = () => {
       ) {
         const dist = getDistanceMeters(myCoord, { lat: other.lat, lng: other.lng });
         if (dist <= 12) {
-          const combatId = [myPlayer.id, other.id].sort().join('_');
-          setPvpCombatId(combatId);
-          pvpCombatIdRef.current = combatId;
-          setPvpOpponentPlayerId(other.id);
-          pvpOpponentPlayerIdRef.current = other.id;
-
-          // 1. Expulsar de inmediato de la pantalla de desencriptación
-          setIsChestLockModalOpen(false);
-          isChestLockModalOpenRef.current = false;
-          realtimeRef.current.broadcastChestInteracting(false);
-
-          // 2. Detener desplazamiento
-          if (typeof cancelMovementRef.current === 'function') {
-            cancelMovementRef.current();
-          }
-
-          // 3. Abrir arena PvP
-          setIsPvPModalOpen(true);
-          isPvPModalOpenRef.current = true;
-
-          // 4. Notificar a la sala
-          realtimeRef.current.broadcastPvPEncounter({
-            combatId,
-            player1Id: myPlayer.id,
-            player2Id: other.id,
-            attackerId: other.id,
-            defenderId: myPlayer.id,
-          });
-
-          soundEffects.playAlarm();
-          soundEffects.vibrate([100, 50, 150]);
-          addLog(`¡EMBOSCADA! Duelo PvP iniciado con ${other.nickname}. ¡Descifrado interrumpido!`, 'combat');
+          initiatePvPCombatWith(other);
           break;
         }
       }
@@ -2846,7 +2891,9 @@ export const App: React.FC = () => {
     myPlayer?.isCriticallyWounded,
     myPlayer?.status,
     room?.status,
-    addLog,
+    isPlayerEligibleForPvP,
+    canEngageInPvP,
+    initiatePvPCombatWith,
   ]);
 
   const handleChestStepSuccess = useCallback(
@@ -4682,6 +4729,22 @@ export const App: React.FC = () => {
     setCurrentChestIndex(joinedChestIdx);
     currentChestIndexRef.current = joinedChestIdx;
 
+    // Limpieza de estados residuales de combate y zona segura al reconectar
+    setIsPvPModalOpen(false);
+    isPvPModalOpenRef.current = false;
+    setPvpCombatId(null);
+    pvpCombatIdRef.current = null;
+    setPvpOpponentPlayerId(null);
+    pvpOpponentPlayerIdRef.current = null;
+    setFleeImmunityUntil(0);
+    fleeImmunityUntilRef.current = 0;
+
+    const inSafe = isPlayerInSafeZone(player, structures);
+    (player as any).in_safe_zone = inSafe;
+
+    // Forzar re-suscripción limpia y sin sockets huérfanos al canal Realtime
+    setRealtimeEpoch(Date.now());
+
     setRoom(currentRoom);
     setMyPlayer(player);
     resetPosition(spawnCoords);
@@ -4840,6 +4903,7 @@ export const App: React.FC = () => {
           onPickDroppedItem={handlePickDroppedItem}
           onAdoptWildPet={handleAdoptWildPet}
           onOpenChest={handleOpenChestModal}
+          onPlayerMarkerClick={handlePlayerMarkerClick}
         />
       ) : (
         /* PANTALLA DE INICIO / LOBBY PRINCIPAL */

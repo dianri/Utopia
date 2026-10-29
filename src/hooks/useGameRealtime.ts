@@ -75,6 +75,7 @@ interface RealtimeCallbacks {
   onChestClaimed?: (payload: { playerId: string; playerNickname: string; chestIndex: number }) => void;
   onPresenceSync?: (activeUserIds: string[], presenceState: Record<string, any[]>) => void;
   onHostMigrated?: (payload: { newHostPlayerId: string; newHostUserId: string; newHostNickname: string }) => void;
+  onMonsterAIHeartbeat?: (payload: { timestamp: number; hostId: string }) => void;
 }
 
 export function useGameRealtime(
@@ -84,7 +85,8 @@ export function useGameRealtime(
   callbacks: RealtimeCallbacks,
   isHost?: boolean,
   gameId?: string | null,
-  gameStatus?: string | null
+  gameStatus?: string | null,
+  connectionEpoch?: number
 ) {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const isSubscribedRef = useRef<boolean>(false);
@@ -283,6 +285,11 @@ export function useGameRealtime(
       callbacksRef.current.onHostMigrated?.(payload);
     });
 
+    // 12.5. LATIDO / HEARTBEAT DE LA IA DEL MONSTRUO (FAILOVER WATCHDOG)
+    channel.on('broadcast', { event: 'monster_ai_heartbeat' }, ({ payload }) => {
+      callbacksRef.current.onMonsterAIHeartbeat?.(payload);
+    });
+
     // 13. PRESENCE (QUIÉN ESTÁ ONLINE Y DETECCIÓN DE DESCONEXIÓN DEL HOST)
     channel
       .on('presence', { event: 'sync' }, () => {
@@ -332,7 +339,7 @@ export function useGameRealtime(
         setIsConnected(false);
       }
     };
-  }, [roomCode, gameId, myPlayerId, myUserId]);
+  }, [roomCode, gameId, myPlayerId, myUserId, connectionEpoch]);
 
   // EMISORES BROADCAST
 
@@ -662,6 +669,18 @@ export function useGameRealtime(
     []
   );
 
+  const broadcastMonsterAIHeartbeat = useCallback(
+    (payload: { timestamp: number; hostId: string }) => {
+      if (!channelRef.current || !isSubscribedRef.current) return;
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'monster_ai_heartbeat',
+        payload,
+      });
+    },
+    []
+  );
+
   return {
     isConnected,
     onlineUsers,
@@ -693,5 +712,6 @@ export function useGameRealtime(
     broadcastPvPPlayerDefeated,
     broadcastChestClaimed,
     broadcastHostMigrated,
+    broadcastMonsterAIHeartbeat,
   };
 }
