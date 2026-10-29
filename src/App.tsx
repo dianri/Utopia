@@ -1137,10 +1137,19 @@ export const App: React.FC = () => {
       // Detección y apertura inmediata del cofre por proximidad táctica (<= 15m)
       const CHEST_TRIGGER_RADIUS = 15;
       const currentRoom = roomRef.current;
-      const treasureLoc =
-        currentRoom && currentRoom.treasureLat != null && currentRoom.treasureLng != null
-          ? { lat: currentRoom.treasureLat, lng: currentRoom.treasureLng }
-          : null;
+      const targetChestLat =
+        (currentRoom as any)?.treasure_lat ??
+        currentRoom?.treasureLat ??
+        (currentRoom as any)?.settings?.treasure_lat ??
+        (currentRoom as any)?.settings?.treasureLat ??
+        currentRoom?.centerLat;
+
+      const targetChestLng =
+        (currentRoom as any)?.treasure_lng ??
+        currentRoom?.treasureLng ??
+        (currentRoom as any)?.settings?.treasure_lng ??
+        (currentRoom as any)?.settings?.treasureLng ??
+        currentRoom?.centerLng;
 
       const isAliveAndActive =
         myPlayerRef.current.isAlive &&
@@ -1148,16 +1157,21 @@ export const App: React.FC = () => {
         myPlayerRef.current.status !== 'critically_wounded';
 
       if (
-        treasureLoc &&
+        targetChestLat != null &&
+        targetChestLng != null &&
+        targetChestLat !== 0 &&
+        targetChestLng !== 0 &&
         currentRoom?.status === 'playing' &&
         isAliveAndActive &&
         !isChestLockModalOpenRef.current &&
         !isCombatArenaOpenRef.current &&
         !isHospitalModalOpenRef.current
       ) {
-        const distanceToChest = getDistanceMeters(coords, treasureLoc);
+        const distanceToChest = getDistanceMeters(coords, { lat: targetChestLat, lng: targetChestLng });
         if (distanceToChest <= CHEST_TRIGGER_RADIUS) {
-          cancelMovementRef.current();
+          if (typeof cancelMovementRef.current === 'function') {
+            cancelMovementRef.current();
+          }
           setIsChestLockModalOpen(true);
           isChestLockModalOpenRef.current = true;
           realtime.broadcastChestInteracting(true);
@@ -1258,7 +1272,7 @@ export const App: React.FC = () => {
     isAlive: myPlayer?.isAlive ?? true,
     isSlowed: myPlayer?.isSlowed ?? false,
     speedMultiplier: fleeImmunityUntil > Date.now() ? 1.3 : 1,
-    isMovingBlocked: isCombatArenaOpen || isHospitalModalOpen,
+    isMovingBlocked: isCombatArenaOpen || isHospitalModalOpen || isChestLockModalOpen,
   });
   cancelMovementRef.current = cancelMovement;
 
@@ -2032,23 +2046,41 @@ export const App: React.FC = () => {
     const player = myPlayerRef.current;
     if (!currentRoom || !player) return;
 
+    const chestLat =
+      (currentRoom as any)?.treasure_lat ??
+      currentRoom?.treasureLat ??
+      (currentRoom as any)?.settings?.treasure_lat ??
+      (currentRoom as any)?.settings?.treasureLat ??
+      currentRoom?.centerLat ??
+      0;
+
+    const chestLng =
+      (currentRoom as any)?.treasure_lng ??
+      currentRoom?.treasureLng ??
+      (currentRoom as any)?.settings?.treasure_lng ??
+      (currentRoom as any)?.settings?.treasureLng ??
+      currentRoom?.centerLng ??
+      0;
+
     const pCoord = {
       lat: player.lat ?? currentRoom.centerLat,
       lng: player.lng ?? currentRoom.centerLng,
     };
     const treasureCoord = {
-      lat: currentRoom.treasureLat,
-      lng: currentRoom.treasureLng,
+      lat: chestLat,
+      lng: chestLng,
     };
     const distToChest = getDistanceMeters(pCoord, treasureCoord);
 
-    if (distToChest > 25) {
+    if (distToChest > 15) {
       handleMapClickRef.current?.(treasureCoord);
       addLog('Desplazándose hacia las coordenadas del cofre del tesoro...', 'info');
       return;
     }
 
-    cancelMovementRef.current();
+    if (typeof cancelMovementRef.current === 'function') {
+      cancelMovementRef.current();
+    }
     setIsChestLockModalOpen(true);
     isChestLockModalOpenRef.current = true;
     realtimeRef.current.broadcastChestInteracting(true);
@@ -2056,26 +2088,39 @@ export const App: React.FC = () => {
     addLog('Iniciando desencriptación del cofre táctico. ¡La escuadra debe proteger el perímetro!', 'info');
   }, [addLog]);
 
-  // Apertura automática del cofre cuando el jugador ya está dentro del radio (<= 15m)
+  // Apertura automática e imperativa del cofre por proximidad de coordenadas (<= 15m)
+  const activeChestLat =
+    (room as any)?.treasure_lat ??
+    room?.treasureLat ??
+    (room as any)?.settings?.treasure_lat ??
+    (room as any)?.settings?.treasureLat ??
+    room?.centerLat ??
+    0;
+
+  const activeChestLng =
+    (room as any)?.treasure_lng ??
+    room?.treasureLng ??
+    (room as any)?.settings?.treasure_lng ??
+    (room as any)?.settings?.treasureLng ??
+    room?.centerLng ??
+    0;
+
   useEffect(() => {
-    if (!room || room.status !== 'playing') return;
-    if (
-      !myPlayer ||
-      !myPlayer.isAlive ||
-      myPlayer.isCriticallyWounded ||
-      myPlayer.status === 'critically_wounded'
-    ) {
-      return;
-    }
+    if (!activeChestLat || !activeChestLng || !myPlayer?.lat || !myPlayer?.lng) return;
     if (isChestLockModalOpen || isCombatArenaOpen || isHospitalModalOpen) return;
-    if (room.treasureLat == null || room.treasureLng == null) return;
+    if (room?.status !== 'playing') return;
+    if (!myPlayer.isAlive || myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded') return;
 
-    const myCoords = { lat: myPlayer.lat ?? room.centerLat, lng: myPlayer.lng ?? room.centerLng };
-    const treasureCoords = { lat: room.treasureLat, lng: room.treasureLng };
-    const dist = getDistanceMeters(myCoords, treasureCoords);
+    const dist = getDistanceMeters(
+      { lat: myPlayer.lat, lng: myPlayer.lng },
+      { lat: activeChestLat, lng: activeChestLng }
+    );
 
+    // Si está a 15 metros o menos, abrir imperativamente
     if (dist <= 15) {
-      cancelMovementRef.current();
+      if (typeof cancelMovementRef.current === 'function') {
+        cancelMovementRef.current();
+      }
       setIsChestLockModalOpen(true);
       isChestLockModalOpenRef.current = true;
       realtimeRef.current.broadcastChestInteracting(true);
@@ -2088,8 +2133,8 @@ export const App: React.FC = () => {
     myPlayer?.isAlive,
     myPlayer?.isCriticallyWounded,
     myPlayer?.status,
-    room?.treasureLat,
-    room?.treasureLng,
+    activeChestLat,
+    activeChestLng,
     room?.status,
     isChestLockModalOpen,
     isCombatArenaOpen,
@@ -3329,8 +3374,12 @@ export const App: React.FC = () => {
       playAreaRadius: gameData.play_area_radius,
       centerLat: gameData.center_lat,
       centerLng: gameData.center_lng,
-      treasureLat: gameData.treasure_lat,
-      treasureLng: gameData.treasure_lng,
+      center_lat: gameData.center_lat,
+      center_lng: gameData.center_lng,
+      treasureLat: gameData.treasure_lat ?? gameData.settings?.treasure_lat,
+      treasureLng: gameData.treasure_lng ?? gameData.settings?.treasure_lng,
+      treasure_lat: gameData.treasure_lat ?? gameData.settings?.treasure_lat,
+      treasure_lng: gameData.treasure_lng ?? gameData.settings?.treasure_lng,
       currentChestIndex: gameData?.settings?.current_chest_index ?? 1,
       chestPhase: gameData.chest_current_phase ?? 1,
       chestStep: (gameData.chest_unlocked_steps ?? 0) % 2,
@@ -3576,8 +3625,12 @@ export const App: React.FC = () => {
       playAreaRadius: gameData.play_area_radius,
       centerLat: gameData.center_lat,
       centerLng: gameData.center_lng,
-      treasureLat: gameData.treasure_lat,
-      treasureLng: gameData.treasure_lng,
+      center_lat: gameData.center_lat,
+      center_lng: gameData.center_lng,
+      treasureLat: gameData.treasure_lat ?? gameData.settings?.treasure_lat,
+      treasureLng: gameData.treasure_lng ?? gameData.settings?.treasure_lng,
+      treasure_lat: gameData.treasure_lat ?? gameData.settings?.treasure_lat,
+      treasure_lng: gameData.treasure_lng ?? gameData.settings?.treasure_lng,
       currentChestIndex: gameData?.settings?.current_chest_index ?? 1,
       chestPhase: gameData.chest_current_phase ?? 1,
       chestStep: (gameData.chest_unlocked_steps ?? 0) % 2,
@@ -3881,10 +3934,30 @@ export const App: React.FC = () => {
   );
   const mapTreasureLocation = useMemo(
     () => ({
-      lat: room?.treasureLat && room.treasureLat !== 0 ? room.treasureLat : room?.centerLat ?? 0,
-      lng: room?.treasureLng && room.treasureLng !== 0 ? room.treasureLng : room?.centerLng ?? 0,
+      lat:
+        (room as any)?.treasure_lat ??
+        room?.treasureLat ??
+        (room as any)?.settings?.treasure_lat ??
+        (room as any)?.settings?.treasureLat ??
+        room?.centerLat ??
+        0,
+      lng:
+        (room as any)?.treasure_lng ??
+        room?.treasureLng ??
+        (room as any)?.settings?.treasure_lng ??
+        (room as any)?.settings?.treasureLng ??
+        room?.centerLng ??
+        0,
     }),
-    [room?.treasureLat, room?.treasureLng, room?.centerLat, room?.centerLng]
+    [
+      room?.treasureLat,
+      (room as any)?.treasure_lat,
+      room?.treasureLng,
+      (room as any)?.treasure_lng,
+      room?.centerLat,
+      room?.centerLng,
+      (room as any)?.settings,
+    ]
   );
 
   // ==========================================
@@ -4188,32 +4261,6 @@ export const App: React.FC = () => {
             )}
           </div>
 
-          {/* WIDGET LATERAL / MICRO-PÍLDORA TÁCTICA DE PROGRESO DEL COFRE (Desacoplado del centro) */}
-          {room.status === 'playing' && (chestPhase < 3 || chestStep < 2) && (
-            <ChestCountdown
-              currentPhase={chestPhase}
-              currentStep={chestStep}
-              currentChestIndex={currentChestIndex}
-              totalChests={3}
-              isInChestZone={
-                getDistanceMeters(
-                  { lat: myPlayer.lat ?? room.centerLat, lng: myPlayer.lng ?? room.centerLng },
-                  { lat: room.treasureLat, lng: room.treasureLng }
-                ) <= 20
-              }
-              isMonsterDefending={
-                isMonsterAlive(monster) &&
-                getDistanceMeters(
-                  { lat: room.treasureLat, lng: room.treasureLng },
-                  monster
-                ) <= 20
-              }
-              isMonsterAlive={isMonsterAlive(monster)}
-              isChestInteracted={isChestInteractedGlobally || isChestLockModalOpen}
-              onOpenChestModal={handleOpenChestModal}
-            />
-          )}
-
           {!isHospitalModalOpen && <CombatLog messages={combatLogs} onDismiss={handleDismissLog} />}
 
           {/* OVERLAY DE MODO FANTASMA CUANDO EL JUGADOR ESTÁ MUERTO */}
@@ -4373,7 +4420,7 @@ export const App: React.FC = () => {
         />
       )}
 
-      {room && myPlayer && isChestLockModalOpen && (
+      {Boolean(myPlayer && isChestLockModalOpen) && (
         <ChestLockModal
           isOpen={isChestLockModalOpen}
           currentPhase={chestPhase}
