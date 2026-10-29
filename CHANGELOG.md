@@ -21,6 +21,10 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - Añadida columna `chests_opened INTEGER NOT NULL DEFAULT 0` a la tabla `match_stats`.
 
 ### Fixed
+- **Fixed: Grouped compass and map style toggle into a unified flex column to prevent button overlap (`GameMap.tsx`, `README.md`):**
+  - **Contenedor Vertical Unificado:** Se agruparon la brújula táctica (orientación norte) y el botón selector de mapa ("TÁCTICO / SATÉLITE") dentro de un único contenedor con `fixed top-20 right-4 z-30 flex flex-col items-center gap-3 pointer-events-auto`.
+  - **Eliminación de Solapamiento Físico:** Se retiraron las coordenadas de posicionamiento absoluto individuales (`top-16`, `top-28`, etc.) de ambos botones hijos, garantizando una separación vertical limpia de 12px (`gap-3`) y asegurando que ambos controles permanezcan perfectamente visibles y clicables tanto en PC como en pantallas móviles.
+  - **Reorientación Interactiva al Norte:** El botón circular de brújula (`🧭`) ahora cuenta con manejador interactivo `handleResetNorth` que orienta suavemente el mapa hacia el norte restableciendo el bearing y el pitch en MapLibre GL.
 - **Fixed: Enforced minimum distance relocation for subsequent chests and prevented instant reopen loop on previous chest coordinates (`mapEntities.ts`, `App.tsx`, `GameMap.tsx`, `README.md`):**
   - **Reubicación Obligatoria con Distancia Mínima (>= 70m):** `generateNextChestLocation` evalúa hasta 50 candidatos dentro del área operativa (`radiusMeters * 0.85`), garantizando una separación mínima sustancial de al menos 70 metros respecto a la ubicación del cofre previo y respecto a la posición actual del avatar del jugador.
   - **Sincronización Atómica Dual (camelCase y snake_case):** Se corrigió la discrepancia de claves de coordenadas en el estado local de `App.tsx` (`setRoom`), sincronizando simultáneamente `treasureLat` / `treasureLng` y `treasure_lat` / `treasure_lng` tanto en el cliente local como en `postgres_changes`, `onChestTransition` y Supabase, erradicando lecturas de coordenadas residuales del cofre anterior.

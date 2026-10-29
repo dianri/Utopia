@@ -19,7 +19,7 @@ import { createGeoJsonCircle, getDistanceMeters } from '../services/geoUtils';
 import { getVisionRadius, getCrateVisualInfo } from '../services/combatEngine';
 import { MAX_PETS_PER_PLAYER, getMonsterVisualConfig } from '../services/mapEntities';
 import { soundEffects } from '../services/soundEffects';
-import { Locate, Compass } from 'lucide-react';
+import { Locate } from 'lucide-react';
 
 export const MAP_STYLES = {
   tactical: 'https://tiles.openfreemap.org/styles/dark',
@@ -597,6 +597,20 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       isStyleChangingRef.current = false;
     }, 4000);
   }, [isSatelliteView]);
+
+  const handleToggleMapStyle = handleToggleSatelliteView;
+
+  const handleResetNorth = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    soundEffects.playRadarPing();
+    soundEffects.vibrate(35);
+    if (typeof (map as any).resetNorthPitch === 'function') {
+      (map as any).resetNorthPitch({ duration: 600 });
+    } else if (typeof (map as any).resetNorth === 'function') {
+      (map as any).resetNorth({ duration: 600 });
+    }
+  }, []);
 
   // ==========================================
   // 1. INICIALIZACIÓN DEL MAPA WEBGL
@@ -1860,29 +1874,36 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         <Locate className="w-6 h-6" />
       </button>
 
-      {/* BRÚJULA HUD TÁCTICO */}
-      <div className="absolute top-16 sm:top-20 right-3 sm:right-4 z-20 pointer-events-none flex flex-col items-center">
-        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-hud-dark/80 border border-hud-cyan/40 backdrop-blur-sm flex items-center justify-center shadow-lg">
-          <Compass className="w-5 h-5 sm:w-6 sm:h-6 text-hud-cyan animate-pulse" />
-        </div>
-        <span className="text-[8px] sm:text-[9px] font-mono font-bold text-hud-cyan tracking-widest mt-0.5">
-          NORTE
-        </span>
-      </div>
-
-      {/* SELECTOR DE VISTA DE MAPA (TÁCTICO VS SATÉLITE) - FAB FLOTANTE EN COLUMNA DERECHA */}
-      <div className="absolute top-28 right-3 sm:right-4 z-30 pointer-events-auto">
+      {/* CONTROLES TÁCTICOS SUPERIOR DERECHA (BRÚJULA + SELECTOR DE MAPA EN COLUMNA ORDENADA) */}
+      <div className="fixed top-20 right-4 z-30 flex flex-col items-center gap-3 pointer-events-auto">
+        {/* 1. Botón Circular Brújula / Norte */}
         <button
           type="button"
-          onClick={handleToggleSatelliteView}
-          className="w-[38px] h-[38px] sm:w-auto sm:h-auto sm:px-2.5 sm:py-1.5 rounded-full sm:rounded-xl bg-slate-900/90 border border-cyan-400/60 shadow-lg backdrop-blur-md flex items-center justify-center sm:gap-1.5 hover:bg-slate-800/90 active:scale-95 transition-all text-cyan-400"
-          title={isSatelliteView ? 'Cambiar a mapa táctico' : 'Cambiar a vista satélite'}
-          aria-label={isSatelliteView ? 'Cambiar a mapa táctico' : 'Cambiar a vista satélite'}
+          onClick={handleResetNorth}
+          className="w-10 h-10 rounded-full bg-slate-950/85 border-2 border-cyan-400 flex items-center justify-center text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)] hover:bg-cyan-950/60 transition-all active:scale-95 cursor-pointer"
+          title="Orientar al Norte"
         >
-          <span className="text-base sm:text-sm select-none">{isSatelliteView ? '📡' : '🌍'}</span>
-          <span className="hidden sm:inline font-mono font-bold text-[10px] tracking-wider text-cyan-400 select-none">
-            {isSatelliteView ? 'TÁCTICO' : 'SATÉLITE'}
-          </span>
+          🧭
+        </button>
+
+        {/* 2. Botón Selector Satélite / Táctico */}
+        <button
+          type="button"
+          onClick={handleToggleMapStyle}
+          className="px-3 py-1.5 rounded-lg bg-slate-950/85 border border-cyan-400/80 text-cyan-400 text-xs font-semibold flex items-center gap-1.5 shadow-[0_0_12px_rgba(6,182,212,0.3)] hover:bg-cyan-950/60 transition-all whitespace-nowrap active:scale-95 cursor-pointer"
+          title="Cambiar vista de mapa"
+        >
+          {isSatelliteView ? (
+            <>
+              <span>📡</span>
+              <span>TÁCTICO</span>
+            </>
+          ) : (
+            <>
+              <span>🌍</span>
+              <span>SATÉLITE</span>
+            </>
+          )}
         </button>
       </div>
 
