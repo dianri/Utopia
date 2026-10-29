@@ -3,6 +3,7 @@ import type { Player, Weapon, Pet, Monster } from '../../types/game';
 import { DEFAULT_WEAPONS_BY_ROLE, getModifiedWeaponStats } from '../../services/combatEngine';
 import { soundEffects } from '../../services/soundEffects';
 import { usePvPCombat } from '../../hooks/usePvPCombat';
+import { supabase } from '../../lib/supabase';
 import { Swords, ShieldAlert, Crosshair, Zap, Shield, Skull, Heart, Footprints, AlertTriangle } from 'lucide-react';
 
 interface PvPArenaProps {
@@ -107,7 +108,20 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
 
       if (nextHp <= 0) {
         setDuelOutcome('defeat');
-        sendDefeat(opponentPlayerRef.current.id, myPlayerRef.current.id);
+        const winnerId = opponentPlayerRef.current.id;
+        const loserId = myPlayerRef.current.id;
+        sendDefeat(winnerId, loserId);
+
+        // Persistir inmediatamente estado abatido en Supabase
+        supabase
+          .from('players')
+          .update({
+            hp: 0,
+            status: 'critically_wounded',
+          })
+          .eq('id', loserId)
+          .then();
+
         setTimeout(() => {
           onPvPDefeat(opponentPlayerRef.current);
         }, 1500);
@@ -134,7 +148,19 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
 
       if (nextHp <= 0) {
         setDuelOutcome('defeat');
-        sendDefeat(opponentPlayerRef.current.id, myPlayerRef.current.id);
+        const winnerId = opponentPlayerRef.current.id;
+        const loserId = myPlayerRef.current.id;
+        sendDefeat(winnerId, loserId);
+
+        supabase
+          .from('players')
+          .update({
+            hp: 0,
+            status: 'critically_wounded',
+          })
+          .eq('id', loserId)
+          .then();
+
         setTimeout(() => {
           onPvPDefeat(opponentPlayerRef.current);
         }, 1500);
@@ -218,7 +244,20 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
 
     if (nextOpponentHp <= 0) {
       setDuelOutcome('victory');
-      sendDefeat(myPlayerRef.current.id, opponentPlayerRef.current.id);
+      const winnerId = myPlayerRef.current.id;
+      const loserId = opponentPlayerRef.current.id;
+      sendDefeat(winnerId, loserId);
+
+      // Persistir de forma atómica en Supabase para el oponente derrotado
+      supabase
+        .from('players')
+        .update({
+          hp: 0,
+          status: 'critically_wounded',
+        })
+        .eq('id', loserId)
+        .then();
+
       soundEffects.playVictoryFanfare();
       soundEffects.vibrate([150, 100, 200]);
       setTimeout(() => {
@@ -271,7 +310,19 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
 
         if (nextOpponentHp <= 0) {
           setDuelOutcome('victory');
-          sendDefeat(myPlayerRef.current.id, opponentPlayerRef.current.id);
+          const winnerId = myPlayerRef.current.id;
+          const loserId = opponentPlayerRef.current.id;
+          sendDefeat(winnerId, loserId);
+
+          supabase
+            .from('players')
+            .update({
+              hp: 0,
+              status: 'critically_wounded',
+            })
+            .eq('id', loserId)
+            .then();
+
           soundEffects.playVictoryFanfare();
           setTimeout(() => {
             onPvPVictory(opponentPlayerRef.current);

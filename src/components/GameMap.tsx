@@ -1706,7 +1706,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const lng = p.lng ?? center.lng;
       const isMe = p.id === myPlayer.id;
       const hpPercent = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
-      const isCriticallyWounded = p.isCriticallyWounded || p.status === 'critically_wounded';
+      const isCriticallyWounded = p.isCriticallyWounded || p.status === 'critically_wounded' || (p.hp <= 0 && p.isAlive);
       const isInside = !!p.insideBuildingId;
 
       const avatarIconContent = isCriticallyWounded

@@ -71,6 +71,7 @@ interface RealtimeCallbacks {
   onGameVictory?: (payload: { winnerTeam: boolean; unlockedBy: string }) => void;
   onPvPEncounter?: (payload: { combatId: string; player1Id: string; player2Id: string }) => void;
   onPvPEncounterEnd?: (payload: { combatId: string; winnerId?: string; loserId?: string }) => void;
+  onPvPPlayerDefeated?: (payload: { winnerId?: string; loserId: string; timestamp?: number }) => void;
   onChestClaimed?: (payload: { playerId: string; playerNickname: string; chestIndex: number }) => void;
   onPresenceSync?: (activeUserIds: string[]) => void;
 }
@@ -263,6 +264,10 @@ export function useGameRealtime(
 
     channel.on('broadcast', { event: 'pvp_encounter_end' }, ({ payload }) => {
       callbacksRef.current.onPvPEncounterEnd?.(payload);
+    });
+
+    channel.on('broadcast', { event: 'pvp_player_defeated' }, ({ payload }) => {
+      callbacksRef.current.onPvPPlayerDefeated?.(payload);
     });
 
     // 12.3. RECLAMO DE COFRE EN MODO COMPETITIVO
@@ -594,6 +599,21 @@ export function useGameRealtime(
     []
   );
 
+  const broadcastPvPPlayerDefeated = useCallback(
+    (payload: { winnerId: string; loserId: string; timestamp?: number }) => {
+      if (!channelRef.current || !isSubscribedRef.current) return;
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'pvp_player_defeated',
+        payload: {
+          ...payload,
+          timestamp: payload.timestamp || Date.now(),
+        },
+      });
+    },
+    []
+  );
+
   const broadcastChestClaimed = useCallback(
     (payload: { playerId: string; playerNickname: string; chestIndex: number }) => {
       if (!channelRef.current || !isSubscribedRef.current) return;
@@ -633,6 +653,7 @@ export function useGameRealtime(
     broadcastGameVictory,
     broadcastPvPEncounter,
     broadcastPvPEncounterEnd,
+    broadcastPvPPlayerDefeated,
     broadcastChestClaimed,
   };
 }
