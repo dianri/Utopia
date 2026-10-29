@@ -88,6 +88,7 @@ interface GameMapProps {
   onPickDroppedItem?: (dropped: DroppedItem) => void;
   onAdoptWildPet?: (wildPet: WildPet) => void;
   onOpenChest?: () => void;
+  onPlayerMarkerClick?: (targetPlayerId: string) => void;
 }
 
 const GameMapComponent: React.FC<GameMapProps> = ({
@@ -116,6 +117,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   onPickDroppedItem,
   onAdoptWildPet,
   onOpenChest,
+  onPlayerMarkerClick,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -140,6 +142,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
   const onAdoptWildPetRef = useRef(onAdoptWildPet);
   onAdoptWildPetRef.current = onAdoptWildPet;
+
+  const onPlayerMarkerClickRef = useRef(onPlayerMarkerClick);
+  onPlayerMarkerClickRef.current = onPlayerMarkerClick;
 
   const onOpenChestRef = useRef(onOpenChest);
   onOpenChestRef.current = onOpenChest;
@@ -1850,6 +1855,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           </div>
         `;
 
+        el.onclick = (e) => {
+          e.stopPropagation();
+          if (!isMe) {
+            onPlayerMarkerClickRef.current?.(p.id);
+          }
+        };
+
         const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([lng, lat])
           .addTo(map);
@@ -1860,6 +1872,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker?.setLngLat([lng, lat]);
         const el = marker?.getElement();
         if (el) {
+          el.onclick = (e) => {
+            e.stopPropagation();
+            if (!isMe) {
+              onPlayerMarkerClickRef.current?.(p.id);
+            }
+          };
           if (isMe) {
             el.style.display = isInside ? 'none' : 'block';
           } else if (isMeWounded) {
