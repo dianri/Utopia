@@ -70,6 +70,7 @@ interface GameMapProps {
   onReviveAttempt?: (targetPlayer: Player) => void;
   onPickDroppedItem?: (dropped: DroppedItem) => void;
   onAdoptWildPet?: (wildPet: WildPet) => void;
+  onOpenChest?: () => void;
 }
 
 const GameMapComponent: React.FC<GameMapProps> = ({
@@ -94,6 +95,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   onMapClick,
   onPickDroppedItem,
   onAdoptWildPet,
+  onOpenChest,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -118,6 +120,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
   const onAdoptWildPetRef = useRef(onAdoptWildPet);
   onAdoptWildPetRef.current = onAdoptWildPet;
+
+  const onOpenChestRef = useRef(onOpenChest);
+  onOpenChestRef.current = onOpenChest;
 
   const myPlayerRef = useRef(myPlayer);
   myPlayerRef.current = myPlayer;
@@ -846,6 +851,21 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.style.display = 'none';
       }
       el.innerHTML = chestHtml;
+
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const myPos = {
+          lat: myPlayerRef.current?.lat ?? center.lat,
+          lng: myPlayerRef.current?.lng ?? center.lng,
+        };
+        const dist = getDistanceMeters(myPos, treasureLocation);
+        if (dist <= 25) {
+          onOpenChestRef.current?.();
+        } else {
+          onMapClickRef.current?.(treasureLocation);
+          onOpenChestRef.current?.();
+        }
+      });
 
       chestMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
         .setLngLat([treasureLocation.lng, treasureLocation.lat])
