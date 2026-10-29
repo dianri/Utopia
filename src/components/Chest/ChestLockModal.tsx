@@ -271,6 +271,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
   const isNearSweetSpot = diffFromSweetSpot <= 12;
 
   const handleConfirmDial = () => {
+    if (feedback !== 'idle' || isVictorious) return;
     if (isInSweetSpot) {
       setFeedback('success');
       soundEffects.playCrateLoot();
@@ -286,6 +287,9 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
         setIsVictorious(true);
         setTimeout(() => {
           setFeedback('idle');
+          if (onClose) {
+            onClose();
+          }
           if (onChestDecrypted) {
             onChestDecrypted();
           } else if (onVictory) {

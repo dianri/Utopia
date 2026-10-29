@@ -280,6 +280,7 @@ export const App: React.FC = () => {
   const [isChestTransitioning, setIsChestTransitioning] = useState<boolean>(false);
   const isChestTransitioningRef = useRef<boolean>(false);
   const chestTransitionCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastDecryptedChestLocationRef = useRef<Coordinates | null>(null);
 
   // Reseteo y aislamiento estricto del progreso del cofre por partida (game.id)
   useEffect(() => {
@@ -291,6 +292,7 @@ export const App: React.FC = () => {
       hasTriggeredChestOpenRef.current = false;
       isChestTransitioningRef.current = false;
       setIsChestTransitioning(false);
+      lastDecryptedChestLocationRef.current = null;
       if (chestTransitionCooldownTimerRef.current) {
         clearTimeout(chestTransitionCooldownTimerRef.current);
       }
@@ -716,32 +718,74 @@ export const App: React.FC = () => {
             hasTriggeredChestOpenRef.current = false;
           }, 5000);
 
+          // Registrar coordenadas del cofre previo para obligar a alejarse > 25m
+          const prevLat =
+            roomRef.current?.treasureLat ??
+            (roomRef.current as any)?.treasure_lat ??
+            (roomRef.current as any)?.settings?.treasure_lat;
+          const prevLng =
+            roomRef.current?.treasureLng ??
+            (roomRef.current as any)?.treasure_lng ??
+            (roomRef.current as any)?.settings?.treasure_lng;
+          if (prevLat && prevLng) {
+            lastDecryptedChestLocationRef.current = { lat: prevLat, lng: prevLng };
+          }
+
           setCurrentChestIndex(payload.currentChestIndex);
           currentChestIndexRef.current = payload.currentChestIndex;
-          setRoom((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  currentChestIndex: payload.currentChestIndex,
-                  current_chest_index: payload.currentChestIndex,
-                  treasureLat: payload.treasureLat,
-                  treasureLng: payload.treasureLng,
+
+          const updatedRoomState = roomRef.current
+            ? {
+                ...roomRef.current,
+                currentChestIndex: payload.currentChestIndex,
+                current_chest_index: payload.currentChestIndex,
+                treasureLat: payload.treasureLat,
+                treasureLng: payload.treasureLng,
+                treasure_lat: payload.treasureLat,
+                treasure_lng: payload.treasureLng,
+                chestPhase: 1,
+                chestStep: 0,
+                chestUnlockedSteps: 0,
+                chestCurrentPhase: 1,
+                chestProgressPct: 0,
+                settings: {
+                  ...((roomRef.current as any).settings || {}),
                   treasure_lat: payload.treasureLat,
                   treasure_lng: payload.treasureLng,
-                  chestPhase: 1,
-                  chestStep: 0,
-                  chestUnlockedSteps: 0,
-                  chestCurrentPhase: 1,
-                  chestProgressPct: 0,
-                  settings: {
-                    ...((prev as any).settings || {}),
+                  current_chest_index: payload.currentChestIndex,
+                },
+              }
+            : null;
+
+          if (updatedRoomState) {
+            roomRef.current = updatedRoomState;
+            setRoom(updatedRoomState);
+          } else {
+            setRoom((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    currentChestIndex: payload.currentChestIndex,
+                    current_chest_index: payload.currentChestIndex,
+                    treasureLat: payload.treasureLat,
+                    treasureLng: payload.treasureLng,
                     treasure_lat: payload.treasureLat,
                     treasure_lng: payload.treasureLng,
-                    current_chest_index: payload.currentChestIndex,
-                  },
-                }
-              : null
-          );
+                    chestPhase: 1,
+                    chestStep: 0,
+                    chestUnlockedSteps: 0,
+                    chestCurrentPhase: 1,
+                    chestProgressPct: 0,
+                    settings: {
+                      ...((prev as any).settings || {}),
+                      treasure_lat: payload.treasureLat,
+                      treasure_lng: payload.treasureLng,
+                      current_chest_index: payload.currentChestIndex,
+                    },
+                  }
+                : null
+            );
+          }
           setChestPhase(1);
           setChestStep(0);
           chestPhaseRef.current = 1;
@@ -1274,6 +1318,19 @@ export const App: React.FC = () => {
         currentRoom?.status === 'playing' &&
         isAliveAndActive
       ) {
+        // Enfriamiento de transición de cofres o barrera de salida física del cofre previo (> 25m)
+        if (isChestTransitioningRef.current || isChestTransitioning) {
+          return;
+        }
+        if (lastDecryptedChestLocationRef.current) {
+          const distToOldChest = getDistanceMeters(coords, lastDecryptedChestLocationRef.current);
+          if (distToOldChest <= 25) {
+            return;
+          }
+          // El jugador se ha desplazado más de 25m del cofre previo: liberar barrera
+          lastDecryptedChestLocationRef.current = null;
+        }
+
         const distanceToChest = getDistanceMeters(coords, { lat: targetChestLat, lng: targetChestLng });
         if (distanceToChest <= CHEST_TRIGGER_RADIUS) {
           if (
@@ -2332,6 +2389,7 @@ export const App: React.FC = () => {
     const currentRoom = roomRef.current;
     const player = myPlayerRef.current;
     if (!currentRoom || !player) return;
+    if (isChestTransitioningRef.current || isChestTransitioning) return;
 
     const chestLat =
       (currentRoom as any)?.treasure_lat ??
@@ -2353,6 +2411,13 @@ export const App: React.FC = () => {
       lat: player.lat ?? currentRoom.centerLat,
       lng: player.lng ?? currentRoom.centerLng,
     };
+
+    if (lastDecryptedChestLocationRef.current) {
+      const distToOldChest = getDistanceMeters(pCoord, lastDecryptedChestLocationRef.current);
+      if (distToOldChest <= 25) return;
+      lastDecryptedChestLocationRef.current = null;
+    }
+
     const treasureCoord = {
       lat: chestLat,
       lng: chestLng,
@@ -2376,7 +2441,7 @@ export const App: React.FC = () => {
       soundEffects.playCrateLoot();
       addLog('Iniciando desencriptación del cofre táctico. ¡La escuadra debe proteger el perímetro!', 'info');
     }
-  }, [addLog]);
+  }, [addLog, isChestTransitioning]);
 
   // Apertura automática e imperativa del cofre por proximidad de coordenadas (<= 15m)
   const activeChestLat =
@@ -2399,6 +2464,16 @@ export const App: React.FC = () => {
     if (!activeChestLat || !activeChestLng || !myPlayer?.lat || !myPlayer?.lng) return;
     if (room?.status !== 'playing') return;
     if (!myPlayer.isAlive || myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded') return;
+
+    if (isChestTransitioningRef.current || isChestTransitioning) return;
+    if (lastDecryptedChestLocationRef.current) {
+      const distToOldChest = getDistanceMeters(
+        { lat: myPlayer.lat, lng: myPlayer.lng },
+        lastDecryptedChestLocationRef.current
+      );
+      if (distToOldChest <= 25) return;
+      lastDecryptedChestLocationRef.current = null;
+    }
 
     const dist = getDistanceMeters(
       { lat: myPlayer.lat, lng: myPlayer.lng },
@@ -2609,7 +2684,28 @@ export const App: React.FC = () => {
     const currentRoom = roomRef.current;
     if (!currentRoom) return;
 
-    // 0. Reclamar individualmente el cofre actual: incrementar chests_opened
+    // 1. Activar de inmediato período de gracia / enfriamiento y cerrar modal
+    isChestTransitioningRef.current = true;
+    setIsChestTransitioning(true);
+    hasTriggeredChestOpenRef.current = true;
+    setIsChestLockModalOpen(false);
+    isChestLockModalOpenRef.current = false;
+    setIsChestInteractedGlobally(false);
+    setChestPhase(1);
+    setChestStep(0);
+    chestPhaseRef.current = 1;
+    chestStepRef.current = 0;
+
+    if (chestTransitionCooldownTimerRef.current) {
+      clearTimeout(chestTransitionCooldownTimerRef.current);
+    }
+    chestTransitionCooldownTimerRef.current = setTimeout(() => {
+      isChestTransitioningRef.current = false;
+      setIsChestTransitioning(false);
+      hasTriggeredChestOpenRef.current = false;
+    }, 5000);
+
+    // 2. Incrementar chests_opened localmente
     const myId = myPlayerRef.current?.id;
     const updatedChests = (myPlayerRef.current?.chests_opened || myPlayerRef.current?.chestsOpened || 0) + 1;
     setMyPlayer((prev) => (prev ? { ...prev, chests_opened: updatedChests, chestsOpened: updatedChests } : null));
@@ -2625,17 +2721,6 @@ export const App: React.FC = () => {
       )
     );
 
-    // Persistir chests_opened en Supabase
-    if (myId) {
-      try {
-        await (supabase.from('players') as any)
-          .update({ chests_opened: updatedChests })
-          .eq('id', myId);
-      } catch (err) {
-        console.warn('Error al persistir chests_opened en DB:', err);
-      }
-    }
-
     // Transmitir reclamo del cofre a la sala
     if (myPlayerRef.current) {
       realtimeRef.current.broadcastChestClaimed({
@@ -2646,46 +2731,30 @@ export const App: React.FC = () => {
     }
 
     if (currentChestIdx < 3) {
-      // 1. Activar período de gracia / enfriamiento inmediato de 5s para evitar reaperturas en el punto físico actual
-      isChestTransitioningRef.current = true;
-      setIsChestTransitioning(true);
-      hasTriggeredChestOpenRef.current = true;
-      if (chestTransitionCooldownTimerRef.current) {
-        clearTimeout(chestTransitionCooldownTimerRef.current);
-      }
-      chestTransitionCooldownTimerRef.current = setTimeout(() => {
-        isChestTransitioningRef.current = false;
-        setIsChestTransitioning(false);
-        hasTriggeredChestOpenRef.current = false;
-      }, 5000);
-
-      // 2. Cerrar modal de cofre y resetear cerrojos a 0/6 (Fase 1, Paso 0)
-      setIsChestLockModalOpen(false);
-      isChestLockModalOpenRef.current = false;
-      setIsChestInteractedGlobally(false);
-      setChestPhase(1);
-      setChestStep(0);
-      chestPhaseRef.current = 1;
-      chestStepRef.current = 0;
-
       // 3. Avanzar al siguiente cofre secuencial (Cofre 2 o Cofre 3)
       const nextChestIdx = currentChestIdx + 1;
       setCurrentChestIndex(nextChestIdx);
       currentChestIndexRef.current = nextChestIdx;
 
-      // 4. Reubicar cofre forzando distancia mínima sustancial (>= 70m) del cofre previo y del jugador
+      // 4. Registrar coordenadas del cofre recién resuelto para exigir salida física (> 25m)
       const centerCoord: Coordinates = {
         lat: currentRoom.centerLat ?? (currentRoom as any).center_lat ?? 0,
         lng: currentRoom.centerLng ?? (currentRoom as any).center_lng ?? 0,
       };
       const prevChestCoord: Coordinates = {
-        lat: (currentRoom as any)?.treasure_lat ?? currentRoom?.treasureLat ?? centerCoord.lat,
-        lng: (currentRoom as any)?.treasure_lng ?? currentRoom?.treasureLng ?? centerCoord.lng,
+        lat: (currentRoom as any)?.treasure_lat ?? currentRoom?.treasureLat ?? (currentRoom as any)?.settings?.treasure_lat ?? centerCoord.lat,
+        lng: (currentRoom as any)?.treasure_lng ?? currentRoom?.treasureLng ?? (currentRoom as any)?.settings?.treasure_lng ?? centerCoord.lng,
       };
       const playerCoord: Coordinates = {
         lat: myPlayerRef.current?.lat ?? prevChestCoord.lat,
         lng: myPlayerRef.current?.lng ?? prevChestCoord.lng,
       };
+      lastDecryptedChestLocationRef.current = {
+        lat: prevChestCoord.lat || playerCoord.lat,
+        lng: prevChestCoord.lng || playerCoord.lng,
+      };
+
+      // 5. Reubicar cofre forzando distancia mínima sustancial (>= 70m)
       const newTreasureLoc = generateNextChestLocation(
         centerCoord,
         currentRoom.playAreaRadius,
@@ -2693,66 +2762,35 @@ export const App: React.FC = () => {
         playerCoord
       );
 
-      // 5. Invocar/desplegar el monstruo secuencial de la siguiente fase
+      // 6. Invocar/desplegar el monstruo secuencial de la siguiente fase
       const newMonster = createSequentialMonster(nextChestIdx, centerCoord, currentRoom.playAreaRadius);
       const updatedMonsters = [...monstersRef.current, newMonster];
       setMonsters(updatedMonsters);
       activeCombatMonsterIdRef.current = newMonster.id || null;
 
-      // 6. Actualizar estado local de la sala de forma atómica (camelCase y snake_case)
-      setRoom((prev) =>
-        prev
-          ? {
-              ...prev,
-              currentChestIndex: nextChestIdx,
-              current_chest_index: nextChestIdx,
-              treasureLat: newTreasureLoc.lat,
-              treasureLng: newTreasureLoc.lng,
-              treasure_lat: newTreasureLoc.lat,
-              treasure_lng: newTreasureLoc.lng,
-              chestPhase: 1,
-              chestStep: 0,
-              chestUnlockedSteps: 0,
-              chestCurrentPhase: 1,
-              chestProgressPct: 0,
-              settings: {
-                ...((prev as any).settings || {}),
-                treasure_lat: newTreasureLoc.lat,
-                treasure_lng: newTreasureLoc.lng,
-                current_chest_index: nextChestIdx,
-              },
-            }
-          : null
-      );
-
-      // Persistir reset en localStorage
-      try {
-        localStorage.setItem(`utopia_chest_progress_${currentRoom.id}`, JSON.stringify({ phase: 1, step: 0 }));
-      } catch {
-        // Ignorar
-      }
-
-      // 7. Persistir en Supabase games
-      try {
-        await (supabase.from('games') as any)
-          .update({
-            treasure_lat: newTreasureLoc.lat,
-            treasure_lng: newTreasureLoc.lng,
-            current_chest_index: nextChestIdx,
-            chest_unlocked_steps: 0,
-            chest_current_phase: 1,
-            chest_progress_pct: 0,
-            settings: {
-              ...((currentRoom as any).settings || {}),
-              treasure_lat: newTreasureLoc.lat,
-              treasure_lng: newTreasureLoc.lng,
-              current_chest_index: nextChestIdx,
-            },
-          })
-          .eq('id', currentRoom.id);
-      } catch (err) {
-        console.warn('Error al actualizar siguiente cofre en DB:', err);
-      }
+      // 7. Actualizar de forma inmediata y sincrónica roomRef.current y estado local
+      const updatedRoom = {
+        ...currentRoom,
+        currentChestIndex: nextChestIdx,
+        current_chest_index: nextChestIdx,
+        treasureLat: newTreasureLoc.lat,
+        treasureLng: newTreasureLoc.lng,
+        treasure_lat: newTreasureLoc.lat,
+        treasure_lng: newTreasureLoc.lng,
+        chestPhase: 1,
+        chestStep: 0,
+        chestUnlockedSteps: 0,
+        chestCurrentPhase: 1,
+        chestProgressPct: 0,
+        settings: {
+          ...((currentRoom as any).settings || {}),
+          treasure_lat: newTreasureLoc.lat,
+          treasure_lng: newTreasureLoc.lng,
+          current_chest_index: nextChestIdx,
+        },
+      };
+      roomRef.current = updatedRoom;
+      setRoom(updatedRoom);
 
       // 8. Transmitir transición a la escuadra
       realtimeRef.current.broadcastChestTransition({
@@ -2768,8 +2806,53 @@ export const App: React.FC = () => {
         `¡Cofre [${currentChestIdx}/3] conquistado por ti (+1 punto)! Se ha detectado la señal del Cofre [${nextChestIdx}/3]. Ha emergido ${newMonster.name || 'un nuevo monstruo'}.`,
         'loot'
       );
+
+      // 9. Persistir de forma asíncrona en LocalStorage y Supabase sin bloquear el flujo
+      try {
+        localStorage.setItem(`utopia_chest_progress_${currentRoom.id}`, JSON.stringify({ phase: 1, step: 0 }));
+      } catch {
+        // Ignorar
+      }
+
+      (async () => {
+        try {
+          if (myId) {
+            await (supabase.from('players') as any)
+              .update({ chests_opened: updatedChests })
+              .eq('id', myId);
+          }
+          await (supabase.from('games') as any)
+            .update({
+              treasure_lat: newTreasureLoc.lat,
+              treasure_lng: newTreasureLoc.lng,
+              current_chest_index: nextChestIdx,
+              chest_unlocked_steps: 0,
+              chest_current_phase: 1,
+              chest_progress_pct: 0,
+              settings: {
+                ...((currentRoom as any).settings || {}),
+                treasure_lat: newTreasureLoc.lat,
+                treasure_lng: newTreasureLoc.lng,
+                current_chest_index: nextChestIdx,
+              },
+            })
+            .eq('id', currentRoom.id);
+        } catch (err) {
+          console.warn('Error al persistir transición de cofre en DB:', err);
+        }
+      })();
     } else {
       // Tercer y último cofre resuelto: calcular vencedor por mayoría de cofres
+      try {
+        if (myId) {
+          await (supabase.from('players') as any)
+            .update({ chests_opened: updatedChests })
+            .eq('id', myId);
+        }
+      } catch (err) {
+        console.warn('Error al persistir chests_opened final en DB:', err);
+      }
+
       const allPlayersRanked = [...playersRef.current].map((p) =>
         p.id === myId ? { ...p, chests_opened: updatedChests, chestsOpened: updatedChests } : p
       ).sort((a, b) => {
