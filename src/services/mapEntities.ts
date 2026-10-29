@@ -257,8 +257,6 @@ export function generateInitialCrates(
 /**
  * Configuraciones de monstruos para cada fase secuencial de cofres
  */
-import { SAVAGE_BEAST_SVG_HTML } from '../components/Icons/SavageBeastIcon';
-
 export interface SequentialMonsterConfig {
   id: string;
   name: string;
@@ -270,7 +268,7 @@ export interface SequentialMonsterConfig {
 export const SEQUENTIAL_MONSTER_CONFIGS: SequentialMonsterConfig[] = [
   {
     id: 'monster_1',
-    name: 'Devorador Acechador',
+    name: 'Rastreador Sombrío',
     type: 'stalker',
     maxHp: 1200,
     speedMps: 2.8,
@@ -296,7 +294,6 @@ export interface MonsterVisualConfig {
   defaultName: string;
   label: string;
   icon: string;
-  svgHtml?: string;
   borderColor: string;
   glowColor: string;
   badgeBg: string;
@@ -334,36 +331,35 @@ export const getMonsterVisualConfig = (monster?: Monster | null): MonsterVisualC
   if (key === 'monster_1' || key === 'stalker') {
     return {
       type: 'stalker',
-      defaultName: 'Devorador Acechador',
-      label: 'DEVORADOR ACECHADOR',
-      icon: '👹',
-      svgHtml: SAVAGE_BEAST_SVG_HTML,
-      borderColor: 'border-red-600',
-      glowColor: 'shadow-[0_0_18px_rgba(220,38,38,0.85)] animate-pulse',
-      badgeBg: 'bg-red-950/90 text-red-300',
-      pingBg: 'bg-red-600/40',
-      coreBg: 'bg-red-950/90',
-      hpBarColor: 'bg-red-600',
-      hpBorderColor: 'border-red-600/60',
+      defaultName: 'Rastreador Sombrío',
+      label: 'RASTREADOR SOMBRÍO',
+      icon: '🐺',
+      borderColor: 'border-red-500',
+      glowColor: 'shadow-[0_0_15px_rgba(239,68,68,0.7)]',
+      badgeBg: 'bg-red-950/80 text-red-300',
+      pingBg: 'bg-red-600/30',
+      coreBg: 'bg-red-950',
+      hpBarColor: 'bg-red-500',
+      hpBorderColor: 'border-red-500/40',
       scaleClass: '',
-      threatLabel: 'AMENAZA: DEVORADOR ACECHADOR',
-      threatBadgeBg: 'bg-red-950/90 text-red-300 border-red-600/80',
-      arenaHeaderBadgeBg: 'bg-red-950/90 border-red-600/80 text-red-200 shadow-[0_0_15px_rgba(220,38,38,0.6)]',
-      cardBorder: 'border-red-600/80 hover:border-red-500',
-      cardHitBorder: 'border-red-500',
-      cardGlow: 'shadow-[0_0_35px_rgba(220,38,38,0.5)]',
-      cardHitGlow: 'shadow-[0_0_50px_rgba(239,68,68,0.9)]',
-      cardBgGradient: 'from-slate-950 via-red-950/70 to-black',
-      cardHeaderBg: 'bg-black/75',
-      cardHeaderBorder: 'border-red-600/50',
-      cardBadgeBg: 'bg-red-950 text-red-300 border-red-600/70',
-      avatarBg: 'bg-red-950/80',
-      avatarBorder: 'border-red-600 shadow-[0_0_20px_rgba(220,38,38,0.8)]',
-      avatarRadialGlow: 'bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.45)_0%,transparent_75%)]',
-      eyeColor: 'bg-red-500 shadow-[0_0_10px_#ef4444]',
-      hpBarGradient: 'from-red-800 to-red-500',
+      threatLabel: 'AMENAZA: ACECHADOR',
+      threatBadgeBg: 'bg-red-950/80 text-red-300 border-red-500/60',
+      arenaHeaderBadgeBg: 'bg-red-950/80 border-red-500/60 text-red-200',
+      cardBorder: 'border-red-500/60 hover:border-red-400',
+      cardHitBorder: 'border-red-400',
+      cardGlow: 'shadow-[0_0_30px_rgba(220,38,38,0.3)]',
+      cardHitGlow: 'shadow-[0_0_40px_rgba(239,68,68,0.7)]',
+      cardBgGradient: 'from-slate-900 via-slate-900/90 to-red-950/80',
+      cardHeaderBg: 'bg-black/60',
+      cardHeaderBorder: 'border-red-500/30',
+      cardBadgeBg: 'bg-red-900/60 text-red-300 border-red-700/50',
+      avatarBg: 'bg-red-950/60',
+      avatarBorder: 'border-red-500/50',
+      avatarRadialGlow: 'bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.25)_0%,transparent_70%)]',
+      eyeColor: 'bg-red-400 shadow-[0_0_8px_#f87171]',
+      hpBarGradient: 'from-red-700 to-red-500',
       hpBarCriticalGradient: 'from-red-600 to-orange-500',
-      accentTextColor: 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]',
+      accentTextColor: 'text-red-400',
     };
   }
 
