@@ -21,6 +21,16 @@ interface PvPArenaProps {
   onClose: () => void;
 }
 
+interface PvPDamageItem {
+  id: number;
+  text?: string;
+  label?: string;
+  icon?: string;
+  isCrit: boolean;
+  isPet?: boolean;
+  isIncoming?: boolean;
+}
+
 export const PvPArena: React.FC<PvPArenaProps> = ({
   isOpen,
   combatId,
@@ -42,7 +52,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
   const [cardHitAnim, setCardHitAnim] = useState<boolean>(false);
   const [attackCooldown, setAttackCooldown] = useState<number>(0);
   const [duelOutcome, setDuelOutcome] = useState<'ongoing' | 'victory' | 'defeat' | 'fled'>('ongoing');
-  const [damageNumbers, setDamageNumbers] = useState<{ id: number; text: string; isCrit: boolean; isPet?: boolean; isIncoming?: boolean }[]>([]);
+  const [damageNumbers, setDamageNumbers] = useState<PvPDamageItem[]>([]);
 
   const myPlayerRef = useRef<Player>(myPlayer);
   myPlayerRef.current = myPlayer;
@@ -98,7 +108,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
       const numId = Date.now() + Math.random();
       setDamageNumbers((prev) => [
         ...prev,
-        { id: numId, text: `-${dmg}`, isCrit: dmg > 25, isIncoming: true },
+        { id: numId, label: `-${dmg}`, text: `-${dmg}`, isCrit: dmg > 25, isIncoming: true },
       ]);
       setTimeout(() => {
         setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));
@@ -135,10 +145,20 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
       myHpRef.current = nextHp;
 
       soundEffects.vibrate(80);
+      const cleanIcon = payload.petIcon ? payload.petIcon.replace(/^\/+/, '/') : '/assets/icons/pets/pet-dog.png';
+      const petLabel = payload.petName ? `${payload.petName}: -${dmg} HP` : `-${dmg} HP`;
       const numId = Date.now() + Math.random();
       setDamageNumbers((prev) => [
         ...prev,
-        { id: numId, text: `🐾 -${dmg}`, isCrit: false, isPet: true, isIncoming: true },
+        {
+          id: numId,
+          icon: cleanIcon,
+          label: petLabel,
+          text: `🐾 ${petLabel}`,
+          isCrit: false,
+          isPet: true,
+          isIncoming: true,
+        },
       ]);
       setTimeout(() => {
         setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));
@@ -249,7 +269,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
     const numId = Date.now() + Math.random();
     setDamageNumbers((prev) => [
       ...prev,
-      { id: numId, text: `-${dmg}`, isCrit: dmg > 25, isIncoming: false },
+      { id: numId, label: `-${dmg}`, text: `-${dmg}`, isCrit: dmg > 25, isIncoming: false },
     ]);
     setTimeout(() => {
       setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));
@@ -315,16 +335,25 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
         opponentHpRef.current = nextOpponentHp;
 
         // Daño flotante de mascota
+        const cleanIcon = pet.icon ? pet.icon.replace(/^\/+/, '/') : '/assets/icons/pets/pet-dog.png';
         const numId = Date.now() + Math.random();
         setDamageNumbers((prev) => [
           ...prev,
-          { id: numId, text: `🐾 -${dmg}`, isCrit: false, isPet: true, isIncoming: false },
+          {
+            id: numId,
+            icon: cleanIcon,
+            label: `${pet.name}: -${dmg} HP`,
+            text: `🐾 ${pet.name}: -${dmg} HP`,
+            isCrit: false,
+            isPet: true,
+            isIncoming: false,
+          },
         ]);
         setTimeout(() => {
           setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));
         }, 900);
 
-        sendPetAttack(dmg, pet.id, pet.name, pet.icon);
+        sendPetAttack(dmg, pet.id, pet.name, cleanIcon);
         onOpponentDamaged?.(nextOpponentHp);
 
         if (nextOpponentHp <= 0) {
@@ -463,18 +492,32 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
             {/* Números de daño flotantes sobre el avatar */}
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-30 overflow-hidden">
               {damageNumbers.map((d) => (
-                <span
+                <div
                   key={d.id}
-                  className={`absolute font-black font-mono text-2xl sm:text-3xl transition-transform duration-700 animate-bounce ${
-                    d.isIncoming
-                      ? 'text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]'
-                      : d.isPet
-                      ? 'text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.9)]'
-                      : 'text-amber-300 drop-shadow-[0_0_8px_rgba(252,211,77,0.9)]'
-                  }`}
+                  className="floating-combat-effect absolute flex items-center gap-1.5 animate-floatUp px-3 py-1 rounded-full bg-slate-950/85 border border-slate-700/60 shadow-2xl backdrop-blur-sm"
                 >
-                  {d.text}
-                </span>
+                  {d.icon && (
+                    <img
+                      src={d.icon.replace(/^\/+/, '/')}
+                      alt=""
+                      className="h-6 w-6 object-contain drop-shadow-[0_0_6px_rgba(251,191,36,0.6)] select-none"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none';
+                      }}
+                    />
+                  )}
+                  <span
+                    className={`font-mono font-black text-sm sm:text-base tracking-wide whitespace-nowrap ${
+                      d.isIncoming
+                        ? 'text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]'
+                        : d.isPet
+                        ? 'text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.9)]'
+                        : 'text-amber-300 drop-shadow-[0_0_8px_rgba(252,211,77,0.9)]'
+                    }`}
+                  >
+                    {d.label || d.text}
+                  </span>
+                </div>
               ))}
             </div>
 
