@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Weapon } from '../../types/game';
-import { Crosshair, ShieldAlert, Zap, Flame, Target, Package } from 'lucide-react';
+import { getWeaponIcon } from '../../services/combatEngine';
+import { Crosshair, ShieldAlert } from 'lucide-react';
 
 interface WeaponWheelProps {
   weapon?: Weapon;
@@ -37,7 +38,7 @@ export const WeaponWheel: React.FC<WeaponWheelProps> = ({
             title="Abrir Mochila Táctica"
             aria-label="Abrir Mochila"
           >
-            <Package className="w-5 h-5 transition-transform group-hover:scale-110" />
+            <img src="/assets/icons/hud/hud-backpack.png" alt="Mochila" className="w-5 h-5 object-contain transition-transform group-hover:scale-110" />
             <span className="text-[8px] font-mono font-bold uppercase tracking-tighter mt-0.5">
               MOCHILA
             </span>
@@ -65,21 +66,6 @@ export const WeaponWheel: React.FC<WeaponWheelProps> = ({
     );
   }
 
-  const renderWeaponIcon = (iconName: string) => {
-    switch (iconName) {
-      case 'ShieldAlert':
-        return <ShieldAlert className="w-5 h-5 sm:w-6 sm:h-6" />;
-      case 'Crosshair':
-        return <Crosshair className="w-5 h-5 sm:w-6 sm:h-6" />;
-      case 'Zap':
-        return <Zap className="w-5 h-5 sm:w-6 sm:h-6" />;
-      case 'Flame':
-        return <Flame className="w-5 h-5 sm:w-6 sm:h-6" />;
-      default:
-        return <Target className="w-5 h-5 sm:w-6 sm:h-6" />;
-    }
-  };
-
   return (
     <div className={`flex-1 min-w-0 flex items-center gap-1.5 sm:gap-2 pointer-events-auto ${className || ''}`}>
       {/* BOTÓN DE MOCHILA / INVENTARIO */}
@@ -91,7 +77,7 @@ export const WeaponWheel: React.FC<WeaponWheelProps> = ({
           title="Abrir Mochila Táctica"
           aria-label="Abrir Mochila"
         >
-          <Package className="w-5 h-5 transition-transform group-hover:scale-110" />
+          <img src="/assets/icons/hud/hud-backpack.png" alt="Mochila" className="w-5 h-5 object-contain transition-transform group-hover:scale-110" />
           <span className="text-[8px] font-mono font-bold uppercase tracking-tighter mt-0.5">
             MOCHILA
           </span>
@@ -118,7 +104,7 @@ export const WeaponWheel: React.FC<WeaponWheelProps> = ({
         <div className="flex items-center gap-2 min-w-0 flex-1">
           {/* ICONO DEL ARMA CON PULSO SI DISPARA */}
           <div
-            className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg border flex items-center justify-center shrink-0 transition-all ${
+            className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg border flex items-center justify-center p-1 shrink-0 transition-all ${
               isFiring
                 ? 'bg-red-500/40 border-red-400 text-red-200 scale-105 animate-ping-slow'
                 : isInRange
@@ -126,7 +112,7 @@ export const WeaponWheel: React.FC<WeaponWheelProps> = ({
                 : 'bg-hud-card border-hud-border text-hud-cyan'
             }`}
           >
-            {renderWeaponIcon(weapon.iconName)}
+            <img src={getWeaponIcon(weapon.weaponType)} alt={weapon.name} className="w-6 h-6 object-contain" />
           </div>
 
           {/* DETALLES DE NOMBRE Y MUNICIÓN */}

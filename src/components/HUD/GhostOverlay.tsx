@@ -1,5 +1,4 @@
 import React from 'react';
-import { AlertCircle, PackageCheck, HelpCircle } from 'lucide-react';
 import type { GhostPing } from '../../types/game';
 
 interface GhostOverlayProps {
@@ -24,8 +23,8 @@ export const GhostOverlay: React.FC<GhostOverlayProps> = ({
       {/* BANNER SUPERIOR DE MODO FANTASMA */}
       <div className="max-w-md mx-auto w-full bg-hud-dark/95 border-2 border-red-500/80 p-3 rounded-2xl shadow-2xl backdrop-blur-md pointer-events-auto">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-400 flex items-center justify-center text-2xl">
-            🪦
+          <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-400 flex items-center justify-center p-1">
+            <img src="/assets/icons/roles/player-ghost.png" alt="Modo Fantasma" className="w-8 h-8 object-contain" />
           </div>
           <div className="flex-1">
             <span className="block text-xs font-mono font-black text-red-400 uppercase tracking-wider">
@@ -62,7 +61,7 @@ export const GhostOverlay: React.FC<GhostOverlayProps> = ({
           onClick={() => onSendPing('danger')}
           className="flex-1 flex flex-col items-center gap-1 p-2 bg-red-950/40 border border-red-500/50 rounded-xl text-red-300 hover:bg-red-900/60 active:scale-95 transition-all"
         >
-          <AlertCircle className="w-5 h-5 text-red-400" />
+          <img src="/assets/icons/hud/ping-danger.png" alt="Peligro" className="w-6 h-6 object-contain" />
           <span className="text-[10px] font-mono font-black">PELIGRO</span>
         </button>
 
@@ -70,7 +69,7 @@ export const GhostOverlay: React.FC<GhostOverlayProps> = ({
           onClick={() => onSendPing('assist')}
           className="flex-1 flex flex-col items-center gap-1 p-2 bg-cyan-950/40 border border-hud-cyan/50 rounded-xl text-hud-cyan hover:bg-cyan-900/60 active:scale-95 transition-all"
         >
-          <HelpCircle className="w-5 h-5 text-hud-cyan" />
+          <img src="/assets/icons/hud/ping-assist.png" alt="Ayuda" className="w-6 h-6 object-contain" />
           <span className="text-[10px] font-mono font-black">AYUDA</span>
         </button>
 
@@ -78,8 +77,8 @@ export const GhostOverlay: React.FC<GhostOverlayProps> = ({
           onClick={() => onSendPing('loot')}
           className="flex-1 flex flex-col items-center gap-1 p-2 bg-emerald-950/40 border border-emerald-500/50 rounded-xl text-emerald-300 hover:bg-emerald-900/60 active:scale-95 transition-all"
         >
-          <PackageCheck className="w-5 h-5 text-emerald-400" />
-          <span className="text-[10px] font-mono font-black">LOOT</span>
+          <img src="/assets/icons/hud/ping-loot.png" alt="Botín" className="w-6 h-6 object-contain" />
+          <span className="text-[10px] font-mono font-black">BOTÍN</span>
         </button>
       </div>
     </div>

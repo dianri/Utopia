@@ -286,8 +286,8 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
         {/* 1. Bloque Izquierdo: Icono + Información */}
         <div className="flex min-w-0 items-center gap-3">
           {/* Icono médico contenido */}
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-400/60 bg-emerald-950/80 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]">
-            <span className="text-xl font-bold">+</span>
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-emerald-400/60 bg-emerald-950/80 p-1 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]">
+            <img src="/assets/icons/structures/structure-hospital.png" alt="Hospital" className="w-7 h-7 object-contain" />
           </div>
 
           {/* Textos informativos */}
@@ -342,7 +342,7 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
           {/* Cabecera del Pod */}
           <div className="px-4 py-2.5 bg-black/60 border-b border-emerald-500/30 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Shield className="w-4 h-4 text-emerald-400" />
+              <img src="/assets/icons/structures/hospital-pod.png" alt="Cápsula" className="w-5 h-5 object-contain" />
               <span className="font-mono font-black text-sm text-emerald-100 uppercase tracking-wider">
                 PACIENTE: {activePlayer.nickname}
               </span>
@@ -359,16 +359,12 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
             <div className="relative flex items-center justify-center">
               {/* Anillos concéntricos de escáner bio-médico */}
               <div className="absolute w-28 h-28 sm:w-32 sm:h-32 rounded-full border border-dashed border-emerald-400/40 animate-spin [animation-duration:12s]" />
-              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-emerald-400/80 bg-slate-900/90 shadow-[0_0_30px_rgba(16,185,129,0.5)] flex flex-col items-center justify-center relative overflow-hidden">
-                <span className="text-3xl sm:text-4xl filter drop-shadow">
-                  {activePlayer.role === 'tank'
-                    ? '🛡️'
-                    : activePlayer.role === 'medic'
-                    ? '💉'
-                    : activePlayer.role === 'scout'
-                    ? '👁️'
-                    : '🎯'}
-                </span>
+              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 border-emerald-400/80 bg-slate-900/90 shadow-[0_0_30px_rgba(16,185,129,0.5)] flex flex-col items-center justify-center p-2 relative overflow-hidden">
+                <img
+                  src={isWounded ? '/assets/icons/roles/player-wounded.png' : `/assets/icons/roles/role-${activePlayer.role}.png`}
+                  alt={activePlayer.nickname}
+                  className="w-14 h-14 sm:w-16 sm:h-16 object-contain drop-shadow"
+                />
                 {isWounded && (
                   <span className="absolute bottom-1 text-[11px] font-mono font-bold text-red-400 animate-pulse">
                     CRÍTICO
@@ -521,8 +517,8 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
       {isDischarged && (
         <div className="absolute inset-0 z-40 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="max-w-md w-full bg-slate-900 border-2 border-emerald-400 rounded-2xl p-6 text-center shadow-[0_0_50px_rgba(16,185,129,0.7)] flex flex-col items-center gap-3">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center text-3xl shadow-[0_0_20px_rgba(16,185,129,0.6)] animate-pulse">
-              🏥✨
+            <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center p-2 shadow-[0_0_20px_rgba(16,185,129,0.6)] animate-pulse">
+              <img src="/assets/icons/structures/structure-hospital.png" alt="Hospital" className="w-10 h-10 object-contain drop-shadow" />
             </div>
             <div className="flex flex-col">
               <span className="font-mono font-black text-lg sm:text-xl text-emerald-300 tracking-wider">

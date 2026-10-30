@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Player, Weapon, Pet, Monster } from '../../types/game';
-import { DEFAULT_WEAPONS_BY_ROLE, getModifiedWeaponStats } from '../../services/combatEngine';
+import { DEFAULT_WEAPONS_BY_ROLE, getModifiedWeaponStats, getWeaponIcon } from '../../services/combatEngine';
 import { soundEffects } from '../../services/soundEffects';
 import { usePvPCombat } from '../../hooks/usePvPCombat';
 import { supabase } from '../../lib/supabase';
@@ -203,15 +203,15 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
   const getRoleAvatar = (role?: string) => {
     switch (role) {
       case 'tank':
-        return '🛡️';
+        return '/assets/icons/roles/role-tank.png';
       case 'scout':
-        return '👁️';
+        return '/assets/icons/roles/role-scout.png';
       case 'marksman':
-        return '🎯';
+        return '/assets/icons/roles/role-marksman.png';
       case 'medic':
-        return '✚';
+        return '/assets/icons/roles/role-medic.png';
       default:
-        return '👤';
+        return '/assets/icons/roles/role-scout.png';
     }
   };
 
@@ -417,7 +417,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
           <div className="rounded-xl border border-red-500/40 bg-gray-950/80 p-3 sm:p-3.5 shadow-lg">
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-2">
-                <span className="text-lg">{getRoleAvatar(opponentPlayer.role)}</span>
+                <img src={getRoleAvatar(opponentPlayer.role)} alt={opponentPlayer.nickname} className="w-5 h-5 object-contain" />
                 <div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm sm:text-base font-black text-white tracking-wide">
@@ -498,8 +498,12 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
               <div className="absolute inset-0 rounded-full bg-red-500/10 animate-ping pointer-events-none" />
 
               {/* Avatar / Icono del Rival */}
-              <div className="text-5xl sm:text-6xl font-black text-red-100 drop-shadow-[0_0_10px_rgba(239,68,68,0.8)] transition-transform group-hover:scale-105">
-                {(opponentPlayer as any).avatar || getRoleAvatar(opponentPlayer.role)}
+              <div className="w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center transition-transform group-hover:scale-105">
+                <img
+                  src={getRoleAvatar(opponentPlayer.role)}
+                  alt={opponentPlayer.nickname}
+                  className="w-24 h-24 sm:w-28 sm:h-28 object-contain drop-shadow-[0_0_15px_rgba(239,68,68,0.8)]"
+                />
               </div>
 
               {/* Efecto de impacto visual si recibe daño reciente */}
@@ -527,8 +531,8 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
         <div className="rounded-xl border border-cyan-500/30 bg-cyan-950/20 p-3 sm:p-4">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center text-sm font-black text-cyan-300">
-                👤
+              <div className="w-8 h-8 rounded-lg bg-cyan-950/80 border border-cyan-500/40 flex items-center justify-center p-1 text-sm font-black text-cyan-300">
+                <img src={getRoleAvatar(myPlayer.role)} alt={myPlayer.nickname} className="w-6 h-6 object-contain" />
               </div>
               <div>
                 <span className="text-xs sm:text-sm font-bold text-cyan-200">{myPlayer.nickname} (Tú)</span>
@@ -576,7 +580,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
                 : 'bg-gradient-to-r from-red-600 to-amber-600 text-white hover:from-red-500 hover:to-amber-500 border border-red-400 shadow-[0_0_20px_rgba(239,68,68,0.4)] active:scale-95'
             }`}
           >
-            <Crosshair className="w-5 h-5" />
+            <img src={getWeaponIcon(equippedWeapon.weaponType)} alt={equippedWeapon.name} className="w-5 h-5 object-contain" />
             <span>{attackCooldown > 0 ? 'RECARGANDO...' : `DISPARAR (${effectiveDamage} DMG)`}</span>
           </button>
 
@@ -597,8 +601,8 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
           <div className="absolute inset-0 bg-black/95 z-20 flex flex-col items-center justify-center p-6 text-center animate-fadeIn">
             {duelOutcome === 'victory' && (
               <>
-                <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center text-3xl mb-3 shadow-[0_0_30px_rgba(16,185,129,0.5)]">
-                  👑
+                <div className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-400 flex items-center justify-center p-2 mb-3 shadow-[0_0_30px_rgba(16,185,129,0.5)]">
+                  <img src="/assets/icons/hud/hud-trophy.png" alt="Victoria" className="w-10 h-10 object-contain drop-shadow" />
                 </div>
                 <h3 className="text-xl font-black text-emerald-400 uppercase tracking-widest mb-1">
                   ¡VICTORIA EN DUELO TÁCTICO!
@@ -615,8 +619,8 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
 
             {duelOutcome === 'defeat' && (
               <>
-                <div className="w-16 h-16 rounded-full bg-red-500/20 border-2 border-red-500 flex items-center justify-center text-3xl mb-3 shadow-[0_0_30px_rgba(239,68,68,0.5)] animate-pulse">
-                  ☠️
+                <div className="w-16 h-16 rounded-full bg-red-500/20 border-2 border-red-500 flex items-center justify-center p-2 mb-3 shadow-[0_0_30px_rgba(239,68,68,0.5)] animate-pulse">
+                  <img src="/assets/icons/roles/player-wounded.png" alt="Derrota" className="w-10 h-10 object-contain drop-shadow" />
                 </div>
                 <h3 className="text-xl font-black text-red-500 uppercase tracking-widest mb-1">
                   CAÍDO EN DUELO TÁCTICO

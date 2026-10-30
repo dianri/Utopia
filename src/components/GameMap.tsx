@@ -19,7 +19,6 @@ import { createGeoJsonCircle, getDistanceMeters } from '../services/geoUtils';
 import { getVisionRadius, getCrateVisualInfo } from '../services/combatEngine';
 import { MAX_PETS_PER_PLAYER, getMonsterVisualConfig } from '../services/mapEntities';
 import { soundEffects } from '../services/soundEffects';
-import { Locate } from 'lucide-react';
 
 export const MAP_STYLES = {
   tactical: 'https://tiles.openfreemap.org/styles/dark',
@@ -1160,8 +1159,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     const chestHtml = isOpened
       ? `
         <div class="relative flex items-center justify-center">
-          <div class="w-10 h-10 bg-emerald-950 border-2 border-emerald-400 rounded-lg shadow-lg shadow-emerald-500/50 flex items-center justify-center text-xl text-white font-black">
-            🔓
+          <div class="w-10 h-10 bg-emerald-950 border-2 border-emerald-400 rounded-lg shadow-lg shadow-emerald-500/50 flex items-center justify-center p-1">
+            <img src="/assets/icons/chests/chest-looted.png" alt="Cofre Saqueado" class="w-8 h-8 object-contain" />
           </div>
         </div>
         <span class="mt-1 px-2 py-0.5 text-[10px] font-bold bg-hud-dark/90 border border-emerald-500/60 text-emerald-300 rounded uppercase tracking-wider">
@@ -1172,8 +1171,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       ? `
         <div class="relative flex items-center justify-center">
           <div class="absolute w-14 h-14 bg-red-600/30 rounded-full animate-ping"></div>
-          <div class="w-10 h-10 bg-red-950 border-2 border-red-500 rounded-lg shadow-lg shadow-red-500/60 flex items-center justify-center text-xl text-red-200 font-black animate-pulse">
-            🔒
+          <div class="w-10 h-10 bg-red-950 border-2 border-red-500 rounded-lg shadow-lg shadow-red-500/60 flex items-center justify-center p-1 animate-pulse">
+            <img src="/assets/icons/chests/chest-guarded.png" alt="Cofre Custodiado" class="w-8 h-8 object-contain" />
           </div>
         </div>
         <span class="mt-0.5 px-1.5 py-0.2 text-[9px] font-bold bg-red-950/90 border border-red-500/70 text-red-300 rounded uppercase tracking-wider">
@@ -1183,8 +1182,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       : `
         <div class="relative flex items-center justify-center">
           <div class="absolute w-12 h-12 bg-amber-500/20 rounded-full animate-ping"></div>
-          <div class="w-10 h-10 bg-amber-500 border-2 border-yellow-200 rounded-lg shadow-lg shadow-amber-500/50 flex items-center justify-center text-xl text-black font-black">
-            👑
+          <div class="w-10 h-10 bg-amber-950 border-2 border-amber-400 rounded-lg shadow-lg shadow-amber-500/50 flex items-center justify-center p-1">
+            <img src="/assets/icons/chests/chest-active.png" alt="Cofre Activo" class="w-8 h-8 object-contain drop-shadow" />
           </div>
         </div>
         <span class="mt-0.5 px-1.5 py-0.2 text-[9px] font-bold bg-hud-dark/90 border border-amber-500/50 text-amber-300 rounded uppercase tracking-wider">
@@ -1319,8 +1318,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
               </div>
               <div class="relative flex items-center justify-center">
                 <div class="absolute w-12 h-12 ${info.glowColor} rounded-full animate-ping"></div>
-                <div class="w-9 h-9 ${info.badgeBg} border-2 ${info.borderColor} rounded-lg shadow-lg flex items-center justify-center text-lg">
-                  ${info.icon}
+                <div class="w-9 h-9 ${info.badgeBg} border-2 ${info.borderColor} rounded-lg shadow-lg flex items-center justify-center p-1">
+                  <img src="${info.icon}" alt="${info.label}" class="w-7 h-7 object-contain" />
                 </div>
               </div>
               <span class="mt-1 px-1.5 py-0.5 text-[9px] font-mono font-bold bg-hud-dark/95 border ${info.borderColor} ${info.textColor} rounded uppercase tracking-wider whitespace-nowrap shadow-md">
@@ -1345,8 +1344,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           el.innerHTML = `
             <div class="relative flex items-center justify-center">
               <div class="absolute w-12 h-12 ${info.glowColor} rounded-full animate-ping"></div>
-              <div class="w-9 h-9 ${info.badgeBg} border-2 ${info.borderColor} rounded-lg shadow-lg flex items-center justify-center text-lg">
-                ${info.icon}
+              <div class="w-9 h-9 ${info.badgeBg} border-2 ${info.borderColor} rounded-lg shadow-lg flex items-center justify-center p-1">
+                <img src="${info.icon}" alt="${info.label}" class="w-7 h-7 object-contain" />
               </div>
             </div>
             <span class="mt-1 px-1.5 py-0.5 text-[9px] font-mono font-bold bg-hud-dark/95 border ${info.borderColor} ${info.textColor} rounded uppercase tracking-wider whitespace-nowrap shadow-md">
@@ -1420,7 +1419,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const isHospital = structure.type === 'hospital';
       const badgeBorder = isHospital ? 'border-emerald-400' : 'border-cyan-400';
       const badgeText = isHospital ? 'text-emerald-300' : 'text-cyan-300';
-      const icon = isHospital ? '🏥' : '🏠';
+      const icon = isHospital ? '/assets/icons/structures/structure-hospital.png' : '/assets/icons/structures/structure-shelter.png';
       const aura = isHospital ? 'bg-emerald-500/25 animate-ping' : 'bg-cyan-500/20';
       const label = isHospital ? `HOSPITAL (${structure.radius}m)` : `${structure.name.toUpperCase()} (${structure.radius}m)`;
 
@@ -1433,8 +1432,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
             <div class="absolute w-12 h-12 ${aura} rounded-full"></div>
-            <div class="w-10 h-10 ${isHospital ? 'bg-emerald-950/90' : 'bg-cyan-950/90'} border-2 ${badgeBorder} rounded-xl shadow-lg flex items-center justify-center text-xl">
-              ${icon}
+            <div class="w-10 h-10 ${isHospital ? 'bg-emerald-950/90' : 'bg-cyan-950/90'} border-2 ${badgeBorder} rounded-xl shadow-lg flex items-center justify-center p-1">
+              <img src="${icon}" alt="${structure.name}" class="w-7 h-7 object-contain" />
             </div>
           </div>
           <span class="mt-1 px-1.5 py-0.5 text-[9px] font-mono font-bold bg-hud-dark/95 border ${badgeBorder} ${badgeText} rounded uppercase tracking-wider whitespace-nowrap shadow-md">
@@ -1473,26 +1472,26 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     const getTierStyle = (item: { tier: number; category?: string; type?: string }) => {
       if (item.category === 'health' || item.type === 'medkit') {
-        return { border: 'border-emerald-500', bg: 'bg-emerald-950/90', text: 'text-emerald-300', aura: 'bg-emerald-500/30', icon: '❤️' };
+        return { border: 'border-emerald-500', bg: 'bg-emerald-950/90', text: 'text-emerald-300', aura: 'bg-emerald-500/30', icon: '/assets/icons/crates/crate-medkit.png' };
       }
       if (item.category === 'ammo' || item.type === 'ammo') {
-        return { border: 'border-amber-400', bg: 'bg-amber-950/90', text: 'text-amber-300', aura: 'bg-amber-500/30', icon: '⚡' };
+        return { border: 'border-amber-400', bg: 'bg-amber-950/90', text: 'text-amber-300', aura: 'bg-amber-500/30', icon: '/assets/icons/crates/crate-ammo.png' };
       }
       switch (item.tier) {
         case 7:
-          return { border: 'border-red-500', bg: 'bg-red-950/90', text: 'text-red-300', aura: 'bg-red-500/30', icon: '🚀' };
+          return { border: 'border-red-500', bg: 'bg-red-950/90', text: 'text-red-300', aura: 'bg-red-500/30', icon: '/assets/icons/weapons/weapon-rpg.png' };
         case 6:
-          return { border: 'border-orange-500', bg: 'bg-orange-950/90', text: 'text-orange-300', aura: 'bg-orange-500/30', icon: '💣' };
+          return { border: 'border-orange-500', bg: 'bg-orange-950/90', text: 'text-orange-300', aura: 'bg-orange-500/30', icon: '/assets/icons/weapons/weapon-grenade.png' };
         case 5:
-          return { border: 'border-cyan-400', bg: 'bg-cyan-950/90', text: 'text-cyan-300', aura: 'bg-cyan-500/30', icon: '🎯' };
+          return { border: 'border-cyan-400', bg: 'bg-cyan-950/90', text: 'text-cyan-300', aura: 'bg-cyan-500/30', icon: '/assets/icons/weapons/weapon-rifle.png' };
         case 4:
-          return { border: 'border-purple-400', bg: 'bg-purple-950/90', text: 'text-purple-300', aura: 'bg-purple-500/30', icon: '💥' };
+          return { border: 'border-purple-400', bg: 'bg-purple-950/90', text: 'text-purple-300', aura: 'bg-purple-500/30', icon: '/assets/icons/weapons/weapon-shotgun.png' };
         case 3:
-          return { border: 'border-blue-400', bg: 'bg-blue-950/90', text: 'text-blue-300', aura: 'bg-blue-500/30', icon: '⚡' };
+          return { border: 'border-blue-400', bg: 'bg-blue-950/90', text: 'text-blue-300', aura: 'bg-blue-500/30', icon: '/assets/icons/weapons/weapon-pistol.png' };
         case 2:
-          return { border: 'border-amber-400', bg: 'bg-amber-950/90', text: 'text-amber-300', aura: 'bg-amber-500/30', icon: '🪓' };
+          return { border: 'border-amber-400', bg: 'bg-amber-950/90', text: 'text-amber-300', aura: 'bg-amber-500/30', icon: '/assets/icons/weapons/weapon-axe.png' };
         default:
-          return { border: 'border-emerald-400', bg: 'bg-emerald-950/90', text: 'text-emerald-300', aura: 'bg-emerald-500/30', icon: '🗡️' };
+          return { border: 'border-emerald-400', bg: 'bg-emerald-950/90', text: 'text-emerald-300', aura: 'bg-emerald-500/30', icon: '/assets/icons/weapons/weapon-knife.png' };
       }
     };
 
@@ -1507,8 +1506,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
             <div class="absolute w-10 h-10 ${style.aura} rounded-full animate-ping"></div>
-            <div class="w-8 h-8 ${style.bg} border-2 ${style.border} rounded-lg shadow-lg flex items-center justify-center text-sm transition-transform group-hover:scale-110">
-              ${style.icon}
+            <div class="w-8 h-8 ${style.bg} border-2 ${style.border} rounded-lg shadow-lg flex items-center justify-center p-1 transition-transform group-hover:scale-110">
+              <img src="${style.icon}" alt="${dropped.item.name}" class="w-6 h-6 object-contain" />
             </div>
           </div>
           <span class="mt-0.5 px-1 py-0.5 text-[8px] font-mono font-bold bg-hud-dark/95 border ${style.border} ${style.text} rounded uppercase tracking-wider whitespace-nowrap shadow-md">
@@ -1591,8 +1590,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             <!-- Icono / Avatar con pulso -->
             <div class="relative flex items-center justify-center w-10 h-10">
               <div class="absolute inset-0 rounded-full bg-emerald-400/30 animate-ping pointer-events-none"></div>
-              <div class="w-8 h-8 rounded-full bg-slate-950/90 border-2 border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)] flex items-center justify-center text-lg">
-                ${wp.pet.icon}
+              <div class="w-8 h-8 rounded-full bg-slate-950/90 border-2 border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)] flex items-center justify-center p-1">
+                <img src="${wp.pet.icon}" alt="${wp.pet.name}" class="w-6 h-6 object-contain" />
               </div>
             </div>
             <!-- Etiqueta del nombre centrada bajo el avatar -->
@@ -1719,8 +1718,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.innerHTML = `
           <div class="relative flex items-center justify-center pointer-events-none transition-transform duration-200 ${visual.scaleClass}">
             <div class="w-12 h-12 ${visual.pingBg} rounded-full animate-ping absolute"></div>
-            <div class="w-10 h-10 ${visual.coreBg} border-2 ${visual.borderColor} rounded-full flex items-center justify-center shadow-lg ${visual.glowColor}">
-              <span class="text-xl">${visual.icon}</span>
+            <div class="w-10 h-10 ${visual.coreBg} border-2 ${visual.borderColor} rounded-full flex items-center justify-center p-1 shadow-lg ${visual.glowColor}">
+              <img src="${visual.icon}" alt="${m.name || visual.label}" class="w-8 h-8 object-contain drop-shadow" />
             </div>
             <!-- Placa táctica con distintivo y nombre de la amenaza -->
             <div id="monster-badge-${monsterKey}" class="absolute -bottom-5 whitespace-nowrap px-1.5 py-0.5 rounded text-[9px] font-mono font-bold tracking-wider ${visual.badgeBg} border ${visual.borderColor}/60 shadow-md pointer-events-none">
@@ -1787,10 +1786,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     });
 
     const roleIcons: Record<PlayerRole, string> = {
-      medic: '✚',
-      tank: '🛡',
-      scout: '👁',
-      marksman: '🎯',
+      medic: '/assets/icons/roles/role-medic.png',
+      tank: '/assets/icons/roles/role-tank.png',
+      scout: '/assets/icons/roles/role-scout.png',
+      marksman: '/assets/icons/roles/role-marksman.png',
     };
 
     const roleColors: Record<PlayerRole, string> = {
@@ -1808,11 +1807,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const isCriticallyWounded = p.isCriticallyWounded || p.status === 'critically_wounded' || (p.hp <= 0 && p.isAlive);
       const isInside = !!p.insideBuildingId;
 
-      const avatarIconContent = isCriticallyWounded
-        ? '🩸'
+      const avatarIconSrc = isCriticallyWounded
+        ? '/assets/icons/roles/player-wounded.png'
         : p.isAlive
         ? roleIcons[p.role]
-        : '🪦';
+        : '/assets/icons/roles/player-ghost.png';
 
       const avatarClasses = isCriticallyWounded
         ? 'bg-red-900 border-red-500 animate-pulse'
@@ -1841,8 +1840,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
             ${isMe ? '<div class="absolute w-12 h-12 bg-cyan-400/20 rounded-full animate-ping"></div>' : ''}
-            <div id="avatar-icon-${p.id}" class="w-9 h-9 rounded-full ${avatarClasses} border-2 shadow-lg flex items-center justify-center text-sm font-bold text-white">
-              ${avatarIconContent}
+            <div id="avatar-icon-${p.id}" class="w-9 h-9 rounded-full ${avatarClasses} border-2 shadow-lg flex items-center justify-center p-1">
+              <img src="${avatarIconSrc}" alt="${p.nickname}" class="w-6 h-6 object-contain" />
             </div>
           </div>
           <div class="mt-0.5 px-1.5 py-0.5 bg-hud-dark/95 border ${isMe ? 'border-cyan-400' : isCriticallyWounded ? 'border-red-500' : 'border-hud-border'} rounded shadow text-center min-w-[50px]">
@@ -1894,8 +1893,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }
         const avatarIcon = document.getElementById(`avatar-icon-${p.id}`);
         if (avatarIcon) {
-          avatarIcon.className = `w-9 h-9 rounded-full ${avatarClasses} border-2 shadow-lg flex items-center justify-center text-sm font-bold text-white`;
-          avatarIcon.textContent = avatarIconContent;
+          avatarIcon.className = `w-9 h-9 rounded-full ${avatarClasses} border-2 shadow-lg flex items-center justify-center p-1`;
+          avatarIcon.innerHTML = `<img src="${avatarIconSrc}" alt="${p.nickname}" class="w-6 h-6 object-contain" />`;
         }
         const playerLabel = document.getElementById(`player-label-${p.id}`);
         if (playerLabel) {
@@ -1958,8 +1957,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             >
               <div id="pet-avatar-${markerKey}" class="w-6 h-6 rounded-full bg-slate-950/90 border ${
                 pet.isWounded ? 'border-gray-500 grayscale opacity-60' : 'border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
-              } flex items-center justify-center text-xs">
-                ${pet.icon}
+              } flex items-center justify-center p-0.5">
+                <img src="${pet.icon}" alt="${pet.name}" class="w-5 h-5 object-contain" />
               </div>
               ${pet.isWounded ? '<span class="text-[8px] animate-spin">💫</span>' : ''}
             </div>
@@ -1984,7 +1983,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             if (avatar) {
               avatar.className = `w-6 h-6 rounded-full bg-slate-950/90 border ${
                 pet.isWounded ? 'border-gray-500 grayscale opacity-60' : 'border-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
-              } flex items-center justify-center text-xs`;
+              } flex items-center justify-center p-0.5`;
+              avatar.innerHTML = `<img src="${pet.icon}" alt="${pet.name}" class="w-5 h-5 object-contain" />`;
             }
           }
         }
@@ -2009,6 +2009,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     ghostPings.forEach((ping) => {
       if (!pingMarkersRef.current.has(ping.id)) {
+        const pingIcon = `/assets/icons/hud/ping-${ping.type || 'assist'}.png`;
         const el = document.createElement('div');
         el.className = 'ping-marker select-none flex flex-col items-center pointer-events-none';
         if (isMeWounded) {
@@ -2017,8 +2018,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
             <div class="w-12 h-12 bg-cyan-500/40 rounded-full animate-ping"></div>
-            <div class="w-6 h-6 bg-cyan-400 border border-white rounded-full flex items-center justify-center text-xs font-black text-black">
-              !
+            <div class="w-8 h-8 bg-black/80 border border-cyan-400 rounded-full flex items-center justify-center p-1 shadow-lg">
+              <img src="${pingIcon}" alt="Ping ${ping.type}" class="w-6 h-6 object-contain" />
             </div>
           </div>
           <span class="mt-1 px-1.5 py-0.5 text-[9px] font-bold bg-black/80 text-cyan-300 rounded border border-cyan-500/50">
@@ -2176,14 +2177,14 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             });
           }
         }}
-        className={`absolute bottom-28 right-4 z-20 p-3 rounded-full border shadow-xl backdrop-blur-md transition-all ${
+        className={`absolute bottom-28 right-4 z-20 p-2.5 rounded-full border shadow-xl backdrop-blur-md transition-all flex items-center justify-center ${
           followPlayer
             ? 'bg-hud-cyan/20 border-hud-cyan text-hud-cyan shadow-hud-cyan/30'
             : 'bg-hud-card/80 border-hud-border text-hud-muted hover:text-white'
         }`}
         title="Centrar en mi posición"
       >
-        <Locate className="w-6 h-6" />
+        <img src="/assets/icons/hud/hud-locate-center.png" alt="Centrar" className="w-6 h-6 object-contain" />
       </button>
 
       {/* CONTROLES TÁCTICOS SUPERIOR DERECHA (BRÚJULA + SELECTOR DE MAPA EN COLUMNA ORDENADA) */}
@@ -2192,10 +2193,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         <button
           type="button"
           onClick={handleResetNorth}
-          className="w-10 h-10 rounded-full bg-slate-950/85 border-2 border-cyan-400 flex items-center justify-center text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)] hover:bg-cyan-950/60 transition-all active:scale-95 cursor-pointer"
+          className="w-10 h-10 rounded-full bg-slate-950/85 border-2 border-cyan-400 flex items-center justify-center p-1 text-cyan-400 shadow-[0_0_12px_rgba(6,182,212,0.4)] hover:bg-cyan-950/60 transition-all active:scale-95 cursor-pointer"
           title="Orientar al Norte"
         >
-          🧭
+          <img src="/assets/icons/hud/hud-compass.png" alt="Norte" className="w-7 h-7 object-contain" />
         </button>
 
         {/* 2. Botón Selector Satélite / Táctico */}
@@ -2207,12 +2208,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         >
           {isSatelliteView ? (
             <>
-              <span>📡</span>
+              <img src="/assets/icons/hud/hud-map-tactical.png" alt="Táctico" className="w-5 h-5 object-contain" />
               <span>TÁCTICO</span>
             </>
           ) : (
             <>
-              <span>🌍</span>
+              <img src="/assets/icons/hud/hud-map-satellite.png" alt="Satélite" className="w-5 h-5 object-contain" />
               <span>SATÉLITE</span>
             </>
           )}

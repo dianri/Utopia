@@ -342,8 +342,8 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
         {/* CABECERA: COFRE Y PROGRESO COOPERATIVO */}
         <div className="p-2.5 sm:p-3 bg-gradient-to-r from-amber-950/70 via-slate-900 to-amber-950/70 border-b border-amber-500/40 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-amber-500/20 border border-amber-400/60 flex items-center justify-center text-amber-400 shrink-0">
-              <KeyRound className="w-4 h-4" />
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-amber-500/20 border border-amber-400/60 flex items-center justify-center p-1 text-amber-400 shrink-0">
+              <img src="/assets/icons/chests/chest-key-chip.png" alt="Key Chip" className="w-5 h-5 object-contain" />
             </div>
             <div className="flex flex-col min-w-0">
               <span className="font-mono font-black text-xs sm:text-sm text-white uppercase tracking-wider truncate">
@@ -523,7 +523,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
               {/* Rueda / Dial Táctico */}
               <div className="flex flex-col items-center gap-2.5 w-full">
                 <div
-                  className={`w-18 h-18 sm:w-20 sm:h-20 rounded-full border-4 flex items-center justify-center transition-all shadow-xl ${
+                  className={`w-18 h-18 sm:w-20 sm:h-20 rounded-full border-4 flex items-center justify-center p-2 transition-all shadow-xl ${
                     isInSweetSpot
                       ? 'border-emerald-400 bg-emerald-950/70 text-emerald-300 shadow-[0_0_25px_rgba(52,211,153,0.7)] scale-105'
                       : isNearSweetSpot
@@ -531,7 +531,7 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
                       : 'border-slate-700 bg-slate-950 text-slate-500'
                   }`}
                 >
-                  <RotateCw className={`w-7 h-7 sm:w-8 sm:h-8 ${isInSweetSpot ? 'animate-spin' : ''}`} />
+                  <img src="/assets/icons/crates/crate-dial.png" alt="Dial" className={`w-12 h-12 object-contain ${isInSweetSpot ? 'animate-spin' : ''}`} />
                 </div>
 
                 <div className="w-full flex flex-col gap-1 px-2">

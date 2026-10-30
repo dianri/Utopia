@@ -218,12 +218,28 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 
 ## 🎖️ Clases de Combate
 
-| Clase | Rol Táctico | Habilidad Especial / Ventaja |
-| :--- | :--- | :--- |
-| ✚ **Médico** | Soporte y Sanación | Reanimación rápida y radio de curación táctica ampliado a 35m. |
-| 🛡️ **Tanque** | Primera Línea | +50% de vida base (150 HP) y atracción prioritaria del aggro del monstruo. |
-| 👁️ **Explorador** | Reconocimiento | Radio de visión de 105m y habilidad activa **Radar Táctico** (revela al monstruo a toda la escuadra). |
-| 🎯 **Tirador** | Daño a Distancia | +35% de daño con armas de fuego y mayor alcance efectivo de disparo. |
+| Clase | Icono Táctico | Rol Táctico | Habilidad Especial / Ventaja |
+| :--- | :--- | :--- | :--- |
+| **Médico** | `/assets/icons/roles/role-medic.png` | Soporte y Sanación | Reanimación rápida y radio de curación táctica ampliado a 35m. |
+| **Tanque** | `/assets/icons/roles/role-tank.png` | Primera Línea | +50% de vida base (150 HP) y atracción prioritaria del aggro del monstruo. |
+| **Explorador** | `/assets/icons/roles/role-scout.png` | Reconocimiento | Radio de visión de 105m y habilidad activa **Radar Táctico** (revela al monstruo a toda la escuadra). |
+| **Tirador** | `/assets/icons/roles/role-marksman.png` | Daño a Distancia | +35% de daño con armas de fuego y mayor alcance efectivo de disparo. |
+
+---
+
+## 🎨 Iconografía Táctica Militar (Suite 50 Assets PNG)
+
+El juego cuenta con un atlas completo de **50 iconos tácticos militares ciberpunk** con transparencia alfa limpia generados y organizados en `public/assets/icons/`:
+
+- **App & Hero (`app/`):** Logo táctico vectorial (`app-logo.png`) y emblema biomecánico de portada (`app-hero.png`).
+- **Cofres del Tesoro (`chests/`):** Cofre activo iluminado (`chest-active.png`), custodiado bajo alarma perimetral (`chest-guarded.png`), saqueado/abierto (`chest-looted.png`) y microchip de cerrojos (`chest-key-chip.png`).
+- **Cajas de Suministros & Airdrops (`crates/`):** Airdrop en paracaídas (`crate-airdrop.png`), caja de munición (`crate-ammo.png`), dial magnético de fase (`crate-dial.png`), caja de explosivos (`crate-explosives.png`), botiquín médico (`crate-medkit.png`) y caja de armamento (`crate-weapons.png`).
+- **HUD & Navegación (`hud/`):** Modo audio activo (`hud-audio-on.png`), modo sigilo táctico (`hud-audio-stealth.png`), acceso a mochila táctica (`hud-backpack.png`), brújula al norte (`hud-compass.png`), botón de salida de misión (`hud-leave-mission.png`), centrado de cámara (`hud-locate-center.png`), conmutador de satélite (`hud-map-satellite.png`), conmutador táctico (`hud-map-tactical.png`), trofeo de campeón (`hud-trophy.png`), y pings de auxilio, peligro y botín (`ping-assist.png`, `ping-danger.png`, `ping-loot.png`).
+- **Monstruos Biomecánicos (`monsters/`):** Rastreador Sombrío (`monster-stalker.png`), Devorador Alfa (`monster-alpha.png`) y Coloso de Sombra (`monster-colossus.png`).
+- **Mascotas Silvestres y Compañeros (`pets/`):** Perro Guardián (`pet-dog.png`), Dron Táctico (`pet-drone.png`), Roedor Eléctrico (`pet-electric-mouse.png`), Conejo Veloz (`pet-rabbit.png`), Gato Callejero (`pet-cat.png`) y Robot Médico (`pet-medbot.png`).
+- **Roles y Estados de Agente (`roles/`):** Insignias de Médico (`role-medic.png`), Tanque (`role-tank.png`), Explorador (`role-scout.png`), Tirador (`role-marksman.png`), Agente Herido de Muerte (`player-wounded.png`) y Modo Fantasma (`player-ghost.png`).
+- **Estructuras Tácticas (`structures/`):** Hospital de Campaña (`structure-hospital.png`), Refugio Táctico (`structure-shelter.png`) y Cápsula Bio-Médica del Pod (`hospital-pod.png`).
+- **Arsenal y Armas (`weapons/`):** Puños (`weapon-fists.png`), Cuchillo táctico (`weapon-knife.png`), Hacha táctica (`weapon-axe.png`), Pistola 9mm (`weapon-pistol.png`), Escopeta de postas (`weapon-shotgun.png`), Fusil táctico M4 (`weapon-rifle.png`), Granadas (`weapon-grenade.png`) y Lanzacohetes RPG (`weapon-rpg.png`).
 
 ---
 

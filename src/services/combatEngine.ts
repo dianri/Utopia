@@ -286,6 +286,24 @@ export interface CrateVisualInfo {
   glowColor: string;
 }
 
+export const WEAPON_ICONS: Record<WeaponType, string> = {
+  fists: '/assets/icons/weapons/weapon-fists.png',
+  knife: '/assets/icons/weapons/weapon-knife.png',
+  axe: '/assets/icons/weapons/weapon-axe.png',
+  pistol: '/assets/icons/weapons/weapon-pistol.png',
+  shotgun: '/assets/icons/weapons/weapon-shotgun.png',
+  rifle: '/assets/icons/weapons/weapon-rifle.png',
+  grenade: '/assets/icons/weapons/weapon-grenade.png',
+  rocket_launcher: '/assets/icons/weapons/weapon-rpg.png',
+};
+
+export function getWeaponIcon(weaponType?: WeaponType | string): string {
+  if (weaponType && weaponType in WEAPON_ICONS) {
+    return WEAPON_ICONS[weaponType as WeaponType];
+  }
+  return '/assets/icons/weapons/weapon-fists.png';
+}
+
 /**
  * Retorna la información visual (icono, colores, etiqueta) según el tipo o recompensa de la caja de suministros
  */
@@ -296,7 +314,7 @@ export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
         return {
           type: 'medkit',
           label: 'Botiquín',
-          icon: '❤️',
+          icon: '/assets/icons/crates/crate-medkit.png',
           badgeBg: 'bg-emerald-950/90',
           borderColor: 'border-emerald-400',
           textColor: 'text-emerald-300',
@@ -306,7 +324,7 @@ export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
         return {
           type: 'ammo',
           label: 'Munición',
-          icon: '⚡',
+          icon: '/assets/icons/crates/crate-ammo.png',
           badgeBg: 'bg-amber-950/90',
           borderColor: 'border-amber-400',
           textColor: 'text-amber-300',
@@ -316,7 +334,7 @@ export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
         return {
           type: 'rifle',
           label: 'Rifle Táctico',
-          icon: '🎯',
+          icon: '/assets/icons/crates/crate-weapons.png',
           badgeBg: 'bg-cyan-950/90',
           borderColor: 'border-cyan-400',
           textColor: 'text-cyan-300',
@@ -326,7 +344,7 @@ export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
         return {
           type: 'shotgun',
           label: 'Escopeta',
-          icon: '💥',
+          icon: '/assets/icons/crates/crate-weapons.png',
           badgeBg: 'bg-purple-950/90',
           borderColor: 'border-purple-400',
           textColor: 'text-purple-300',
@@ -336,7 +354,7 @@ export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
         return {
           type: 'rocket_launcher',
           label: 'Lanzacohetes',
-          icon: '🚀',
+          icon: '/assets/icons/crates/crate-explosives.png',
           badgeBg: 'bg-red-950/90',
           borderColor: 'border-red-400',
           textColor: 'text-red-300',
@@ -346,7 +364,7 @@ export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
         return {
           type: 'grenade',
           label: 'Granadas',
-          icon: '💣',
+          icon: '/assets/icons/crates/crate-explosives.png',
           badgeBg: 'bg-orange-950/90',
           borderColor: 'border-orange-400',
           textColor: 'text-orange-300',
@@ -356,7 +374,7 @@ export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
         return {
           type: 'melee',
           label: 'Cuchillo / Hacha',
-          icon: '🪓',
+          icon: '/assets/icons/crates/crate-weapons.png',
           badgeBg: 'bg-yellow-950/90',
           borderColor: 'border-yellow-400',
           textColor: 'text-yellow-300',
@@ -371,7 +389,7 @@ export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
     return {
       type: 'rifle',
       label: 'Rifle Táctico',
-      icon: '🎯',
+      icon: '/assets/icons/crates/crate-weapons.png',
       badgeBg: 'bg-cyan-950/90',
       borderColor: 'border-cyan-400',
       textColor: 'text-cyan-300',
@@ -382,7 +400,7 @@ export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
     return {
       type: 'shotgun',
       label: 'Escopeta',
-      icon: '💥',
+      icon: '/assets/icons/crates/crate-weapons.png',
       badgeBg: 'bg-purple-950/90',
       borderColor: 'border-purple-400',
       textColor: 'text-purple-300',
@@ -393,7 +411,7 @@ export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
     return {
       type: 'melee',
       label: 'Cuchillo / Bate',
-      icon: '🗡️',
+      icon: '/assets/icons/crates/crate-weapons.png',
       badgeBg: 'bg-yellow-950/90',
       borderColor: 'border-yellow-400',
       textColor: 'text-yellow-300',
@@ -404,7 +422,7 @@ export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
     return {
       type: 'medkit',
       label: 'Botiquín',
-      icon: '❤️',
+      icon: '/assets/icons/crates/crate-medkit.png',
       badgeBg: 'bg-emerald-950/90',
       borderColor: 'border-emerald-400',
       textColor: 'text-emerald-300',
@@ -415,7 +433,7 @@ export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
     return {
       type: 'ammo',
       label: 'Munición',
-      icon: '⚡',
+      icon: '/assets/icons/crates/crate-ammo.png',
       badgeBg: 'bg-amber-950/90',
       borderColor: 'border-amber-400',
       textColor: 'text-amber-300',
@@ -426,7 +444,7 @@ export function getCrateVisualInfo(crate: SupplyCrate): CrateVisualInfo {
   return {
     type: 'medkit',
     label: 'Botiquín',
-    icon: '❤️',
+    icon: '/assets/icons/crates/crate-medkit.png',
     badgeBg: 'bg-emerald-950/90',
     borderColor: 'border-emerald-400',
     textColor: 'text-emerald-300',
