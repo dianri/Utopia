@@ -188,35 +188,88 @@
   }
 }
 
-.marker-stepping {
-  animation: tacticalStepBounce 0.42s infinite ease-in-out;
-}
-
-.marker-facing-right {
-  transform: scaleX(1);
-  transition: transform 0.15s ease-out;
-}
-
-.marker-facing-left {
-  transform: scaleX(-1);
-  transition: transform 0.15s ease-out;
-}
-
-.marker-facing-scan {
-  animation: verticalLookScan 0.84s infinite steps(1);
-}
-
 /* ==========================================================================
-   Escudo global contra el Godzilla Bug en MapLibre GL
+   Aislamiento Total de MapLibre GL y Escudo contra Desanclaje / Zoom Drift
    ========================================================================== */
-.maplibregl-marker img {
-  max-width: 48px !important;
-  max-height: 48px !important;
+
+/* El contenedor raíz de MapLibre debe ser inviolable (sin transiciones ni dimensiones fijas) */
+.maplibregl-marker {
+  position: absolute !important;
+  will-change: transform !important;
+  transition: none !important; /* Prohibido transicionar transform en el root */
+  width: 0 !important;
+  height: 0 !important;
+  overflow: visible !important;
+}
+
+/* 1. Contenedor Raíz de Anclaje: Posicionamiento neutro para MapLibre */
+.map-marker-anchor {
+  position: relative;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: visible !important;
+  transition: none !important;
+}
+
+/* 2. Contenedor Interno: Centrado geométrico y soporte de layout */
+.marker-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  user-select: none;
+  transition: none !important;
+}
+
+/* Las restricciones de tamaño aplican ÚNICAMENTE a las imágenes, jamás a los contenedores */
+.marker-entity-img {
+  display: block;
   object-fit: contain !important;
 }
 
-/* Restricción estricta para mascotas (silvestres y acompañantes) */
-.maplibregl-marker[data-entity="pet"] img,
+/* Escalas estrictas por entidad sobre la etiqueta IMG */
+[data-entity="monster"] img,
+.marker-monster img,
+.monster-map-marker img {
+  width: 48px !important;
+  height: 48px !important;
+  max-width: 48px !important;
+  max-height: 48px !important;
+}
+
+[data-entity="structure"] img,
+.marker-structure img,
+[class*="structure-marker-"] img {
+  width: 68px !important;
+  height: 68px !important;
+  max-width: 68px !important;
+  max-height: 68px !important;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 8px rgba(0, 242, 254, 0.3)) !important;
+}
+
+[data-entity="player"] img,
+.marker-player img,
+[class*="player-marker-"] img {
+  width: 44px !important;
+  height: 44px !important;
+  max-width: 44px !important;
+  max-height: 44px !important;
+}
+
+[data-entity="chest"] img,
+.marker-chest img,
+.treasure-marker img {
+  width: 42px !important;
+  height: 42px !important;
+  max-width: 42px !important;
+  max-height: 42px !important;
+}
+
+[data-entity="pet"] img,
 .marker-pet img,
 .pet-marker-container img {
   width: 34px !important;
@@ -225,28 +278,16 @@
   max-height: 34px !important;
 }
 
-/* Escolta de mascotas acompañantes (más compactas para no saturar al jugador) */
-.maplibregl-marker.companion-pet-container img,
-.companion-pet-container img {
+/* Escolta de mascotas de la comitiva (más compactas para no saturar al jugador) */
+.companion-pet-container img,
+.player-escort-pet img {
   width: 28px !important;
   height: 28px !important;
   max-width: 28px !important;
   max-height: 28px !important;
 }
 
-/* Jerarquía de capas para avatar y comitiva */
-.maplibregl-marker.companion-pet-container,
-.companion-pet-container {
-  z-index: 25 !important;
-}
-
-.maplibregl-marker.marker-player[data-is-me="true"],
-.marker-player[data-is-me="true"] {
-  z-index: 40 !important;
-}
-
-/* Restricción estricta para cajas de suministros, airdrops y botín */
-.maplibregl-marker[data-entity="crate"] img,
+[data-entity="crate"] img,
 .marker-crate img,
 .crate-marker img,
 .marker-loot img,
@@ -257,44 +298,36 @@
   max-height: 32px !important;
 }
 
-/* Restricción para cofres del tesoro */
-.maplibregl-marker[data-entity="chest"] img,
-.marker-chest img,
-.treasure-marker img {
-  width: 40px !important;
-  height: 40px !important;
-  max-width: 40px !important;
-  max-height: 40px !important;
+[data-entity="ping"] img,
+.marker-ping img,
+.ping-marker img {
+  width: 24px !important;
+  height: 24px !important;
+  max-width: 24px !important;
+  max-height: 24px !important;
 }
 
-/* Restricción para estructuras tácticas */
-.maplibregl-marker[data-entity="structure"] img,
-.marker-structure img,
-[class*="structure-marker-"] img {
-  width: 68px !important;
-  height: 68px !important;
-  max-width: 68px !important;
-  max-height: 68px !important;
-  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 8px rgba(0, 242, 254, 0.3)) !important;
+/* Jerarquía de capas para avatar y comitiva */
+.maplibregl-marker[data-is-me="true"],
+.marker-player[data-is-me="true"] {
+  z-index: 40 !important;
 }
 
-/* Restricción para monstruos */
-.maplibregl-marker[data-entity="monster"] img,
-.marker-monster img,
-.monster-map-marker img {
-  width: 48px !important;
-  height: 48px !important;
-  max-width: 48px !important;
-  max-height: 48px !important;
+/* Las animaciones procedimentales operan dentro del contenedor interno sin afectar el root */
+.marker-stepping {
+  animation: tacticalStepBounce 0.42s infinite ease-in-out;
 }
 
-/* Restricción para jugadores */
-.maplibregl-marker[data-entity="player"] img,
-.marker-player img,
-[class*="player-marker-"] img {
-  width: 44px !important;
-  height: 44px !important;
-  max-width: 44px !important;
-  max-height: 44px !important;
+.marker-facing-left {
+  transform: scaleX(-1);
 }
+
+.marker-facing-right {
+  transform: scaleX(1);
+}
+
+.marker-facing-scan {
+  animation: verticalLookScan 0.84s infinite steps(1);
+}
+
 
