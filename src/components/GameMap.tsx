@@ -13,6 +13,7 @@ import type {
   MapStructure,
   DroppedItem,
   WildPet,
+  Pet,
 } from '../types/game';
 import { PLAYER_SPEED_MPS, isMonsterAlive } from '../types/game';
 import { createGeoJsonCircle, getDistanceMeters } from '../services/geoUtils';
@@ -170,6 +171,38 @@ export const getPetEscortOffset = (index: number, total: number) => {
     x: Math.round(Math.sin(rad) * distance),
     y: Math.round(-Math.cos(rad) * distance + 4), // Ligero descenso (+4px) para despejar el torso y la cabeza
   };
+};
+
+/**
+ * Renderiza el HTML de las mascotas de la comitiva orbitando dentro del árbol DOM del propio jugador.
+ * Al formar parte del árbol DOM del jugador, se elimina cualquier desfase, desanclaje o lag durante el zoom/pan.
+ */
+export const renderPlayerEscortPetsHtml = (pets?: Pet[]) => {
+  if (!pets || pets.length === 0) return '';
+  const totalPets = pets.length;
+  return pets
+    .map((pet, idx) => {
+      const { x: offsetX, y: offsetY } = getPetEscortOffset(idx, totalPets);
+      return `
+        <div 
+          class="player-escort-pet absolute top-1/2 left-1/2 pointer-events-none" 
+          style="transform: translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px));"
+        >
+          <img 
+            src="${pet.icon}" 
+            alt="${pet.name}" 
+            width="28" 
+            height="28" 
+            class="marker-entity-img select-none drop-shadow-[0_4px_6px_rgba(0,0,0,0.85)] ${
+              pet.isWounded ? 'grayscale opacity-60' : 'drop-shadow-[0_0_6px_rgba(52,211,153,0.7)]'
+            }" 
+            style="width: 28px !important; height: 28px !important; max-width: 28px !important; max-height: 28px !important;" 
+          />
+          ${pet.isWounded ? '<span class="absolute -top-1 -right-1 text-[8px] animate-spin">💫</span>' : ''}
+        </div>
+      `;
+    })
+    .join('');
 };
 
 interface GameMapProps {
@@ -1290,64 +1323,71 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     const isOpened = isChestOpened || isVictory;
 
-    const chestHtml = isOpened
+    const chestContentHtml = isOpened
       ? `
-        <div class="relative flex items-center justify-center">
-          <img 
-            src="/assets/icons/chests/chest-looted.png" 
-            alt="Cofre Saqueado" 
-            width="40" 
-            height="40" 
-            style="width: 40px !important; height: 40px !important; max-width: 40px !important; max-height: 40px !important; object-fit: contain; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.9)) drop-shadow(0 0 8px rgba(52,211,153,0.4));" 
-            class="select-none transition-transform duration-150 group-hover:scale-110" 
-          />
+        <div class="marker-content flex flex-col items-center select-none cursor-pointer" style="pointer-events: auto;">
+          <div class="relative flex items-center justify-center">
+            <img 
+              src="/assets/icons/chests/chest-looted.png" 
+              alt="Cofre Saqueado" 
+              width="42" 
+              height="42" 
+              class="marker-entity-img select-none transition-transform duration-150 group-hover:scale-110 drop-shadow-[0_6px_10px_rgba(0,0,0,0.9)] drop-shadow-[0_0_8px_rgba(52,211,153,0.4)]" 
+              style="width: 42px !important; height: 42px !important; max-width: 42px !important; max-height: 42px !important;" 
+            />
+          </div>
+          <span class="marker-label mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border border-emerald-500/60 text-emerald-300 rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
+            Cofre Abierto
+          </span>
         </div>
-        <span class="mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border border-emerald-500/60 text-emerald-300 rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
-          Cofre Abierto
-        </span>
       `
       : computedIsChestGuarded
       ? `
-        <div class="relative flex items-center justify-center">
-          <div class="absolute w-12 h-12 bg-red-600/30 rounded-full animate-ping pointer-events-none"></div>
-          <img 
-            src="/assets/icons/chests/chest-guarded.png" 
-            alt="Cofre Custodiado" 
-            width="40" 
-            height="40" 
-            style="width: 40px !important; height: 40px !important; max-width: 40px !important; max-height: 40px !important; object-fit: contain; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.9)) drop-shadow(0 0 12px rgba(239,68,68,0.7));" 
-            class="select-none transition-transform duration-150 group-hover:scale-110 animate-pulse" 
-          />
+        <div class="marker-content flex flex-col items-center select-none cursor-pointer" style="pointer-events: auto;">
+          <div class="relative flex items-center justify-center">
+            <div class="absolute w-12 h-12 bg-red-600/30 rounded-full animate-ping pointer-events-none"></div>
+            <img 
+              src="/assets/icons/chests/chest-guarded.png" 
+              alt="Cofre Custodiado" 
+              width="42" 
+              height="42" 
+              class="marker-entity-img select-none transition-transform duration-150 group-hover:scale-110 animate-pulse drop-shadow-[0_6px_10px_rgba(0,0,0,0.9)] drop-shadow-[0_0_12px_rgba(239,68,68,0.7)]" 
+              style="width: 42px !important; height: 42px !important; max-width: 42px !important; max-height: 42px !important;" 
+            />
+          </div>
+          <span class="marker-label mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border border-red-500/70 text-red-300 rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
+            ⚠️ Custodiado
+          </span>
         </div>
-        <span class="mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border border-red-500/70 text-red-300 rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
-          ⚠️ Custodiado
-        </span>
       `
       : `
-        <div class="relative flex items-center justify-center">
-          <div class="absolute w-12 h-12 bg-amber-500/25 rounded-full animate-ping pointer-events-none"></div>
-          <img 
-            src="/assets/icons/chests/chest-active.png" 
-            alt="Cofre Activo" 
-            width="40" 
-            height="40" 
-            style="width: 40px !important; height: 40px !important; max-width: 40px !important; max-height: 40px !important; object-fit: contain; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.9)) drop-shadow(0 0 10px rgba(245,158,11,0.6));" 
-            class="select-none transition-transform duration-150 group-hover:scale-110" 
-          />
+        <div class="marker-content flex flex-col items-center select-none cursor-pointer" style="pointer-events: auto;">
+          <div class="relative flex items-center justify-center">
+            <div class="absolute w-12 h-12 bg-amber-500/25 rounded-full animate-ping pointer-events-none"></div>
+            <img 
+              src="/assets/icons/chests/chest-active.png" 
+              alt="Cofre Activo" 
+              width="42" 
+              height="42" 
+              class="marker-entity-img select-none transition-transform duration-150 group-hover:scale-110 drop-shadow-[0_6px_10px_rgba(0,0,0,0.9)] drop-shadow-[0_0_10px_rgba(245,158,11,0.6)]" 
+              style="width: 42px !important; height: 42px !important; max-width: 42px !important; max-height: 42px !important;" 
+            />
+          </div>
+          <span class="marker-label mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border border-amber-500/50 text-amber-300 rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
+            Tesoro
+          </span>
         </div>
-        <span class="mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border border-amber-500/50 text-amber-300 rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
-          Tesoro
-        </span>
       `;
 
     if (!chestMarkerRef.current) {
       const el = document.createElement('div');
-      el.className = 'marker-chest treasure-marker cursor-pointer flex flex-col items-center select-none group pointer-events-auto';
+      el.className = 'map-marker-anchor marker-chest treasure-marker';
       el.setAttribute('data-entity', 'chest');
+      el.style.pointerEvents = 'none';
       if (isMeWounded) {
         el.style.display = 'none';
       }
-      el.innerHTML = chestHtml;
+      el.innerHTML = chestContentHtml;
       el.onclick = (e) => handleChestMarkerClickRef.current(e);
 
       chestMarkerRef.current = new maplibregl.Marker({ element: el, anchor: 'center' })
@@ -1357,10 +1397,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       chestMarkerRef.current.setLngLat([treasureLocation.lng, treasureLocation.lat]);
       const el = chestMarkerRef.current.getElement();
       if (el) {
-        el.className = 'marker-chest treasure-marker cursor-pointer flex flex-col items-center select-none group pointer-events-auto';
+        el.className = 'map-marker-anchor marker-chest treasure-marker';
         el.setAttribute('data-entity', 'chest');
-        el.style.display = isMeWounded ? 'none' : 'flex';
-        el.innerHTML = chestHtml;
+        el.style.pointerEvents = 'none';
+        el.style.display = isMeWounded ? 'none' : 'block';
+        el.innerHTML = chestContentHtml;
         el.onclick = (e) => handleChestMarkerClickRef.current(e);
       }
     }
@@ -1454,8 +1495,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       if (!crateMarkersRef.current.has(crate.id)) {
         const el = document.createElement('div');
-        el.className = 'marker-crate crate-marker flex flex-col items-center select-none cursor-pointer group pointer-events-auto';
+        el.className = 'map-marker-anchor marker-crate';
         el.setAttribute('data-entity', 'crate');
+        el.style.pointerEvents = 'none';
         if (isMeWounded) {
           el.style.display = 'none';
         }
@@ -1465,34 +1507,36 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (isDescending) {
           const remainingMs = Math.max(300, 5000 - (Date.now() - crate.droppedAt));
           el.innerHTML = `
-            <div class="airdrop-inner airdrop-sway-anim flex flex-col items-center pointer-events-auto">
-              <div class="airdrop-parachute flex flex-col items-center pointer-events-none mb-[-2px]">
-                <div class="relative flex items-center justify-center">
-                  <svg viewBox="0 0 64 38" width="44" height="26" style="width: 44px !important; height: 26px !important; max-width: 44px !important; max-height: 26px !important;" class="drop-shadow-[0_4px_10px_rgba(0,0,0,0.85)]">
-                    <path d="M 4 34 C 4 6, 60 6, 60 34 C 50 30, 42 30, 32 32 C 22 30, 14 30, 4 34 Z" fill="#15803d" stroke="#86efac" stroke-width="1.5"/>
-                    <path d="M 18 31 C 20 12, 44 12, 46 31 C 39 31, 25 31, 18 31 Z" fill="#166534"/>
-                    <line x1="32" y1="9" x2="32" y2="32" stroke="#86efac" stroke-width="1" stroke-dasharray="2,2"/>
-                    <line x1="6" y1="33" x2="32" y2="42" stroke="#e2e8f0" stroke-width="1.2" opacity="0.85"/>
-                    <line x1="22" y1="31" x2="32" y2="42" stroke="#e2e8f0" stroke-width="1.2" opacity="0.85"/>
-                    <line x1="42" y1="31" x2="32" y2="42" stroke="#e2e8f0" stroke-width="1.2" opacity="0.85"/>
-                    <line x1="58" y1="33" x2="32" y2="42" stroke="#e2e8f0" stroke-width="1.2" opacity="0.85"/>
-                  </svg>
+            <div class="marker-content flex flex-col items-center select-none cursor-pointer" style="pointer-events: auto;">
+              <div class="airdrop-inner airdrop-sway-anim flex flex-col items-center pointer-events-auto">
+                <div class="airdrop-parachute flex flex-col items-center pointer-events-none mb-[-2px]">
+                  <div class="relative flex items-center justify-center">
+                    <svg viewBox="0 0 64 38" width="44" height="26" style="width: 44px !important; height: 26px !important; max-width: 44px !important; max-height: 26px !important;" class="drop-shadow-[0_4px_10px_rgba(0,0,0,0.85)]">
+                      <path d="M 4 34 C 4 6, 60 6, 60 34 C 50 30, 42 30, 32 32 C 22 30, 14 30, 4 34 Z" fill="#15803d" stroke="#86efac" stroke-width="1.5"/>
+                      <path d="M 18 31 C 20 12, 44 12, 46 31 C 39 31, 25 31, 18 31 Z" fill="#166534"/>
+                      <line x1="32" y1="9" x2="32" y2="32" stroke="#86efac" stroke-width="1" stroke-dasharray="2,2"/>
+                      <line x1="6" y1="33" x2="32" y2="42" stroke="#e2e8f0" stroke-width="1.2" opacity="0.85"/>
+                      <line x1="22" y1="31" x2="32" y2="42" stroke="#e2e8f0" stroke-width="1.2" opacity="0.85"/>
+                      <line x1="42" y1="31" x2="32" y2="42" stroke="#e2e8f0" stroke-width="1.2" opacity="0.85"/>
+                      <line x1="58" y1="33" x2="32" y2="42" stroke="#e2e8f0" stroke-width="1.2" opacity="0.85"/>
+                    </svg>
+                  </div>
                 </div>
+                <div class="relative flex items-center justify-center">
+                  <div class="absolute w-10 h-10 ${info.glowColor} rounded-full animate-ping pointer-events-none"></div>
+                  <img 
+                    src="${info.icon}" 
+                    alt="${info.label}" 
+                    width="32" 
+                    height="32" 
+                    class="marker-entity-img select-none transition-transform duration-150 group-hover:scale-110 drop-shadow-[0_4px_6px_rgba(0,0,0,0.85)]" 
+                    style="width: 32px !important; height: 32px !important; max-width: 32px !important; max-height: 32px !important;" 
+                  />
+                </div>
+                <span class="marker-label mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border ${info.borderColor} ${info.textColor} rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
+                  ${info.label} (40m)
+                </span>
               </div>
-              <div class="relative flex items-center justify-center">
-                <div class="absolute w-10 h-10 ${info.glowColor} rounded-full animate-ping pointer-events-none"></div>
-                <img 
-                  src="${info.icon}" 
-                  alt="${info.label}" 
-                  width="32" 
-                  height="32" 
-                  style="width: 32px !important; height: 32px !important; max-width: 32px !important; max-height: 32px !important; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.85));" 
-                  class="select-none transition-transform duration-150 group-hover:scale-110" 
-                />
-              </div>
-              <span class="mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border ${info.borderColor} ${info.textColor} rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
-                ${info.label} (40m)
-              </span>
             </div>
           `;
 
@@ -1510,20 +1554,22 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           }, remainingMs);
         } else {
           el.innerHTML = `
-            <div class="relative flex items-center justify-center">
-              <div class="absolute w-10 h-10 ${info.glowColor} rounded-full animate-ping pointer-events-none"></div>
-              <img 
-                src="${info.icon}" 
-                alt="${info.label}" 
-                width="32" 
-                height="32" 
-                style="width: 32px !important; height: 32px !important; max-width: 32px !important; max-height: 32px !important; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.85));" 
-                class="select-none transition-transform duration-150 group-hover:scale-110" 
-              />
+            <div class="marker-content flex flex-col items-center select-none cursor-pointer" style="pointer-events: auto;">
+              <div class="relative flex items-center justify-center">
+                <div class="absolute w-10 h-10 ${info.glowColor} rounded-full animate-ping pointer-events-none"></div>
+                <img 
+                  src="${info.icon}" 
+                  alt="${info.label}" 
+                  width="32" 
+                  height="32" 
+                  class="marker-entity-img select-none transition-transform duration-150 group-hover:scale-110 drop-shadow-[0_4px_6px_rgba(0,0,0,0.85)]" 
+                  style="width: 32px !important; height: 32px !important; max-width: 32px !important; max-height: 32px !important;" 
+                />
+              </div>
+              <span class="marker-label mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border ${info.borderColor} ${info.textColor} rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
+                ${info.label} (40m)
+              </span>
             </div>
-            <span class="mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border ${info.borderColor} ${info.textColor} rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
-              ${info.label} (40m)
-            </span>
           `;
         }
 
@@ -1542,8 +1588,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker?.setLngLat([crate.lng, crate.lat]);
         const el = marker?.getElement();
         if (el) {
-          el.className = 'marker-crate crate-marker flex flex-col items-center select-none cursor-pointer group pointer-events-auto';
+          el.className = 'map-marker-anchor marker-crate';
           el.setAttribute('data-entity', 'crate');
+          el.style.pointerEvents = 'none';
           el.style.display = isMeWounded ? 'none' : 'block';
         }
       }
@@ -1611,26 +1658,29 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       if (!structureMarkersRef.current.has(structure.id)) {
         const el = document.createElement('div');
-        el.className = `marker-structure structure-marker-${structure.id} flex flex-col items-center select-none pointer-events-none`;
+        el.className = `map-marker-anchor marker-structure structure-marker-${structure.id}`;
         el.setAttribute('data-entity', 'structure');
+        el.style.pointerEvents = 'none';
         if (isMeWounded && !isHospital) {
           el.style.display = 'none';
         }
         el.innerHTML = `
-          <div class="relative flex items-center justify-center">
-            <div class="absolute w-20 h-20 ${aura} rounded-full pointer-events-none"></div>
-            <img 
-              src="${icon}" 
-              alt="${structure.name}" 
-              width="68" 
-              height="68" 
-              style="width: 68px !important; height: 68px !important; max-width: 68px !important; max-height: 68px !important; object-fit: contain; filter: drop-shadow(0 10px 18px rgba(0,0,0,0.95)) ${isHospital ? 'drop-shadow(0 0 10px rgba(52,211,153,0.5))' : 'drop-shadow(0 0 8px rgba(0,242,254,0.3))'};" 
-              class="select-none" 
-            />
+          <div class="marker-content flex flex-col items-center select-none pointer-events-none" style="pointer-events: auto;">
+            <div class="relative flex items-center justify-center">
+              <div class="absolute w-20 h-20 ${aura} rounded-full pointer-events-none"></div>
+              <img 
+                src="${icon}" 
+                alt="${structure.name}" 
+                width="68" 
+                height="68" 
+                class="marker-entity-img select-none drop-shadow-[0_10px_18px_rgba(0,0,0,0.95)] ${isHospital ? 'drop-shadow-[0_0_10px_rgba(52,211,153,0.5)]' : 'drop-shadow-[0_0_8px_rgba(0,242,254,0.3)]'}" 
+                style="width: 68px !important; height: 68px !important; max-width: 68px !important; max-height: 68px !important;" 
+              />
+            </div>
+            <span class="marker-label mt-1 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border ${badgeBorder} ${badgeText} rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
+              ${label}
+            </span>
           </div>
-          <span class="mt-1 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border ${badgeBorder} ${badgeText} rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
-            ${label}
-          </span>
         `;
 
         const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
@@ -1643,8 +1693,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker?.setLngLat([structure.lng, structure.lat]);
         const el = marker?.getElement();
         if (el) {
-          el.className = `marker-structure structure-marker-${structure.id} flex flex-col items-center select-none pointer-events-none`;
+          el.className = `map-marker-anchor marker-structure structure-marker-${structure.id}`;
           el.setAttribute('data-entity', 'structure');
+          el.style.pointerEvents = 'none';
           el.style.display = (isMeWounded && !isHospital) ? 'none' : 'block';
         }
       }
@@ -1717,26 +1768,29 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!droppedItemMarkersRef.current.has(dropped.id)) {
         const style = getTierStyle(dropped.item);
         const el = document.createElement('div');
-        el.className = `marker-loot dropped-item-${dropped.id} flex flex-col items-center select-none cursor-pointer group pointer-events-auto`;
+        el.className = `map-marker-anchor marker-loot dropped-item-${dropped.id}`;
         el.setAttribute('data-entity', 'crate');
+        el.style.pointerEvents = 'none';
         if (isMeWounded) {
           el.style.display = 'none';
         }
         el.innerHTML = `
-          <div class="relative flex items-center justify-center">
-            <div class="absolute w-10 h-10 ${style.aura} rounded-full animate-ping pointer-events-none"></div>
-            <img 
-              src="${style.icon}" 
-              alt="${dropped.item.name}" 
-              width="32" 
-              height="32" 
-              style="width: 32px !important; height: 32px !important; max-width: 32px !important; max-height: 32px !important; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.85));" 
-              class="select-none transition-transform duration-150 group-hover:scale-110" 
-            />
+          <div class="marker-content flex flex-col items-center select-none cursor-pointer group" style="pointer-events: auto;">
+            <div class="relative flex items-center justify-center">
+              <div class="absolute w-10 h-10 ${style.aura} rounded-full animate-ping pointer-events-none"></div>
+              <img 
+                src="${style.icon}" 
+                alt="${dropped.item.name}" 
+                width="32" 
+                height="32" 
+                style="width: 32px !important; height: 32px !important; max-width: 32px !important; max-height: 32px !important;" 
+                class="marker-entity-img select-none transition-transform duration-150 group-hover:scale-110 drop-shadow-[0_4px_6px_rgba(0,0,0,0.85)]" 
+              />
+            </div>
+            <span class="marker-label mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border ${style.border} ${style.text} rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
+              ${dropped.item.name} (T${dropped.item.tier})
+            </span>
           </div>
-          <span class="mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border ${style.border} ${style.text} rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
-            ${dropped.item.name} (T${dropped.item.tier})
-          </span>
         `;
 
         el.addEventListener('click', (e) => {
@@ -1764,8 +1818,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker?.setLngLat([dropped.lng, dropped.lat]);
         const el = marker?.getElement();
         if (el) {
-          el.className = `marker-loot dropped-item-${dropped.id} flex flex-col items-center select-none cursor-pointer group pointer-events-auto`;
+          el.className = `map-marker-anchor marker-loot dropped-item-${dropped.id}`;
           el.setAttribute('data-entity', 'crate');
+          el.style.pointerEvents = 'none';
           el.style.display = isMeWounded ? 'none' : 'block';
         }
       }
@@ -1804,9 +1859,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       if (!wildPetMarkersRef.current.has(wp.id)) {
         const el = document.createElement('div');
-        // NO añadir clases absolute ni fixed aquí; MapLibre gestiona la posición mediante transform
-        el.className = 'marker-pet pet-marker-container pointer-events-auto select-none cursor-pointer group';
+        el.className = 'map-marker-anchor marker-pet pet-marker-container';
         el.setAttribute('data-entity', 'pet');
+        el.style.pointerEvents = 'none';
         el.style.zIndex = '35'; // Visible por encima del canvas
         el.style.display = isMeWounded ? 'none' : 'block';
         const hasMaxPets = (myPlayer.pets || []).length >= MAX_PETS_PER_PLAYER;
@@ -1815,7 +1870,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           : `Mascota silvestre: ${wp.pet.name} (Toca para adoptar)`;
 
         el.innerHTML = `
-          <div class="relative flex flex-col items-center justify-center">
+          <div class="marker-content flex flex-col items-center select-none cursor-pointer group" style="pointer-events: auto;">
             <!-- Icono 3D de Mascota con pulso táctico -->
             <div class="relative flex items-center justify-center">
               <div class="absolute w-10 h-10 rounded-full bg-emerald-400/30 animate-ping pointer-events-none"></div>
@@ -1824,12 +1879,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                 alt="${wp.pet.name}" 
                 width="34" 
                 height="34" 
-                style="width: 34px !important; height: 34px !important; max-width: 34px !important; max-height: 34px !important; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.85)) drop-shadow(0 0 8px rgba(52,211,153,0.6));" 
-                class="select-none transition-transform duration-150 group-hover:scale-110" 
+                style="width: 34px !important; height: 34px !important; max-width: 34px !important; max-height: 34px !important;" 
+                class="marker-entity-img select-none transition-transform duration-150 group-hover:scale-110 drop-shadow-[0_4px_6px_rgba(0,0,0,0.85)] drop-shadow-[0_0_8px_rgba(52,211,153,0.6)]" 
               />
             </div>
             <!-- Etiqueta del nombre centrada bajo el avatar -->
-            <div class="mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border border-emerald-500/80 text-emerald-300 rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
+            <div class="marker-label mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border border-emerald-500/80 text-emerald-300 rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
               ${wp.pet.name}
             </div>
           </div>
@@ -1870,8 +1925,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker?.setLngLat([wp.lng, wp.lat]);
         const el = marker?.getElement();
         if (el) {
-          el.className = 'marker-pet pet-marker-container pointer-events-auto select-none cursor-pointer group';
+          el.className = 'map-marker-anchor marker-pet pet-marker-container';
           el.setAttribute('data-entity', 'pet');
+          el.style.pointerEvents = 'none';
           el.style.display = isMeWounded ? 'none' : 'block';
           const hasMaxPets = (myPlayer.pets || []).length >= MAX_PETS_PER_PLAYER;
           el.title = hasMaxPets
@@ -1962,35 +2018,38 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       let marker = monsterMarkersRef.current.get(monsterKey);
       if (!marker) {
         const el = document.createElement('div');
-        el.className = 'marker-monster monster-map-marker select-none pointer-events-none';
+        el.className = 'map-marker-anchor marker-monster monster-map-marker';
         el.setAttribute('data-entity', 'monster');
+        el.style.pointerEvents = 'none';
         el.innerHTML = `
-          <div class="relative flex items-center justify-center pointer-events-none transition-transform duration-200 ${visual.scaleClass}">
-            <div class="w-14 h-14 ${visual.pingBg} rounded-full animate-ping absolute"></div>
-            
-            <!-- Barra de vida (fuera de capas animadas de escala y oscilación) -->
-            <div class="absolute -top-4 w-16 bg-black/80 rounded h-1.5 overflow-hidden border ${visual.hpBorderColor}">
-              <div id="monster-hp-bar-${monsterKey}" class="${visual.hpBarColor} h-full transition-all duration-300" style="width: 100%"></div>
-            </div>
-
-            <!-- 1. Capa Externa: Rebote Procedural (translateY + compresión) -->
-            <div id="monster-bounce-${monsterKey}" class="${kin.isMoving ? 'marker-stepping' : ''} flex flex-col items-center">
-              <!-- 2. Capa Interna: Orientación de Mirada (scaleX dinámico o scan) -->
-              <div id="monster-facing-${monsterKey}" class="${getFacingClass(kin.facingMode, kin.isMoving)} flex items-center justify-center">
-                <img 
-                  src="${visual.icon}" 
-                  alt="${m.name || visual.label}" 
-                  width="48" 
-                  height="48" 
-                  style="width: 48px !important; height: 48px !important; max-width: 48px !important; max-height: 48px !important; object-fit: contain; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.95)) drop-shadow(0 0 10px rgba(239,68,68,0.7));" 
-                  class="select-none" 
-                />
+          <div class="marker-content flex flex-col items-center select-none pointer-events-none ${visual.scaleClass}">
+            <div class="relative flex items-center justify-center">
+              <div class="w-14 h-14 ${visual.pingBg} rounded-full animate-ping absolute pointer-events-none"></div>
+              
+              <!-- Barra de vida (fuera de capas animadas de escala y oscilación) -->
+              <div class="absolute -top-4 w-16 bg-black/80 rounded h-1.5 overflow-hidden border ${visual.hpBorderColor}">
+                <div id="monster-hp-bar-${monsterKey}" class="${visual.hpBarColor} h-full transition-all duration-300" style="width: 100%"></div>
               </div>
-            </div>
 
-            <!-- Placa táctica con distintivo y nombre de la amenaza (fuera de capas animadas) -->
-            <div id="monster-badge-${monsterKey}" class="absolute -bottom-5 whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider ${visual.badgeBg} border ${visual.borderColor}/60 shadow-md pointer-events-none backdrop-blur-sm">
-              ${m.name || visual.label}
+              <!-- 1. Capa Externa: Rebote Procedural (translateY + compresión) -->
+              <div id="monster-bounce-${monsterKey}" class="${kin.isMoving ? 'marker-stepping' : ''} flex flex-col items-center">
+                <!-- 2. Capa Interna: Orientación de Mirada (scaleX dinámico o scan) -->
+                <div id="monster-facing-${monsterKey}" class="${getFacingClass(kin.facingMode, kin.isMoving)} flex items-center justify-center">
+                  <img 
+                    src="${visual.icon}" 
+                    alt="${m.name || visual.label}" 
+                    width="48" 
+                    height="48" 
+                    style="width: 48px !important; height: 48px !important; max-width: 48px !important; max-height: 48px !important;" 
+                    class="marker-entity-img select-none drop-shadow-[0_6px_12px_rgba(0,0,0,0.95)] drop-shadow-[0_0_10px_rgba(239,68,68,0.7)]" 
+                  />
+                </div>
+              </div>
+
+              <!-- Placa táctica con distintivo y nombre de la amenaza (fuera de capas animadas) -->
+              <div id="monster-badge-${monsterKey}" class="absolute -bottom-5 whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider ${visual.badgeBg} border ${visual.borderColor}/60 shadow-md pointer-events-none backdrop-blur-sm">
+                ${m.name || visual.label}
+              </div>
             </div>
           </div>
         `;
@@ -2007,8 +2066,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker.setLngLat([m.lng, m.lat]);
         const el = marker.getElement();
         if (el) {
-          el.className = 'marker-monster monster-map-marker select-none pointer-events-none';
+          el.className = 'map-marker-anchor marker-monster monster-map-marker';
           el.setAttribute('data-entity', 'monster');
+          el.style.pointerEvents = 'none';
         }
         const hpBar = document.getElementById(`monster-hp-bar-${monsterKey}`);
         if (hpBar) {
@@ -2129,9 +2189,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       if (!playerMarkersRef.current.has(p.id)) {
         const el = document.createElement('div');
-        el.className = `marker-player player-marker-${p.id} flex flex-col items-center select-none cursor-pointer transition-opacity duration-300`;
+        el.className = `map-marker-anchor marker-player player-marker-${p.id}`;
         el.setAttribute('data-entity', 'player');
         el.setAttribute('data-is-me', isMe ? 'true' : 'false');
+        el.style.pointerEvents = 'none';
         el.style.zIndex = isMe ? '40' : '35';
         if (isMe && isInside) {
           el.style.display = 'none';
@@ -2142,31 +2203,39 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }
 
         el.innerHTML = `
-          <div class="relative flex items-center justify-center">
-            ${isMe ? '<div class="absolute w-12 h-12 bg-cyan-400/20 rounded-full animate-ping pointer-events-none"></div>' : ''}
-            <!-- 1. Capa Externa: Rebote Procedural (translateY + compresión) -->
-            <div id="player-bounce-${p.id}" class="${kin.isMoving ? 'marker-stepping' : ''} flex items-center justify-center">
-              <!-- 2. Capa Interna: Orientación de Mirada (scaleX dinámico o scan) -->
-              <div id="player-facing-${p.id}" class="${getFacingClass(kin.facingMode, kin.isMoving)} flex items-center justify-center">
-                <img 
-                  id="avatar-icon-${p.id}" 
-                  src="${avatarIconSrc}" 
-                  alt="${p.nickname}" 
-                  width="44" 
-                  height="44" 
-                  style="width: 44px !important; height: 44px !important; max-width: 44px !important; max-height: 44px !important; object-fit: contain; filter: drop-shadow(0 6px 8px rgba(0,0,0,0.85)) drop-shadow(0 0 6px ${isMe ? 'rgba(0,242,254,0.5)' : isCriticallyWounded ? 'rgba(239,68,68,0.6)' : 'rgba(148,163,184,0.4)'});" 
-                  class="select-none transition-transform duration-150" 
-                />
+          <div class="marker-content flex flex-col items-center select-none cursor-pointer" style="pointer-events: auto;">
+            <div class="relative flex items-center justify-center">
+              ${isMe ? '<div class="absolute w-12 h-12 bg-cyan-400/20 rounded-full animate-ping pointer-events-none"></div>' : ''}
+              
+              <!-- Comitiva de Mascotas de Escolta dentro del árbol DOM del jugador -->
+              <div id="player-pets-${p.id}" class="absolute inset-0 pointer-events-none">
+                ${renderPlayerEscortPetsHtml(p.pets)}
+              </div>
+
+              <!-- 1. Capa Externa: Rebote Procedural (translateY + compresión) -->
+              <div id="player-bounce-${p.id}" class="${kin.isMoving ? 'marker-stepping' : ''} flex items-center justify-center">
+                <!-- 2. Capa Interna: Orientación de Mirada (scaleX dinámico o scan) -->
+                <div id="player-facing-${p.id}" class="${getFacingClass(kin.facingMode, kin.isMoving)} flex items-center justify-center">
+                  <img 
+                    id="avatar-icon-${p.id}" 
+                    src="${avatarIconSrc}" 
+                    alt="${p.nickname}" 
+                    width="44" 
+                    height="44" 
+                    style="width: 44px !important; height: 44px !important; max-width: 44px !important; max-height: 44px !important;" 
+                    class="marker-entity-img select-none drop-shadow-[0_6px_8px_rgba(0,0,0,0.85)] ${isMe ? 'drop-shadow-[0_0_6px_rgba(0,242,254,0.5)]' : isCriticallyWounded ? 'drop-shadow-[0_0_6px_rgba(239,68,68,0.6)]' : 'drop-shadow-[0_0_6px_rgba(148,163,184,0.4)]'}" 
+                  />
+                </div>
               </div>
             </div>
-          </div>
-          <!-- Caja de estado / Nombre y HP fuera de los contenedores animados -->
-          <div class="mt-0.5 px-1.5 py-0.5 bg-hud-dark/95 border ${isMe ? 'border-cyan-400' : isCriticallyWounded ? 'border-red-500' : 'border-hud-border'} rounded shadow text-center min-w-[50px] pointer-events-none">
-            <span id="player-label-${p.id}" class="block text-[10px] font-bold ${isMe ? 'text-cyan-300' : isCriticallyWounded ? 'text-red-400 font-black' : 'text-slate-200'} truncate max-w-[85px]">
-              ${statusLabel}
-            </span>
-            <div class="w-full h-1 bg-gray-800 rounded-full overflow-hidden mt-0.5">
-              <div id="hp-bar-${p.id}" class="h-full ${isCriticallyWounded ? 'bg-red-500 animate-pulse' : p.isAlive ? (hpPercent < 30 ? 'bg-red-500' : 'bg-emerald-400') : 'bg-gray-600'}" style="width: ${hpPercent}%"></div>
+            <!-- Caja de estado / Nombre y HP fuera de los contenedores animados -->
+            <div class="marker-label mt-0.5 px-1.5 py-0.5 bg-hud-dark/95 border ${isMe ? 'border-cyan-400' : isCriticallyWounded ? 'border-red-500' : 'border-hud-border'} rounded shadow text-center min-w-[50px] pointer-events-none">
+              <span id="player-label-${p.id}" class="block text-[10px] font-bold ${isMe ? 'text-cyan-300' : isCriticallyWounded ? 'text-red-400 font-black' : 'text-slate-200'} truncate max-w-[85px]">
+                ${statusLabel}
+              </span>
+              <div class="w-full h-1 bg-gray-800 rounded-full overflow-hidden mt-0.5">
+                <div id="hp-bar-${p.id}" class="h-full ${isCriticallyWounded ? 'bg-red-500 animate-pulse' : p.isAlive ? (hpPercent < 30 ? 'bg-red-500' : 'bg-emerald-400') : 'bg-gray-600'}" style="width: ${hpPercent}%"></div>
+              </div>
             </div>
           </div>
         `;
@@ -2188,9 +2257,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker?.setLngLat([lng, lat]);
         const el = marker?.getElement();
         if (el) {
-          el.className = `marker-player player-marker-${p.id} flex flex-col items-center select-none cursor-pointer transition-opacity duration-300`;
+          el.className = `map-marker-anchor marker-player player-marker-${p.id}`;
           el.setAttribute('data-entity', 'player');
           el.setAttribute('data-is-me', isMe ? 'true' : 'false');
+          el.style.pointerEvents = 'none';
           el.style.zIndex = isMe ? '40' : '35';
           el.onclick = (e) => {
             e.stopPropagation();
@@ -2225,6 +2295,15 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           playerLabel.className = `block text-[10px] font-bold ${isMe ? 'text-cyan-300' : isCriticallyWounded ? 'text-red-400 font-black' : 'text-slate-200'} truncate max-w-[85px]`;
         }
 
+        // Sincronizar comitiva de mascotas dentro del DOM del jugador
+        const petsContainer = document.getElementById(`player-pets-${p.id}`);
+        if (petsContainer) {
+          const newPetsHtml = renderPlayerEscortPetsHtml(p.pets);
+          if (petsContainer.innerHTML !== newPetsHtml) {
+            petsContainer.innerHTML = newPetsHtml;
+          }
+        }
+
         if (isCriticallyWounded || !p.isAlive) {
           if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
           kin.isMoving = false;
@@ -2257,106 +2336,16 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   }, [players, myPlayer, mapLoaded, center.lat, center.lng, isMeWounded]);
 
   // ==========================================
-  // 8.5. MARCADORES DE MASCOTAS ACOMPAÑANTES (ORBITANDO ALREDEDOR DE SUS DUEÑOS)
+  // 8.5. MASCOTAS ACOMPAÑANTES: Integradas directamente en el DOM del jugador
+  // (Section 8.5 de marcadores independientes desmantelada para evitar desfase de proyección y lag)
   // ==========================================
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !isMapLoadedRef.current) return;
-    if (!center.lat || !center.lng || (center.lat === 0 && center.lng === 0)) return;
-
-    const allPlayers = players.map((p) => (p.id === myPlayer.id ? myPlayer : p));
-    const activeCompanionPetKeys = new Set<string>();
-
-    allPlayers.forEach((p) => {
-      const pPets = p.pets || [];
-      if (pPets.length === 0) return;
-
-      // Guardia estricta: si el jugador no cuenta con coordenadas geoespaciales válidas, no pintar mascotas
-      const pLat = typeof p.lat === 'number' && !isNaN(p.lat) && p.lat !== 0 ? p.lat : (typeof center.lat === 'number' && !isNaN(center.lat) && center.lat !== 0 ? center.lat : null);
-      const pLng = typeof p.lng === 'number' && !isNaN(p.lng) && p.lng !== 0 ? p.lng : (typeof center.lng === 'number' && !isNaN(center.lng) && center.lng !== 0 ? center.lng : null);
-
-      if (pLat === null || pLng === null) {
-        return;
-      }
-
-      const isInside = !!p.insideBuildingId;
-
-      pPets.forEach((pet, index) => {
-        const markerKey = `${p.id}_${pet.id}`;
-        activeCompanionPetKeys.add(markerKey);
-
-        // Formación táctica de escolta (flancos y retaguardia, despejando cabeza y torso)
-        const totalPets = Math.max(1, pPets.length);
-        const { x: offsetX, y: offsetY } = getPetEscortOffset(index, totalPets);
-
-        if (!companionPetMarkersRef.current.has(markerKey)) {
-          const el = document.createElement('div');
-          // NO añadir clases absolute ni fixed; MapLibre gestiona la posición mediante transform
-          el.className = 'marker-pet companion-pet-container pointer-events-none select-none';
-          el.setAttribute('data-entity', 'pet');
-          el.style.zIndex = '25';
-          el.style.display = (isInside || isMeWounded) ? 'none' : 'block';
-
-          el.innerHTML = `
-            <div 
-              id="pet-orbit-${markerKey}"
-              class="relative flex flex-col items-center justify-center transition-transform duration-300 ease-out"
-              style="transform: translate(${offsetX}px, ${offsetY}px);"
-            >
-              <div id="pet-avatar-${markerKey}" class="relative flex items-center justify-center">
-                <img 
-                  src="${pet.icon}" 
-                  alt="${pet.name}" 
-                  width="28" 
-                  height="28" 
-                  style="width: 28px !important; height: 28px !important; max-width: 28px !important; max-height: 28px !important; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.85)) ${
-                    pet.isWounded ? '' : 'drop-shadow(0 0 6px rgba(52,211,153,0.7))'
-                  };" 
-                  class="select-none ${pet.isWounded ? 'grayscale opacity-60' : ''}" 
-                />
-              </div>
-              ${pet.isWounded ? '<span class="text-[8px] animate-spin">💫</span>' : ''}
-            </div>
-          `;
-
-          const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
-            .setLngLat([pLng, pLat])
-            .addTo(map);
-
-          companionPetMarkersRef.current.set(markerKey, marker);
-        } else {
-          const marker = companionPetMarkersRef.current.get(markerKey);
-          marker?.setLngLat([pLng, pLat]);
-          const el = marker?.getElement();
-          if (el) {
-            el.className = 'marker-pet companion-pet-container pointer-events-none select-none';
-            el.setAttribute('data-entity', 'pet');
-            el.style.zIndex = '25';
-            el.style.display = (isInside || isMeWounded) ? 'none' : 'block';
-            const orbitEl = el.querySelector(`#pet-orbit-${markerKey}`) as HTMLElement;
-            if (orbitEl) {
-              orbitEl.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
-            }
-            const avatar = el.querySelector(`#pet-avatar-${markerKey}`);
-            if (avatar) {
-              avatar.className = 'relative flex items-center justify-center';
-              avatar.innerHTML = `<img src="${pet.icon}" alt="${pet.name}" width="28" height="28" style="width: 28px !important; height: 28px !important; max-width: 28px !important; max-height: 28px !important; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.85)) ${
-                pet.isWounded ? '' : 'drop-shadow(0 0 6px rgba(52,211,153,0.7))'
-              };" class="select-none ${pet.isWounded ? 'grayscale opacity-60' : ''}" />`;
-            }
-          }
-        }
-      });
-    });
-
-    // Limpiar marcadores de mascotas que ya no están
-    companionPetMarkersRef.current.forEach((marker, key) => {
-      if (!activeCompanionPetKeys.has(key)) {
-        marker.remove();
-        companionPetMarkersRef.current.delete(key);
-      }
-    });
-  }, [players, myPlayer, mapLoaded, center.lat, center.lng, isMeWounded]);
+    // Si quedara algún marcador remanente de comitiva previa, limpiarlo inmediatamente
+    if (companionPetMarkersRef.current.size > 0) {
+      companionPetMarkersRef.current.forEach((m) => m.remove());
+      companionPetMarkersRef.current.clear();
+    }
+  }, []);
 
   // ==========================================
   // 9. MARCADORES DE PINGS DE FANTASMA
@@ -2369,21 +2358,31 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!pingMarkersRef.current.has(ping.id)) {
         const pingIcon = `/assets/icons/hud/ping-${ping.type || 'assist'}.png`;
         const el = document.createElement('div');
-        el.className = 'marker-ping ping-marker select-none flex flex-col items-center pointer-events-none';
+        el.className = 'map-marker-anchor marker-ping ping-marker';
         el.setAttribute('data-entity', 'ping');
+        el.style.pointerEvents = 'none';
         if (isMeWounded) {
           el.style.display = 'none';
         }
         el.innerHTML = `
-          <div class="relative flex items-center justify-center">
-            <div class="w-10 h-10 bg-cyan-500/40 rounded-full animate-ping absolute pointer-events-none"></div>
-            <div class="w-8 h-8 bg-black/80 border border-cyan-400 rounded-full flex items-center justify-center p-0.5 shadow-lg relative">
-              <img src="${pingIcon}" alt="Ping ${ping.type}" width="24" height="24" style="width: 24px !important; height: 24px !important; max-width: 24px !important; max-height: 24px !important; object-fit: contain;" class="select-none" />
+          <div class="marker-content flex flex-col items-center select-none pointer-events-none">
+            <div class="relative flex items-center justify-center">
+              <div class="w-10 h-10 bg-cyan-500/40 rounded-full animate-ping absolute pointer-events-none"></div>
+              <div class="w-8 h-8 bg-black/80 border border-cyan-400 rounded-full flex items-center justify-center p-0.5 shadow-lg relative">
+                <img 
+                  src="${pingIcon}" 
+                  alt="Ping ${ping.type}" 
+                  width="24" 
+                  height="24" 
+                  style="width: 24px !important; height: 24px !important; max-width: 24px !important; max-height: 24px !important;" 
+                  class="marker-entity-img select-none" 
+                />
+              </div>
             </div>
+            <span class="marker-label mt-1 px-1.5 py-0.5 text-[9px] font-bold bg-black/80 text-cyan-300 rounded border border-cyan-500/50 whitespace-nowrap shadow-md backdrop-blur-sm">
+              ${ping.playerNickname}
+            </span>
           </div>
-          <span class="mt-1 px-1.5 py-0.5 text-[9px] font-bold bg-black/80 text-cyan-300 rounded border border-cyan-500/50">
-            ${ping.playerNickname}
-          </span>
         `;
 
         const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
