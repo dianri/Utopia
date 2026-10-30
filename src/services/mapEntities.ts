@@ -150,6 +150,9 @@ export function generateWildPets(
       lat: point.lat,
       lng: point.lng,
       spawnedAt: Date.now(),
+      isTamed: false,
+      isCollected: false,
+      interactionRadius: 25,
     });
   }
 
@@ -178,6 +181,9 @@ export function generateSingleWildPet(
     lat: point.lat,
     lng: point.lng,
     spawnedAt: Date.now(),
+    isTamed: false,
+    isCollected: false,
+    interactionRadius: 25,
   };
 }
 
@@ -217,6 +223,9 @@ export function createAirdropCrate(
     lat: dropPoint.lat,
     lng: dropPoint.lng,
     opened: false,
+    isCollected: false,
+    looted: false,
+    radius: 40,
     droppedAt: Date.now(),
     crateType: template.type,
     weaponReward: template.weapon,
@@ -243,6 +252,9 @@ export function generateInitialCrates(
       lat: dropPoint.lat,
       lng: dropPoint.lng,
       opened: false,
+      isCollected: false,
+      looted: false,
+      radius: 40,
       droppedAt: Date.now() - 15000, // Marcadas como ya aterrizadas para no animar el lote inicial
       crateType: template.type,
       weaponReward: template.weapon,
