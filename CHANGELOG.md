@@ -63,6 +63,17 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/
   - **Atmósfera Amenazante en la Arena de Combate (`CombatArena.tsx`):** La cabecera táctica del duelo, el encabezado de la carta y el avatar central de la carta de combate proyectan la bestia vectorial con contorno carmesí pulsante y destellos amenazantes, reforzando la inmersión de amenaza biomecánica hostil.
 
 ### Fixed
+- **Fixed: Enforced strict inline pixel constraints across all map markers to eliminate oversized pet/crate bug and migrated player marker to frameless 3D role icon (`GameMap.tsx`, `CHANGELOG.md`, `README.md`):**
+  - **Erradicación del Fallo de Sobredimensionamiento ("Godzilla Bug"):** Fijadas dimensiones inline rígidas en píxeles (`style="width: ...px; height: ...px; max-width: ...px; max-height: ...px; object-fit: contain; filter: ...;"`) en todas las etiquetas `<img>` inyectadas en MapLibre GL JS, impidiendo que las texturas nativas de alta resolución (512×512) se expandan sin control por el canvas del mapa.
+  - **Jerarquía Estricta de Escala en el Mapa:**
+    - Monstruos (Jefe / Alfa / Acechador): `48px × 48px` con doble resplandor carmesí (`filter: drop-shadow(0 6px 12px rgba(0,0,0,0.95)) drop-shadow(0 0 10px rgba(239,68,68,0.7))`).
+    - Estructuras (Hospital de Campaña y Refugios): `46px × 46px` con sombra de apoyo terrestre (`drop-shadow(0 6px 10px rgba(0,0,0,0.9))`).
+    - Jugadores (Local y Remotos): `44px × 44px` con render 3D de su rol y resplandor contextual (`drop-shadow(0 6px 8px rgba(0,0,0,0.85)) drop-shadow(0 0 6px ...)`).
+    - Cofre del Tesoro (Activo, Custodiado, Abierto): `42px × 42px` con aureola dorada/alerta (`drop-shadow(0 6px 10px rgba(0,0,0,0.9))`).
+    - Mascotas (Silvestres y Compañeras en Órbita): `34px × 34px` con sombra de acompañamiento (`drop-shadow(0 4px 6px rgba(0,0,0,0.85))`).
+    - Cajas de Suministros (Airdrops) y Botín en el Suelo: `32px × 32px` (`drop-shadow(0 4px 6px rgba(0,0,0,0.85))`).
+    - Pings Tácticos: `32px × 32px` con icono centrado de 24px.
+  - **Modernización del Marcador de Jugadores:** Sustituido el antiguo contenedor circular rígido con fondo de color por la silueta 3D sin bordes ni recuadros del rol del jugador (`/assets/icons/roles/role-${role}.png`, `player-wounded.png` o `player-ghost.png`), integrando armónicamente el rebote cinemático de paso (`marker-stepping`), la orientación dinámica (`marker-facing`), el pulso cian del jugador local y la cápsula inferior con nombre y barra de salud.
 - **Fixed: Prevented raw pet icon file path string from rendering inside floating combat damage text (`src/components/Combat/CombatArena.tsx`, `src/components/Combat/PvPArena.tsx`, `src/index.css`, `README.md`):**
   - **Separación de Icono y Telemetría en el Estado de Daño:** Estructuración de items de impacto flotante mediante interfaces tipadas (`CombatDamageItem` y `PvPDamageItem`) con propiedades desacopladas: `icon` (ruta saneada sin dobles barras), `label` (mensaje formateado de daño o esquiva) y `text` (fallback defensivo).
   - **Renderizado Flotante con Miniatura Gráfica 3D (`CombatArena.tsx` y `PvPArena.tsx`):** Sustituida la interpolación de texto plano en pantalla por contenedores estilizados `.floating-combat-effect` con animación procedural `@keyframes floatUp`, montando la ilustración del icono mediante etiqueta `<img>` nativa con `onError` defensivo junto a la etiqueta tipográfica de daño.
