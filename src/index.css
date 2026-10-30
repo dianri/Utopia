@@ -206,3 +206,75 @@
   animation: verticalLookScan 0.84s infinite steps(1);
 }
 
+/* ==========================================================================
+   Escudo global contra el Godzilla Bug en MapLibre GL
+   ========================================================================== */
+.maplibregl-marker img {
+  max-width: 48px !important;
+  max-height: 48px !important;
+  object-fit: contain !important;
+}
+
+/* Restricción estricta para mascotas (silvestres y acompañantes) */
+.maplibregl-marker[data-entity="pet"] img,
+.marker-pet img,
+.pet-marker-container img,
+.companion-pet-container img {
+  width: 34px !important;
+  height: 34px !important;
+  max-width: 34px !important;
+  max-height: 34px !important;
+}
+
+/* Restricción estricta para cajas de suministros, airdrops y botín */
+.maplibregl-marker[data-entity="crate"] img,
+.marker-crate img,
+.crate-marker img,
+.marker-loot img,
+[class*="dropped-item-"] img {
+  width: 32px !important;
+  height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+}
+
+/* Restricción para cofres del tesoro */
+.maplibregl-marker[data-entity="chest"] img,
+.marker-chest img,
+.treasure-marker img {
+  width: 40px !important;
+  height: 40px !important;
+  max-width: 40px !important;
+  max-height: 40px !important;
+}
+
+/* Restricción para estructuras tácticas */
+.maplibregl-marker[data-entity="structure"] img,
+.marker-structure img,
+[class*="structure-marker-"] img {
+  width: 46px !important;
+  height: 46px !important;
+  max-width: 46px !important;
+  max-height: 46px !important;
+}
+
+/* Restricción para monstruos */
+.maplibregl-marker[data-entity="monster"] img,
+.marker-monster img,
+.monster-map-marker img {
+  width: 48px !important;
+  height: 48px !important;
+  max-width: 48px !important;
+  max-height: 48px !important;
+}
+
+/* Restricción para jugadores */
+.maplibregl-marker[data-entity="player"] img,
+.marker-player img,
+[class*="player-marker-"] img {
+  width: 44px !important;
+  height: 44px !important;
+  max-width: 44px !important;
+  max-height: 44px !important;
+}
+
