@@ -1896,7 +1896,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.className = 'monster-map-marker select-none pointer-events-none';
         el.innerHTML = `
           <div class="relative flex items-center justify-center pointer-events-none transition-transform duration-200 ${visual.scaleClass}">
-            <div class="w-16 h-16 ${visual.pingBg} rounded-full animate-ping absolute"></div>
+            <div class="w-14 h-14 ${visual.pingBg} rounded-full animate-ping absolute"></div>
             
             <!-- Barra de vida (fuera de capas animadas de escala y oscilación) -->
             <div class="absolute -top-4 w-16 bg-black/80 rounded h-1.5 overflow-hidden border ${visual.hpBorderColor}">
@@ -1910,7 +1910,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                 <img 
                   src="${visual.icon}" 
                   alt="${m.name || visual.label}" 
-                  class="w-14 h-14 object-contain select-none drop-shadow-[0_6px_14px_rgba(0,0,0,0.95)] ${visual.glowColor}" 
+                  style="width: 48px; height: 48px; max-width: 48px; max-height: 48px; object-fit: contain; filter: drop-shadow(0 6px 12px rgba(0,0,0,0.95)) drop-shadow(0 0 10px rgba(239,68,68,0.7));" 
+                  class="select-none" 
                 />
               </div>
             </div>
@@ -2009,18 +2010,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       }
     });
 
-    const roleIcons: Record<PlayerRole, string> = {
-      medic: '/assets/icons/roles/role-medic.png',
-      tank: '/assets/icons/roles/role-tank.png',
-      scout: '/assets/icons/roles/role-scout.png',
-      marksman: '/assets/icons/roles/role-marksman.png',
-    };
-
-    const roleColors: Record<PlayerRole, string> = {
-      medic: 'border-emerald-400 bg-emerald-700',
-      tank: 'border-blue-400 bg-blue-700',
-      scout: 'border-amber-400 bg-amber-700',
-      marksman: 'border-red-400 bg-red-700',
+    const getPlayerRoleIcon = (role?: string) => {
+      const normalized = (role || 'scout').toLowerCase();
+      const validRoles = ['scout', 'medic', 'tank', 'marksman'];
+      const key = validRoles.includes(normalized) ? normalized : 'scout';
+      return `/assets/icons/roles/role-${key}.png`;
     };
 
     allPlayers.forEach((p) => {
@@ -2046,14 +2040,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const avatarIconSrc = isCriticallyWounded
         ? '/assets/icons/roles/player-wounded.png'
         : p.isAlive
-        ? roleIcons[p.role]
+        ? getPlayerRoleIcon(p.role)
         : '/assets/icons/roles/player-ghost.png';
-
-      const avatarClasses = isCriticallyWounded
-        ? 'bg-red-900 border-red-500 animate-pulse'
-        : p.isAlive
-        ? roleColors[p.role]
-        : 'bg-gray-700 border-gray-400';
 
       const chestsConquered = p.chests_opened || p.chestsOpened || 0;
       const statusLabel = isCriticallyWounded
@@ -2075,14 +2063,18 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
-            ${isMe ? '<div class="absolute w-12 h-12 bg-cyan-400/20 rounded-full animate-ping"></div>' : ''}
+            ${isMe ? '<div class="absolute w-12 h-12 bg-cyan-400/20 rounded-full animate-ping pointer-events-none"></div>' : ''}
             <!-- 1. Capa Externa: Rebote Procedural (translateY + compresión) -->
             <div id="player-bounce-${p.id}" class="${kin.isMoving ? 'marker-stepping' : ''} flex items-center justify-center">
               <!-- 2. Capa Interna: Orientación de Mirada (scaleX dinámico o scan) -->
               <div id="player-facing-${p.id}" class="${getFacingClass(kin.facingMode, kin.isMoving)} flex items-center justify-center">
-                <div id="avatar-icon-${p.id}" class="w-9 h-9 rounded-full ${avatarClasses} border-2 shadow-lg flex items-center justify-center p-1">
-                  <img src="${avatarIconSrc}" alt="${p.nickname}" class="w-6 h-6 object-contain" />
-                </div>
+                <img 
+                  id="avatar-icon-${p.id}" 
+                  src="${avatarIconSrc}" 
+                  alt="${p.nickname}" 
+                  style="width: 44px; height: 44px; max-width: 44px; max-height: 44px; object-fit: contain; filter: drop-shadow(0 6px 8px rgba(0,0,0,0.85)) drop-shadow(0 0 6px ${isMe ? 'rgba(0,242,254,0.5)' : isCriticallyWounded ? 'rgba(239,68,68,0.6)' : 'rgba(148,163,184,0.4)'});" 
+                  class="select-none transition-transform duration-150" 
+                />
               </div>
             </div>
           </div>
@@ -2134,10 +2126,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           hpBar.style.width = `${hpPercent}%`;
           hpBar.className = `h-full ${isCriticallyWounded ? 'bg-red-500 animate-pulse' : p.isAlive ? (hpPercent < 30 ? 'bg-red-500' : 'bg-emerald-400') : 'bg-gray-600'}`;
         }
-        const avatarIcon = document.getElementById(`avatar-icon-${p.id}`);
+        const avatarIcon = document.getElementById(`avatar-icon-${p.id}`) as HTMLImageElement | null;
         if (avatarIcon) {
-          avatarIcon.className = `w-9 h-9 rounded-full ${avatarClasses} border-2 shadow-lg flex items-center justify-center p-1`;
-          avatarIcon.innerHTML = `<img src="${avatarIconSrc}" alt="${p.nickname}" class="w-6 h-6 object-contain" />`;
+          if (avatarIcon.getAttribute('src') !== avatarIconSrc) {
+            avatarIcon.src = avatarIconSrc;
+          }
+          avatarIcon.style.filter = `drop-shadow(0 6px 8px rgba(0,0,0,0.85)) drop-shadow(0 0 6px ${isMe ? 'rgba(0,242,254,0.5)' : isCriticallyWounded ? 'rgba(239,68,68,0.6)' : 'rgba(148,163,184,0.4)'})`;
         }
         const playerLabel = document.getElementById(`player-label-${p.id}`);
         if (playerLabel) {
@@ -2230,9 +2224,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                 <img 
                   src="${pet.icon}" 
                   alt="${pet.name}" 
-                  class="w-9 h-9 object-contain select-none drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)] ${
-                    pet.isWounded ? 'grayscale opacity-60' : 'drop-shadow-[0_0_6px_rgba(52,211,153,0.7)]'
-                  }" 
+                  style="width: 34px; height: 34px; max-width: 34px; max-height: 34px; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.85)) ${
+                    pet.isWounded ? '' : 'drop-shadow(0 0 6px rgba(52,211,153,0.7))'
+                  };" 
+                  class="select-none ${pet.isWounded ? 'grayscale opacity-60' : ''}" 
                 />
               </div>
               ${pet.isWounded ? '<span class="text-[8px] animate-spin">💫</span>' : ''}
@@ -2257,9 +2252,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             const avatar = el.querySelector(`#pet-avatar-${markerKey}`);
             if (avatar) {
               avatar.className = 'relative flex items-center justify-center';
-              avatar.innerHTML = `<img src="${pet.icon}" alt="${pet.name}" class="w-9 h-9 object-contain select-none drop-shadow-[0_4px_8px_rgba(0,0,0,0.9)] ${
-                pet.isWounded ? 'grayscale opacity-60' : 'drop-shadow-[0_0_6px_rgba(52,211,153,0.7)]'
-              }" />`;
+              avatar.innerHTML = `<img src="${pet.icon}" alt="${pet.name}" style="width: 34px; height: 34px; max-width: 34px; max-height: 34px; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.85)) ${
+                pet.isWounded ? '' : 'drop-shadow(0 0 6px rgba(52,211,153,0.7))'
+              };" class="select-none ${pet.isWounded ? 'grayscale opacity-60' : ''}" />`;
             }
           }
         }
@@ -2292,9 +2287,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
-            <div class="w-12 h-12 bg-cyan-500/40 rounded-full animate-ping"></div>
-            <div class="w-8 h-8 bg-black/80 border border-cyan-400 rounded-full flex items-center justify-center p-1 shadow-lg">
-              <img src="${pingIcon}" alt="Ping ${ping.type}" class="w-6 h-6 object-contain" />
+            <div class="w-10 h-10 bg-cyan-500/40 rounded-full animate-ping absolute pointer-events-none"></div>
+            <div class="w-8 h-8 bg-black/80 border border-cyan-400 rounded-full flex items-center justify-center p-0.5 shadow-lg relative">
+              <img src="${pingIcon}" alt="Ping ${ping.type}" style="width: 24px; height: 24px; max-width: 24px; max-height: 24px; object-fit: contain;" class="select-none" />
             </div>
           </div>
           <span class="mt-1 px-1.5 py-0.5 text-[9px] font-bold bg-black/80 text-cyan-300 rounded border border-cyan-500/50">
