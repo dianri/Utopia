@@ -451,8 +451,19 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
                       : 'bg-slate-950/70 border-emerald-500/30'
                   }`}
                 >
-                  <div className="relative text-2xl shrink-0">
-                    <span>{pet.icon}</span>
+                  <div className="relative w-8 h-8 shrink-0 flex items-center justify-center">
+                    {pet.icon && pet.icon.startsWith('/') ? (
+                      <img
+                        src={pet.icon}
+                        alt={pet.name}
+                        className="w-full h-full object-contain drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    ) : (
+                      <span className="text-2xl">{pet.icon}</span>
+                    )}
                     {isWoundedPet && !isJustRecovered && (
                       <span className="absolute -top-1 -right-1 text-xs animate-spin">💫</span>
                     )}

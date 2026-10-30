@@ -169,7 +169,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         const numId = Date.now() + Math.random();
         setDamageNumbers((prev) => [
           ...prev,
-          { id: numId, text: `${pet.icon} -${dmg}`, isCrit: false, isPet: true },
+          { id: numId, text: `🐾 -${dmg}`, isCrit: false, isPet: true },
         ]);
         setTimeout(() => {
           setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));

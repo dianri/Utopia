@@ -138,7 +138,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
       const numId = Date.now() + Math.random();
       setDamageNumbers((prev) => [
         ...prev,
-        { id: numId, text: `${payload.petIcon} -${dmg}`, isCrit: false, isPet: true, isIncoming: true },
+        { id: numId, text: `🐾 -${dmg}`, isCrit: false, isPet: true, isIncoming: true },
       ]);
       setTimeout(() => {
         setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));
@@ -318,7 +318,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
         const numId = Date.now() + Math.random();
         setDamageNumbers((prev) => [
           ...prev,
-          { id: numId, text: `${pet.icon} -${dmg}`, isCrit: false, isPet: true, isIncoming: false },
+          { id: numId, text: `🐾 -${dmg}`, isCrit: false, isPet: true, isIncoming: false },
         ]);
         setTimeout(() => {
           setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));
