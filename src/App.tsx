@@ -95,7 +95,7 @@ import { PvPArena } from './components/Combat/PvPArena';
 import { HospitalModal } from './components/Hospital/HospitalModal';
 import { ChestLockModal } from './components/Chest/ChestLockModal';
 
-import { Play, Users, Trophy, Footprints } from 'lucide-react';
+import { Play, Users, Footprints } from 'lucide-react';
 
 export const savePlayerSessionSnapshot = (
   gameId: string,
@@ -4914,7 +4914,7 @@ export const App: React.FC = () => {
           {/* CABECERA */}
           <div className="relative z-10 flex items-center justify-between pb-3 border-b border-hud-border/40">
             <div className="flex items-center gap-2">
-              <span className="text-2xl">⚡</span>
+              <img src="/assets/icons/app/app-logo.png" alt="Utopia Logo" className="w-8 h-8 object-contain" />
               <span className="text-xs font-mono font-black text-hud-cyan tracking-widest uppercase">
                 UTOPIA // PROTOCOLO DE CAZA
               </span>
@@ -4927,7 +4927,7 @@ export const App: React.FC = () => {
               }}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-hud-panel border border-hud-border text-xs font-mono text-hud-muted hover:text-hud-cyan hover:border-hud-cyan transition-all"
             >
-              <Trophy className="w-4 h-4 text-yellow-400" />
+              <img src="/assets/icons/hud/hud-trophy.png" alt="Trofeo" className="w-4 h-4 object-contain" />
               <span>Salón de la Fama</span>
             </button>
           </div>
@@ -4936,8 +4936,8 @@ export const App: React.FC = () => {
           <div className="relative z-10 max-w-2xl mx-auto w-full flex flex-col items-center gap-6 my-auto py-6">
             {/* HERO PRINCIPAL */}
             <div className="flex flex-col items-center text-center gap-3">
-              <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-hud-cyan/10 border-2 border-hud-cyan/60 flex items-center justify-center text-3xl sm:text-4xl shadow-2xl shadow-hud-cyan/20 animate-pulse">
-                👹
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-hud-cyan/10 border-2 border-hud-cyan/60 flex items-center justify-center p-2 shadow-2xl shadow-hud-cyan/20 animate-pulse">
+                <img src="/assets/icons/app/app-hero.png" alt="Utopia Hero" className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow" />
               </div>
 
               <h1 className="text-2xl sm:text-4xl font-mono font-black tracking-wider uppercase text-white drop-shadow">

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Player, Monster, Weapon, Pet } from '../../types/game';
-import { DEFAULT_WEAPONS_BY_ROLE, getModifiedWeaponStats } from '../../services/combatEngine';
+import { DEFAULT_WEAPONS_BY_ROLE, getModifiedWeaponStats, getWeaponIcon } from '../../services/combatEngine';
 import { getMonsterVisualConfig } from '../../services/mapEntities';
 import { soundEffects } from '../../services/soundEffects';
 import { ShieldAlert, Crosshair, Zap, Flame, Target, Footprints, Shield, Skull, Swords, AlertTriangle, Heart } from 'lucide-react';
@@ -352,19 +352,9 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
   if (!isOpen) return null;
 
-  const renderWeaponIcon = (iconName: string) => {
-    switch (iconName) {
-      case 'ShieldAlert':
-        return <ShieldAlert className="w-5 h-5" />;
-      case 'Crosshair':
-        return <Crosshair className="w-5 h-5" />;
-      case 'Zap':
-        return <Zap className="w-5 h-5" />;
-      case 'Flame':
-        return <Flame className="w-5 h-5" />;
-      default:
-        return <Target className="w-5 h-5" />;
-    }
+  const renderWeaponIcon = (_iconName: string) => {
+    const iconPath = getWeaponIcon(equippedWeapon.weaponType);
+    return <img src={iconPath} alt={equippedWeapon.name} className="w-5 h-5 object-contain" />;
   };
 
   return (
@@ -386,7 +376,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
       <div className="w-full max-w-md flex items-center justify-between z-20 pt-1">
         <div className="flex items-center gap-2">
           <div className={`px-2.5 py-1 rounded-md ${visual.arenaHeaderBadgeBg} border flex items-center gap-1.5 animate-pulse`}>
-            <span className="text-sm">{visual.icon}</span>
+            <img src={visual.icon} alt={visual.label} className="w-4 h-4 object-contain" />
             <span className="text-xs font-mono font-black tracking-wider uppercase">
               DUELO: {visual.label}
             </span>
@@ -442,7 +432,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
           {/* Cabecera de la carta: Nombre y Tipo */}
           <div className={`px-4 py-2.5 ${visual.cardHeaderBg} border-b ${visual.cardHeaderBorder} flex items-center justify-between`}>
             <div className="flex items-center gap-2">
-              <span className="text-base">{visual.icon}</span>
+              <img src={visual.icon} alt={visual.label} className="w-5 h-5 object-contain" />
               <span className="font-mono font-black text-sm text-white uppercase tracking-wider">
                 {monster.name || visual.defaultName}
               </span>
@@ -462,11 +452,13 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
                 cardHitAnim ? `scale-110 ${visual.avatarBg}` : visual.avatarBg
               }`}
             >
-              <span className={`text-6xl sm:text-7xl select-none transition-all duration-300 ${
-                monster.isEnraged ? 'scale-110 drop-shadow-[0_0_15px_rgba(249,115,22,0.8)] animate-pulse' : 'drop-shadow-lg'
-              }`}>
-                {visual.icon}
-              </span>
+              <img
+                src={visual.icon}
+                alt={monster.name || visual.label}
+                className={`w-24 h-24 sm:w-28 sm:h-28 object-contain select-none transition-all duration-300 ${
+                  monster.isEnraged ? 'scale-110 drop-shadow-[0_0_20px_rgba(249,115,22,0.8)] animate-pulse' : 'drop-shadow-xl'
+                }`}
+              />
 
               {/* Ojos brillantes / destello biomecánico */}
               <div className={`absolute top-8 left-8 w-2.5 h-2.5 rounded-full ${visual.eyeColor} animate-ping`} />
@@ -563,7 +555,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
                           : 'bg-emerald-950/40 border-emerald-500/40 shadow-sm'
                       }`}
                     >
-                      <span className="text-base">{pet.icon}</span>
+                      <img src={pet.icon} alt={pet.name} className="w-5 h-5 object-contain" />
                       <div className="flex flex-col min-w-[55px]">
                         <div className="flex items-center justify-between text-[10px] gap-1">
                           <span className={`font-bold truncate max-w-[65px] ${pet.isWounded ? 'text-slate-400' : 'text-emerald-200'}`}>

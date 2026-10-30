@@ -99,12 +99,12 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
             >
               {stealthMode ? (
                 <>
-                  <VolumeX className="w-3.5 h-3.5 text-hud-amber" />
+                  <img src="/assets/icons/hud/hud-audio-stealth.png" alt="Sigilo" className="w-4 h-4 object-contain" />
                   <span className="hidden sm:inline text-[10px]">SIGILO</span>
                 </>
               ) : (
                 <>
-                  <Volume2 className="w-3.5 h-3.5" />
+                  <img src="/assets/icons/hud/hud-audio-on.png" alt="Audio" className="w-4 h-4 object-contain" />
                   <span className="hidden sm:inline text-[10px]">AUDIO</span>
                 </>
               )}
@@ -115,7 +115,7 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
               className="flex items-center gap-1 px-2 py-1 rounded text-xs font-mono font-bold border border-red-500/50 bg-red-500/10 text-red-400 hover:bg-red-500/25 hover:border-red-400 transition-all shadow-sm active:scale-95"
               title={myPlayer.isHost ? 'Terminar / Cancelar Misión' : 'Abandonar Misión'}
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <img src="/assets/icons/hud/hud-leave-mission.png" alt="Salir" className="w-4 h-4 object-contain" />
               <span className="hidden sm:inline text-[10px]">
                 {myPlayer.isHost ? 'CANCELAR' : 'ABANDONAR'}
               </span>
