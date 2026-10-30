@@ -148,6 +148,30 @@ function updateKinematicsDOM(
   }
 }
 
+/**
+ * Calcula el desplazamiento (offset en píxeles de pantalla) para la comitiva de mascotas
+ * en formación de abanico táctico (flancos y retaguardia).
+ * Regla estricta: ninguna mascota se sitúa en el sector superior (315° a 45°),
+ * garantizando que la cabeza, el visor y el torso del jugador queden 100% despejados.
+ */
+export const getPetEscortOffset = (index: number, total: number) => {
+  const distance = 38; // Píxeles de distancia respecto al centro del jugador (rango 36px - 42px)
+  // Ángulos tácticos en abanico inferior/lateral (orientación compás: 0° Norte, 90° Este, 180° Sur, 270° Oeste)
+  const anglesMap: Record<number, number[]> = {
+    1: [140],             // Flanco inferior derecho
+    2: [220, 140],        // Izquierda (220°) y Derecha (140°)
+    3: [225, 180, 135],   // Izquierda (225°), Retaguardia (180°), Derecha (135°)
+  };
+  const angles = anglesMap[total] || [180];
+  const deg = angles[index] ?? 180;
+  const rad = (deg * Math.PI) / 180;
+
+  return {
+    x: Math.round(Math.sin(rad) * distance),
+    y: Math.round(-Math.cos(rad) * distance + 4), // Ligero descenso (+4px) para despejar el torso y la cabeza
+  };
+};
+
 interface GameMapProps {
   center: Coordinates;
   playAreaRadius: number;
@@ -1594,17 +1618,17 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
-            <div class="absolute w-14 h-14 ${aura} rounded-full pointer-events-none"></div>
+            <div class="absolute w-20 h-20 ${aura} rounded-full pointer-events-none"></div>
             <img 
               src="${icon}" 
               alt="${structure.name}" 
-              width="46" 
-              height="46" 
-              style="width: 46px !important; height: 46px !important; max-width: 46px !important; max-height: 46px !important; object-fit: contain; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.9)) ${isHospital ? 'drop-shadow(0 0 10px rgba(52,211,153,0.5))' : 'drop-shadow(0 0 10px rgba(34,211,238,0.5))'};" 
+              width="68" 
+              height="68" 
+              style="width: 68px !important; height: 68px !important; max-width: 68px !important; max-height: 68px !important; object-fit: contain; filter: drop-shadow(0 10px 18px rgba(0,0,0,0.95)) ${isHospital ? 'drop-shadow(0 0 10px rgba(52,211,153,0.5))' : 'drop-shadow(0 0 8px rgba(0,242,254,0.3))'};" 
               class="select-none" 
             />
           </div>
-          <span class="mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border ${badgeBorder} ${badgeText} rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
+          <span class="mt-1 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border ${badgeBorder} ${badgeText} rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
             ${label}
           </span>
         `;
@@ -2107,6 +2131,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const el = document.createElement('div');
         el.className = `marker-player player-marker-${p.id} flex flex-col items-center select-none cursor-pointer transition-opacity duration-300`;
         el.setAttribute('data-entity', 'player');
+        el.setAttribute('data-is-me', isMe ? 'true' : 'false');
+        el.style.zIndex = isMe ? '40' : '35';
         if (isMe && isInside) {
           el.style.display = 'none';
         } else if (!isMe && isMeWounded) {
@@ -2164,6 +2190,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (el) {
           el.className = `marker-player player-marker-${p.id} flex flex-col items-center select-none cursor-pointer transition-opacity duration-300`;
           el.setAttribute('data-entity', 'player');
+          el.setAttribute('data-is-me', isMe ? 'true' : 'false');
+          el.style.zIndex = isMe ? '40' : '35';
           el.onclick = (e) => {
             e.stopPropagation();
             if (!isMe) {
@@ -2257,20 +2285,16 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const markerKey = `${p.id}_${pet.id}`;
         activeCompanionPetKeys.add(markerKey);
 
-        // Órbita en píxeles de pantalla constante (independiente del nivel de zoom)
+        // Formación táctica de escolta (flancos y retaguardia, despejando cabeza y torso)
         const totalPets = Math.max(1, pPets.length);
-        const angleRad = index * ((2 * Math.PI) / totalPets) - (Math.PI / 2); // Empezar arriba
-        const orbitRadiusPx = 42; // Radio constante visible a cualquier nivel de zoom
-
-        const offsetX = Math.round(Math.cos(angleRad) * orbitRadiusPx);
-        const offsetY = Math.round(Math.sin(angleRad) * orbitRadiusPx);
+        const { x: offsetX, y: offsetY } = getPetEscortOffset(index, totalPets);
 
         if (!companionPetMarkersRef.current.has(markerKey)) {
           const el = document.createElement('div');
           // NO añadir clases absolute ni fixed; MapLibre gestiona la posición mediante transform
           el.className = 'marker-pet companion-pet-container pointer-events-none select-none';
           el.setAttribute('data-entity', 'pet');
-          el.style.zIndex = '36';
+          el.style.zIndex = '25';
           el.style.display = (isInside || isMeWounded) ? 'none' : 'block';
 
           el.innerHTML = `
@@ -2283,9 +2307,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                 <img 
                   src="${pet.icon}" 
                   alt="${pet.name}" 
-                  width="34" 
-                  height="34" 
-                  style="width: 34px !important; height: 34px !important; max-width: 34px !important; max-height: 34px !important; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.85)) ${
+                  width="28" 
+                  height="28" 
+                  style="width: 28px !important; height: 28px !important; max-width: 28px !important; max-height: 28px !important; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.85)) ${
                     pet.isWounded ? '' : 'drop-shadow(0 0 6px rgba(52,211,153,0.7))'
                   };" 
                   class="select-none ${pet.isWounded ? 'grayscale opacity-60' : ''}" 
@@ -2307,6 +2331,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           if (el) {
             el.className = 'marker-pet companion-pet-container pointer-events-none select-none';
             el.setAttribute('data-entity', 'pet');
+            el.style.zIndex = '25';
             el.style.display = (isInside || isMeWounded) ? 'none' : 'block';
             const orbitEl = el.querySelector(`#pet-orbit-${markerKey}`) as HTMLElement;
             if (orbitEl) {
@@ -2315,7 +2340,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             const avatar = el.querySelector(`#pet-avatar-${markerKey}`);
             if (avatar) {
               avatar.className = 'relative flex items-center justify-center';
-              avatar.innerHTML = `<img src="${pet.icon}" alt="${pet.name}" width="34" height="34" style="width: 34px !important; height: 34px !important; max-width: 34px !important; max-height: 34px !important; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.85)) ${
+              avatar.innerHTML = `<img src="${pet.icon}" alt="${pet.name}" width="28" height="28" style="width: 28px !important; height: 28px !important; max-width: 28px !important; max-height: 28px !important; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.85)) ${
                 pet.isWounded ? '' : 'drop-shadow(0 0 6px rgba(52,211,153,0.7))'
               };" class="select-none ${pet.isWounded ? 'grayscale opacity-60' : ''}" />`;
             }
