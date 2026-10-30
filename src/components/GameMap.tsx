@@ -733,6 +733,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             : crates.filter(
                 (c) =>
                   !c.opened &&
+                  !c.isCollected &&
+                  !c.looted &&
                   typeof c.lat === 'number' &&
                   typeof c.lng === 'number' &&
                   !isNaN(c.lat) &&
@@ -740,7 +742,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                   (c.lat !== 0 || c.lng !== 0)
               );
           const crateFeatures = activeCrates.map((c) =>
-            createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40)
+            createGeoJsonCircle({ lat: c.lat, lng: c.lng }, c.radius || 40)
           );
           cratesSource.setData({
             type: 'FeatureCollection',
@@ -756,6 +758,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             : droppedItems
                 .filter(
                   (d) =>
+                    !d.isCollected &&
                     typeof d.lat === 'number' &&
                     typeof d.lng === 'number' &&
                     !isNaN(d.lat) &&
@@ -772,6 +775,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             : wildPets
                 .filter(
                   (wp) =>
+                    !wp.isTamed &&
+                    !wp.isCollected &&
                     typeof wp.lat === 'number' &&
                     typeof wp.lng === 'number' &&
                     !isNaN(wp.lat) &&
@@ -779,7 +784,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                     (wp.lat !== 0 || wp.lng !== 0)
                 )
                 .map((wp) => ({
-                  ...createGeoJsonCircle({ lat: wp.lat, lng: wp.lng }, 25),
+                  ...createGeoJsonCircle({ lat: wp.lat, lng: wp.lng }, wp.interactionRadius || 25),
                   properties: { type: 'pet', id: wp.id },
                 }));
 
@@ -789,23 +794,126 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           });
         }
 
-        // 3. Soporte defensivo para fuentes o capas dinámicas huérfanas
-        const style = map.getStyle();
-        if (style && style.layers) {
-          const activeEntityIds = new Set([
-            ...crates.filter((c) => !c.opened).map((c) => c.id),
-            ...wildPets.map((wp) => wp.id),
-            ...droppedItems.map((d) => d.id),
-          ]);
-          style.layers.forEach((layer) => {
-            if (layer.id.startsWith('circle-layer-') || layer.id.startsWith('entity-radius-')) {
-              const entityId = layer.id.replace('circle-layer-', '').replace('entity-radius-', '');
-              if (!activeEntityIds.has(entityId)) {
-                if (map.getLayer(layer.id)) map.removeLayer(layer.id);
-                if (map.getSource(layer.id)) map.removeSource(layer.id);
-              }
-            }
+        // 2b. Fuente unificada alternativa de interacción (interaction-radii-source / interaction-circles-source)
+        const unifiedSource = (map.getSource('interaction-radii-source') ||
+          map.getSource('interaction-circles-source')) as maplibregl.GeoJSONSource | undefined;
+        if (unifiedSource) {
+          const unifiedCrates = isMeWounded
+            ? []
+            : crates
+                .filter(
+                  (c) =>
+                    !c.opened &&
+                    !c.isCollected &&
+                    !c.looted &&
+                    typeof c.lat === 'number' &&
+                    typeof c.lng === 'number' &&
+                    !isNaN(c.lat) &&
+                    !isNaN(c.lng) &&
+                    (c.lat !== 0 || c.lng !== 0)
+                )
+                .map((c) => ({
+                  ...createGeoJsonCircle({ lat: c.lat, lng: c.lng }, c.radius || 40),
+                  properties: { type: 'crate', id: c.id },
+                }));
+
+          const unifiedPets = isMeWounded
+            ? []
+            : wildPets
+                .filter(
+                  (wp) =>
+                    !wp.isTamed &&
+                    !wp.isCollected &&
+                    typeof wp.lat === 'number' &&
+                    typeof wp.lng === 'number' &&
+                    !isNaN(wp.lat) &&
+                    !isNaN(wp.lng) &&
+                    (wp.lat !== 0 || wp.lng !== 0)
+                )
+                .map((wp) => ({
+                  ...createGeoJsonCircle({ lat: wp.lat, lng: wp.lng }, wp.interactionRadius || 25),
+                  properties: { type: 'pet', id: wp.id },
+                }));
+
+          const unifiedLoot = isMeWounded
+            ? []
+            : droppedItems
+                .filter(
+                  (d) =>
+                    !d.isCollected &&
+                    typeof d.lat === 'number' &&
+                    typeof d.lng === 'number' &&
+                    !isNaN(d.lat) &&
+                    !isNaN(d.lng) &&
+                    (d.lat !== 0 || d.lng !== 0)
+                )
+                .map((d) => ({
+                  ...createGeoJsonCircle({ lat: d.lat, lng: d.lng }, 25),
+                  properties: { type: 'loot', id: d.id },
+                }));
+
+          unifiedSource.setData({
+            type: 'FeatureCollection',
+            features: [...unifiedCrates, ...unifiedPets, ...unifiedLoot],
           });
+        }
+
+        // 3. Soporte defensivo para fuentes o capas dinámicas individuales huérfanas
+        const style = map.getStyle();
+        if (style) {
+          const activeEntityIds = new Set([
+            ...crates.filter((c) => !c.opened && !c.isCollected && !c.looted).map((c) => c.id),
+            ...wildPets.filter((wp) => !wp.isTamed && !wp.isCollected).map((wp) => wp.id),
+            ...droppedItems.filter((d) => !d.isCollected).map((d) => d.id),
+          ]);
+
+          if (style.layers) {
+            style.layers.forEach((layer) => {
+              if (
+                layer.id.startsWith('circle-layer-') ||
+                layer.id.startsWith('entity-radius-') ||
+                layer.id.startsWith('pet-circle-layer-') ||
+                layer.id.startsWith('crate-circle-layer-')
+              ) {
+                const entityId = layer.id
+                  .replace('circle-layer-', '')
+                  .replace('entity-radius-', '')
+                  .replace('pet-circle-layer-', '')
+                  .replace('crate-circle-layer-', '');
+                if (!activeEntityIds.has(entityId)) {
+                  if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+                  if (map.getSource(layer.id)) map.removeSource(layer.id);
+                }
+              }
+            });
+          }
+
+          if (style.sources) {
+            Object.keys(style.sources).forEach((sourceId) => {
+              if (
+                sourceId.startsWith('circle-source-') ||
+                sourceId.startsWith('pet-circle-source-') ||
+                sourceId.startsWith('crate-circle-source-')
+              ) {
+                const entityId = sourceId
+                  .replace('circle-source-', '')
+                  .replace('pet-circle-source-', '')
+                  .replace('crate-circle-source-', '');
+                if (!activeEntityIds.has(entityId)) {
+                  if (style.layers) {
+                    style.layers.forEach((l) => {
+                      if ((l as any).source === sourceId && map.getLayer(l.id)) {
+                        map.removeLayer(l.id);
+                      }
+                    });
+                  }
+                  if (map.getSource(sourceId)) {
+                    map.removeSource(sourceId);
+                  }
+                }
+              }
+            });
+          }
         }
       } catch (err) {
         console.warn('[GameMap] Error al sincronizar círculos GeoJSON de interacción:', err);
@@ -1511,19 +1619,27 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     // Actualizar zonas de interacción de 40m translúcidas en el mapa
     updateInteractionCirclesRef.current?.(map);
 
-    const currentCrateIds = new Set(crates.filter((c) => !c.opened).map((c) => c.id));
+    const currentCrateIds = new Set(
+      crates.filter((c) => !c.opened && !c.isCollected && !c.looted).map((c) => c.id)
+    );
+    let removedAnyCrate = false;
     crateMarkersRef.current.forEach((marker, id) => {
       if (!currentCrateIds.has(id)) {
         marker.remove();
         crateMarkersRef.current.delete(id);
+        removedAnyCrate = true;
       }
     });
+    if (removedAnyCrate) {
+      updateInteractionCirclesRef.current?.(map);
+    }
 
     crates.forEach((crate) => {
-      if (crate.opened) {
+      if (crate.opened || crate.isCollected || crate.looted) {
         if (crateMarkersRef.current.has(crate.id)) {
           crateMarkersRef.current.get(crate.id)?.remove();
           crateMarkersRef.current.delete(crate.id);
+          updateInteractionCirclesRef.current?.(map);
         }
         return;
       }
@@ -1751,6 +1867,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       droppedItems
         .filter(
           (d) =>
+            !d.isCollected &&
             typeof d.lat === 'number' &&
             typeof d.lng === 'number' &&
             !isNaN(d.lat) &&
@@ -1759,12 +1876,17 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         )
         .map((d) => d.id)
     );
+    let removedAnyDropped = false;
     droppedItemMarkersRef.current.forEach((marker, id) => {
       if (!currentDroppedIds.has(id)) {
         marker.remove();
         droppedItemMarkersRef.current.delete(id);
+        removedAnyDropped = true;
       }
     });
+    if (removedAnyDropped) {
+      updateInteractionCirclesRef.current?.(map);
+    }
 
     const getTierStyle = (item: { tier: number; category?: string; type?: string }) => {
       if (item.category === 'health' || item.type === 'medkit') {
@@ -1872,17 +1994,32 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     if (!map || !isMapLoadedRef.current) return;
     if (!center.lat || !center.lng || (center.lat === 0 && center.lng === 0)) return;
 
-    const currentWildPetIds = new Set(wildPets.map((wp) => wp.id));
+    const currentWildPetIds = new Set(
+      wildPets.filter((wp) => !wp.isTamed && !wp.isCollected).map((wp) => wp.id)
+    );
 
     // Limpiar mascotas que ya fueron adoptadas o eliminadas
+    let removedAnyPet = false;
     wildPetMarkersRef.current.forEach((marker, id) => {
       if (!currentWildPetIds.has(id)) {
         marker.remove();
         wildPetMarkersRef.current.delete(id);
+        removedAnyPet = true;
       }
     });
+    if (removedAnyPet) {
+      updateInteractionCirclesRef.current?.(map);
+    }
 
     wildPets.forEach((wp) => {
+      if (wp.isTamed || wp.isCollected) {
+        if (wildPetMarkersRef.current.has(wp.id)) {
+          wildPetMarkersRef.current.get(wp.id)?.remove();
+          wildPetMarkersRef.current.delete(wp.id);
+          updateInteractionCirclesRef.current?.(map);
+        }
+        return;
+      }
       // Guardia estricta de coordenadas válidas (evitar proyección en 0,0)
       if (
         typeof wp.lat !== 'number' ||

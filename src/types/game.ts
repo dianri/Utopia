@@ -66,6 +66,7 @@ export interface DroppedItem {
   lng: number;
   droppedAt: number;
   droppedBy?: string;
+  isCollected?: boolean;
 }
 
 export const MAX_INVENTORY_SLOTS = Infinity; // Mochila infinita sin límite de capacidad
@@ -97,6 +98,9 @@ export interface WildPet {
   lat: number;
   lng: number;
   spawnedAt: number;
+  isTamed?: boolean;
+  isCollected?: boolean;
+  interactionRadius?: number;
 }
 
 export interface Coordinates {
@@ -196,6 +200,9 @@ export interface SupplyCrate {
   healReward: number;
   ammoReward: number;
   isAirdrop?: boolean;
+  isCollected?: boolean;
+  looted?: boolean;
+  radius?: number;
 }
 
 export interface GhostPing {
