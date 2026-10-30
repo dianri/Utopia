@@ -218,12 +218,31 @@
 /* Restricción estricta para mascotas (silvestres y acompañantes) */
 .maplibregl-marker[data-entity="pet"] img,
 .marker-pet img,
-.pet-marker-container img,
-.companion-pet-container img {
+.pet-marker-container img {
   width: 34px !important;
   height: 34px !important;
   max-width: 34px !important;
   max-height: 34px !important;
+}
+
+/* Escolta de mascotas acompañantes (más compactas para no saturar al jugador) */
+.maplibregl-marker.companion-pet-container img,
+.companion-pet-container img {
+  width: 28px !important;
+  height: 28px !important;
+  max-width: 28px !important;
+  max-height: 28px !important;
+}
+
+/* Jerarquía de capas para avatar y comitiva */
+.maplibregl-marker.companion-pet-container,
+.companion-pet-container {
+  z-index: 25 !important;
+}
+
+.maplibregl-marker.marker-player[data-is-me="true"],
+.marker-player[data-is-me="true"] {
+  z-index: 40 !important;
 }
 
 /* Restricción estricta para cajas de suministros, airdrops y botín */
@@ -252,10 +271,11 @@
 .maplibregl-marker[data-entity="structure"] img,
 .marker-structure img,
 [class*="structure-marker-"] img {
-  width: 46px !important;
-  height: 46px !important;
-  max-width: 46px !important;
-  max-height: 46px !important;
+  width: 68px !important;
+  height: 68px !important;
+  max-width: 68px !important;
+  max-height: 68px !important;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.95)) drop-shadow(0 0 8px rgba(0, 242, 254, 0.3)) !important;
 }
 
 /* Restricción para monstruos */
