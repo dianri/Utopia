@@ -141,3 +141,68 @@
 .animate-hitShake {
   animation: hitShake 0.2s ease-in-out;
 }
+
+@keyframes floatUp {
+  0% {
+    opacity: 0;
+    transform: translateY(12px) scale(0.9);
+  }
+  20% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1.05);
+  }
+  80% {
+    opacity: 1;
+    transform: translateY(-20px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-38px) scale(0.95);
+  }
+}
+
+.animate-floatUp {
+  animation: floatUp 0.95s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Cadencia de paso / Saltitos tácticos al avanzar */
+@keyframes tacticalStepBounce {
+  0%, 100% {
+    transform: translateY(0) scale(1, 1);
+  }
+  35% {
+    transform: translateY(-7px) scale(0.97, 1.05); /* Elevación máxima */
+  }
+  70% {
+    transform: translateY(0) scale(1.04, 0.96);  /* Ligera compresión al aterrizar */
+  }
+}
+
+/* Animación de oscilación de mirada cuando el avance es vertical (Norte / Sur) */
+@keyframes verticalLookScan {
+  0%, 45% {
+    transform: scaleX(1); /* Mira a la derecha */
+  }
+  50%, 95% {
+    transform: scaleX(-1); /* Mira a la izquierda */
+  }
+}
+
+.marker-stepping {
+  animation: tacticalStepBounce 0.42s infinite ease-in-out;
+}
+
+.marker-facing-right {
+  transform: scaleX(1);
+  transition: transform 0.15s ease-out;
+}
+
+.marker-facing-left {
+  transform: scaleX(-1);
+  transition: transform 0.15s ease-out;
+}
+
+.marker-facing-scan {
+  animation: verticalLookScan 0.84s infinite steps(1);
+}
+

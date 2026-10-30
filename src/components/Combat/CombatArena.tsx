@@ -18,6 +18,16 @@ interface CombatArenaProps {
   onClose: () => void;
 }
 
+interface CombatDamageItem {
+  id: number;
+  text?: string;
+  label?: string;
+  icon?: string;
+  isCrit: boolean;
+  isPet?: boolean;
+  isIncoming?: boolean;
+}
+
 export const CombatArena: React.FC<CombatArenaProps> = ({
   isOpen,
   myPlayer,
@@ -36,7 +46,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   const [cardHitAnim, setCardHitAnim] = useState<boolean>(false);
   const [attackCooldown, setAttackCooldown] = useState<number>(0);
   const [damagedPetId, setDamagedPetId] = useState<string | null>(null);
-  const [damageNumbers, setDamageNumbers] = useState<{ id: number; text: string; isCrit: boolean; isPet?: boolean }[]>([]);
+  const [damageNumbers, setDamageNumbers] = useState<CombatDamageItem[]>([]);
 
   const monsterRef = useRef<Monster>(monster);
   monsterRef.current = monster;
@@ -122,7 +132,10 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
     // Número de daño flotante
     const numId = Date.now() + Math.random();
-    setDamageNumbers((prev) => [...prev, { id: numId, text: `-${finalDamage}`, isCrit }]);
+    setDamageNumbers((prev) => [
+      ...prev,
+      { id: numId, label: `-${finalDamage}`, text: `-${finalDamage}`, isCrit },
+    ]);
     setTimeout(() => {
       setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));
     }, 900);
@@ -166,10 +179,18 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         const newHp = Math.max(0, curMonster.hp - dmg);
 
         // Efecto visual y daño flotante de mascota
+        const cleanIcon = pet.icon ? pet.icon.replace(/^\/+/, '/') : '/assets/icons/pets/pet-dog.png';
         const numId = Date.now() + Math.random();
         setDamageNumbers((prev) => [
           ...prev,
-          { id: numId, text: `🐾 -${dmg}`, isCrit: false, isPet: true },
+          {
+            id: numId,
+            icon: cleanIcon,
+            label: `${pet.name}: -${dmg} HP`,
+            text: `🐾 ${pet.name}: -${dmg} HP`,
+            isCrit: false,
+            isPet: true,
+          },
         ]);
         setTimeout(() => {
           setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));
@@ -219,10 +240,19 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
       // Habilidad pasiva del Gato Callejero: +10% evasión
       const hasActiveCat = (curPlayer.pets || []).some((p) => p.type === 'cat' && !p.isWounded && p.hp > 0);
       if (hasActiveCat && Math.random() < 0.1) {
+        const catPet = (curPlayer.pets || []).find((p) => p.type === 'cat');
+        const cleanIcon = catPet?.icon ? catPet.icon.replace(/^\/+/, '/') : '/assets/icons/pets/pet-cat.png';
         const numId = Date.now() + Math.random();
         setDamageNumbers((prev) => [
           ...prev,
-          { id: numId, text: '🐈 ¡ESQUIVADO!', isCrit: true },
+          {
+            id: numId,
+            icon: cleanIcon,
+            label: '¡ESQUIVADO!',
+            text: '🐈 ¡ESQUIVADO!',
+            isCrit: true,
+            isPet: true,
+          },
         ]);
         setTimeout(() => {
           setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));
@@ -276,14 +306,18 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         soundEffects.triggerDamageHaptics();
 
         // Indicador de daño flotante sobre el escudo
+        const cleanIcon = targetPet.icon ? targetPet.icon.replace(/^\/+/, '/') : '/assets/icons/pets/pet-dog.png';
         const numId = Date.now() + Math.random();
         setDamageNumbers((prev) => [
           ...prev,
           {
             id: numId,
+            icon: cleanIcon,
+            label: `${targetPet.name}: -${effectiveMonsterDamage} HP`,
             text: `🛡️ ${targetPet.name}: -${effectiveMonsterDamage} HP`,
             isCrit: isWounded,
             isPet: true,
+            isIncoming: true,
           },
         ]);
         setTimeout(() => {
@@ -402,18 +436,34 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         {/* Números de daño flotantes */}
         <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-30">
           {damageNumbers.map((num) => (
-            <span
+            <div
               key={num.id}
-              className={`absolute font-mono font-black animate-ping text-xl sm:text-2xl ${
-                num.isPet
-                  ? 'text-amber-300 drop-shadow-[0_0_12px_rgba(251,191,36,0.9)]'
-                  : num.isCrit
-                  ? 'text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,0.9)]'
-                  : 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]'
-              }`}
+              className="floating-combat-effect absolute flex items-center gap-1.5 animate-floatUp px-3 py-1 rounded-full bg-slate-950/85 border border-slate-700/60 shadow-2xl backdrop-blur-sm"
             >
-              {num.text}
-            </span>
+              {num.icon && (
+                <img
+                  src={num.icon.replace(/^\/+/, '/')}
+                  alt=""
+                  className="h-6 w-6 object-contain drop-shadow-[0_0_6px_rgba(251,191,36,0.6)] select-none"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                  }}
+                />
+              )}
+              <span
+                className={`font-mono font-black text-sm sm:text-base tracking-wide whitespace-nowrap ${
+                  num.isIncoming
+                    ? 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]'
+                    : num.isPet
+                    ? 'text-amber-300 drop-shadow-[0_0_12px_rgba(251,191,36,0.9)]'
+                    : num.isCrit
+                    ? 'text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,0.9)]'
+                    : 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]'
+                }`}
+              >
+                {num.label || num.text}
+              </span>
+            </div>
           ))}
         </div>
 
@@ -555,7 +605,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
                           : 'bg-emerald-950/40 border-emerald-500/40 shadow-sm'
                       }`}
                     >
-                      <img src={pet.icon} alt={pet.name} className="w-5 h-5 object-contain" />
+                      <img src={pet.icon ? pet.icon.replace(/^\/+/, '/') : '/assets/icons/pets/pet-dog.png'} alt={pet.name} className="w-5 h-5 object-contain" />
                       <div className="flex flex-col min-w-[55px]">
                         <div className="flex items-center justify-between text-[10px] gap-1">
                           <span className={`font-bold truncate max-w-[65px] ${pet.isWounded ? 'text-slate-400' : 'text-emerald-200'}`}>

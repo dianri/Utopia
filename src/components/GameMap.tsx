@@ -60,6 +60,94 @@ export const isMapStyleLoaded = (
   );
 };
 
+export interface EntityMovementState {
+  isMoving: boolean;
+  facingMode: 'right' | 'left' | 'scan'; // 'scan' para arriba/abajo
+}
+
+export function computeEntityMovement(
+  currentLat: number,
+  currentLng: number,
+  prevLat: number | undefined,
+  prevLng: number | undefined,
+  minThresholdMeters: number = 0.4
+): EntityMovementState {
+  if (prevLat === undefined || prevLng === undefined) {
+    return { isMoving: false, facingMode: 'right' };
+  }
+
+  // Componentes del desplazamiento en metros aproximados
+  const dLat = (currentLat - prevLat) * 111139; // Eje vertical (Y)
+  const dLng = (currentLng - prevLng) * (111139 * Math.cos((currentLat * Math.PI) / 180)); // Eje horizontal (X)
+  const distanceMoved = Math.sqrt(dLat * dLat + dLng * dLng);
+
+  // Umbral mínimo de movimiento para activar la zancada (evita micro-vibraciones de GPS)
+  if (distanceMoved < minThresholdMeters) {
+    return { isMoving: false, facingMode: 'right' };
+  }
+
+  const absX = Math.abs(dLng);
+  const absY = Math.abs(dLat);
+
+  // Si el avance es predominantemente vertical (|dY| > 1.4 * |dX|): avanzar mirando a ambos lados
+  if (absY > absX * 1.4) {
+    return { isMoving: true, facingMode: 'scan' };
+  }
+
+  // Si avanza hacia el Este (derecha) o hacia el Oeste (izquierda)
+  return {
+    isMoving: true,
+    facingMode: dLng >= 0 ? 'right' : 'left',
+  };
+}
+
+interface EntityKinematicsRecord {
+  anchorLat: number;
+  anchorLng: number;
+  isMoving: boolean;
+  facingMode: 'right' | 'left' | 'scan';
+  stopTimeout: ReturnType<typeof setTimeout> | null;
+}
+
+function getFacingClass(facingMode: 'right' | 'left' | 'scan', isMoving: boolean): string {
+  if (!isMoving && facingMode === 'scan') {
+    return 'marker-facing-right';
+  }
+  switch (facingMode) {
+    case 'left':
+      return 'marker-facing-left';
+    case 'scan':
+      return 'marker-facing-scan';
+    case 'right':
+    default:
+      return 'marker-facing-right';
+  }
+}
+
+function updateKinematicsDOM(
+  bounceElementId: string,
+  facingElementId: string,
+  isMoving: boolean,
+  facingMode: 'right' | 'left' | 'scan'
+) {
+  const bounceEl = document.getElementById(bounceElementId);
+  if (bounceEl) {
+    if (isMoving) {
+      if (!bounceEl.classList.contains('marker-stepping')) {
+        bounceEl.classList.add('marker-stepping');
+      }
+    } else {
+      bounceEl.classList.remove('marker-stepping');
+    }
+  }
+
+  const facingEl = document.getElementById(facingElementId);
+  if (facingEl) {
+    facingEl.classList.remove('marker-facing-right', 'marker-facing-left', 'marker-facing-scan');
+    facingEl.classList.add(getFacingClass(facingMode, isMoving));
+  }
+}
+
 interface GameMapProps {
   center: Coordinates;
   playAreaRadius: number;
@@ -135,6 +223,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const droppedItemMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const wildPetMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const companionPetMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+
+  // Registros de cinemática (movimiento, zancada y orientación) para jugadores y monstruos
+  const playerKinematicsRef = useRef<Map<string, EntityKinematicsRecord>>(new Map());
+  const monsterKinematicsRef = useRef<Map<string, EntityKinematicsRecord>>(new Map());
 
   const onPickDroppedItemRef = useRef(onPickDroppedItem);
   onPickDroppedItemRef.current = onPickDroppedItem;
@@ -991,6 +1083,16 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       companionPetMarkersRef.current.forEach((m) => m.remove());
       companionPetMarkersRef.current.clear();
 
+      playerKinematicsRef.current.forEach((kin) => {
+        if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
+      });
+      playerKinematicsRef.current.clear();
+
+      monsterKinematicsRef.current.forEach((kin) => {
+        if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
+      });
+      monsterKinematicsRef.current.clear();
+
       map.remove();
       mapRef.current = null;
       isMapLoadedRef.current = false;
@@ -1775,6 +1877,18 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         m.state !== 'dead' &&
         m.hp > 0;
 
+      let kin = monsterKinematicsRef.current.get(monsterKey);
+      if (!kin) {
+        kin = {
+          anchorLat: m.lat,
+          anchorLng: m.lng,
+          isMoving: false,
+          facingMode: 'right',
+          stopTimeout: null,
+        };
+        monsterKinematicsRef.current.set(monsterKey, kin);
+      }
+
       const visual = getMonsterVisualConfig(m);
       let marker = monsterMarkersRef.current.get(monsterKey);
       if (!marker) {
@@ -1783,18 +1897,27 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.innerHTML = `
           <div class="relative flex items-center justify-center pointer-events-none transition-transform duration-200 ${visual.scaleClass}">
             <div class="w-16 h-16 ${visual.pingBg} rounded-full animate-ping absolute"></div>
-            <img 
-              src="${visual.icon}" 
-              alt="${m.name || visual.label}" 
-              class="w-14 h-14 object-contain select-none drop-shadow-[0_6px_14px_rgba(0,0,0,0.95)] ${visual.glowColor}" 
-            />
-            <!-- Placa táctica con distintivo y nombre de la amenaza -->
-            <div id="monster-badge-${monsterKey}" class="absolute -bottom-5 whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider ${visual.badgeBg} border ${visual.borderColor}/60 shadow-md pointer-events-none backdrop-blur-sm">
-              ${m.name || visual.label}
-            </div>
-            <!-- Barra de vida -->
+            
+            <!-- Barra de vida (fuera de capas animadas de escala y oscilación) -->
             <div class="absolute -top-4 w-16 bg-black/80 rounded h-1.5 overflow-hidden border ${visual.hpBorderColor}">
               <div id="monster-hp-bar-${monsterKey}" class="${visual.hpBarColor} h-full transition-all duration-300" style="width: 100%"></div>
+            </div>
+
+            <!-- 1. Capa Externa: Rebote Procedural (translateY + compresión) -->
+            <div id="monster-bounce-${monsterKey}" class="${kin.isMoving ? 'marker-stepping' : ''} flex flex-col items-center">
+              <!-- 2. Capa Interna: Orientación de Mirada (scaleX dinámico o scan) -->
+              <div id="monster-facing-${monsterKey}" class="${getFacingClass(kin.facingMode, kin.isMoving)} flex items-center justify-center">
+                <img 
+                  src="${visual.icon}" 
+                  alt="${m.name || visual.label}" 
+                  class="w-14 h-14 object-contain select-none drop-shadow-[0_6px_14px_rgba(0,0,0,0.95)] ${visual.glowColor}" 
+                />
+              </div>
+            </div>
+
+            <!-- Placa táctica con distintivo y nombre de la amenaza (fuera de capas animadas) -->
+            <div id="monster-badge-${monsterKey}" class="absolute -bottom-5 whitespace-nowrap px-2 py-0.5 rounded text-[10px] font-mono font-bold tracking-wider ${visual.badgeBg} border ${visual.borderColor}/60 shadow-md pointer-events-none backdrop-blur-sm">
+              ${m.name || visual.label}
             </div>
           </div>
         `;
@@ -1817,6 +1940,34 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (badge && m.name && badge.textContent !== m.name) {
           badge.textContent = m.name;
         }
+
+        if (m.state === 'dead' || m.hp <= 0) {
+          if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
+          kin.isMoving = false;
+          kin.stopTimeout = null;
+          updateKinematicsDOM(`monster-bounce-${monsterKey}`, `monster-facing-${monsterKey}`, false, 'right');
+        } else {
+          // Cinemática del monstruo
+          const mov = computeEntityMovement(m.lat, m.lng, kin.anchorLat, kin.anchorLng);
+          if (mov.isMoving) {
+            kin.isMoving = true;
+            kin.facingMode = mov.facingMode;
+            kin.anchorLat = m.lat;
+            kin.anchorLng = m.lng;
+
+            if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
+            const currentKin = kin;
+            currentKin.stopTimeout = setTimeout(() => {
+              currentKin.isMoving = false;
+              currentKin.stopTimeout = null;
+              currentKin.anchorLat = m.lat;
+              currentKin.anchorLng = m.lng;
+              updateKinematicsDOM(`monster-bounce-${monsterKey}`, `monster-facing-${monsterKey}`, false, currentKin.facingMode);
+            }, 600);
+
+            updateKinematicsDOM(`monster-bounce-${monsterKey}`, `monster-facing-${monsterKey}`, true, kin.facingMode);
+          }
+        }
       }
 
       const el = marker.getElement();
@@ -1828,6 +1979,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     // Limpiar marcadores de monstruos que ya no estén presentes
     monsterMarkersRef.current.forEach((marker, id) => {
       if (!currentMonsterIds.has(id)) {
+        const kin = monsterKinematicsRef.current.get(id);
+        if (kin?.stopTimeout) clearTimeout(kin.stopTimeout);
+        monsterKinematicsRef.current.delete(id);
         marker.remove();
         monsterMarkersRef.current.delete(id);
       }
@@ -1847,6 +2001,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     playerMarkersRef.current.forEach((marker, id) => {
       if (!activePlayerIds.has(id)) {
+        const kin = playerKinematicsRef.current.get(id);
+        if (kin?.stopTimeout) clearTimeout(kin.stopTimeout);
+        playerKinematicsRef.current.delete(id);
         marker.remove();
         playerMarkersRef.current.delete(id);
       }
@@ -1873,6 +2030,18 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const hpPercent = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
       const isCriticallyWounded = p.isCriticallyWounded || p.status === 'critically_wounded' || (p.hp <= 0 && p.isAlive);
       const isInside = !!p.insideBuildingId;
+
+      let kin = playerKinematicsRef.current.get(p.id);
+      if (!kin) {
+        kin = {
+          anchorLat: lat,
+          anchorLng: lng,
+          isMoving: false,
+          facingMode: 'right',
+          stopTimeout: null,
+        };
+        playerKinematicsRef.current.set(p.id, kin);
+      }
 
       const avatarIconSrc = isCriticallyWounded
         ? '/assets/icons/roles/player-wounded.png'
@@ -1907,11 +2076,18 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.innerHTML = `
           <div class="relative flex items-center justify-center">
             ${isMe ? '<div class="absolute w-12 h-12 bg-cyan-400/20 rounded-full animate-ping"></div>' : ''}
-            <div id="avatar-icon-${p.id}" class="w-9 h-9 rounded-full ${avatarClasses} border-2 shadow-lg flex items-center justify-center p-1">
-              <img src="${avatarIconSrc}" alt="${p.nickname}" class="w-6 h-6 object-contain" />
+            <!-- 1. Capa Externa: Rebote Procedural (translateY + compresión) -->
+            <div id="player-bounce-${p.id}" class="${kin.isMoving ? 'marker-stepping' : ''} flex items-center justify-center">
+              <!-- 2. Capa Interna: Orientación de Mirada (scaleX dinámico o scan) -->
+              <div id="player-facing-${p.id}" class="${getFacingClass(kin.facingMode, kin.isMoving)} flex items-center justify-center">
+                <div id="avatar-icon-${p.id}" class="w-9 h-9 rounded-full ${avatarClasses} border-2 shadow-lg flex items-center justify-center p-1">
+                  <img src="${avatarIconSrc}" alt="${p.nickname}" class="w-6 h-6 object-contain" />
+                </div>
+              </div>
             </div>
           </div>
-          <div class="mt-0.5 px-1.5 py-0.5 bg-hud-dark/95 border ${isMe ? 'border-cyan-400' : isCriticallyWounded ? 'border-red-500' : 'border-hud-border'} rounded shadow text-center min-w-[50px]">
+          <!-- Caja de estado / Nombre y HP fuera de los contenedores animados -->
+          <div class="mt-0.5 px-1.5 py-0.5 bg-hud-dark/95 border ${isMe ? 'border-cyan-400' : isCriticallyWounded ? 'border-red-500' : 'border-hud-border'} rounded shadow text-center min-w-[50px] pointer-events-none">
             <span id="player-label-${p.id}" class="block text-[10px] font-bold ${isMe ? 'text-cyan-300' : isCriticallyWounded ? 'text-red-400 font-black' : 'text-slate-200'} truncate max-w-[85px]">
               ${statusLabel}
             </span>
@@ -1967,6 +2143,34 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (playerLabel) {
           playerLabel.textContent = statusLabel;
           playerLabel.className = `block text-[10px] font-bold ${isMe ? 'text-cyan-300' : isCriticallyWounded ? 'text-red-400 font-black' : 'text-slate-200'} truncate max-w-[85px]`;
+        }
+
+        if (isCriticallyWounded || !p.isAlive) {
+          if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
+          kin.isMoving = false;
+          kin.stopTimeout = null;
+          updateKinematicsDOM(`player-bounce-${p.id}`, `player-facing-${p.id}`, false, 'right');
+        } else {
+          // Cinemática del jugador
+          const mov = computeEntityMovement(lat, lng, kin.anchorLat, kin.anchorLng);
+          if (mov.isMoving) {
+            kin.isMoving = true;
+            kin.facingMode = mov.facingMode;
+            kin.anchorLat = lat;
+            kin.anchorLng = lng;
+
+            if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
+            const currentKin = kin;
+            currentKin.stopTimeout = setTimeout(() => {
+              currentKin.isMoving = false;
+              currentKin.stopTimeout = null;
+              currentKin.anchorLat = lat;
+              currentKin.anchorLng = lng;
+              updateKinematicsDOM(`player-bounce-${p.id}`, `player-facing-${p.id}`, false, currentKin.facingMode);
+            }, 600);
+
+            updateKinematicsDOM(`player-bounce-${p.id}`, `player-facing-${p.id}`, true, kin.facingMode);
+          }
         }
       }
     });
