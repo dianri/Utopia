@@ -1057,7 +1057,7 @@ export const App: React.FC = () => {
       },
       onCrateLooted: ({ crateId, playerNickname, weaponName }) => {
         setCrates((prev) => {
-          const updated = prev.map((c) => (c.id === crateId ? { ...c, opened: true } : c));
+          const updated = prev.filter((c) => c.id !== crateId);
           if (roomRef.current?.id && myPlayerRef.current?.isHost) {
             syncRoomEntitiesToSupabase(roomRef.current.id, { crates: updated });
           }
@@ -1191,7 +1191,7 @@ export const App: React.FC = () => {
             );
           }
           if (payload.crates) {
-            setCrates(payload.crates);
+            setCrates(payload.crates.filter((c: SupplyCrate) => !c.opened));
           }
           if (payload.droppedItems) {
             setDroppedItems(payload.droppedItems);
@@ -3381,7 +3381,7 @@ export const App: React.FC = () => {
       if (dist <= 40) {
         // Saquear caja
         setCrates((prev) => {
-          const updated = prev.map((c) => (c.id === crate.id ? { ...c, opened: true } : c));
+          const updated = prev.filter((c) => c.id !== crate.id);
           if (room?.id) {
             syncRoomEntitiesToSupabase(room.id, { crates: updated });
           }
@@ -3513,7 +3513,7 @@ export const App: React.FC = () => {
       if (fetchingPet) {
         // Marcar caja como abierta
         setCrates((prev) => {
-          const updated = prev.map((c) => (c.id === crate.id ? { ...c, opened: true } : c));
+          const updated = prev.filter((c) => c.id !== crate.id);
           if (room?.id) {
             syncRoomEntitiesToSupabase(room.id, { crates: updated });
           }
@@ -4738,7 +4738,7 @@ export const App: React.FC = () => {
 
     // Solo si la sala está en lobby y por alguna razón legacy estuviera vacía, sembrar lote inicial
     const finalCrates = (dbCrates.length > 0 || gameData.status === 'playing')
-      ? dbCrates
+      ? dbCrates.filter((c) => !c.opened)
       : generateInitialCrates({ lat: gameData.center_lat, lng: gameData.center_lng }, gameData.play_area_radius, 3);
 
     const finalWildPets = (dbWildPets.length > 0 || gameData.status === 'playing')

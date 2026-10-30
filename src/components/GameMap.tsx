@@ -706,6 +706,121 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const injectTacticalOverlaysRef = useRef<(map: maplibregl.Map) => void>(injectTacticalOverlays);
   injectTacticalOverlaysRef.current = injectTacticalOverlays;
 
+  // ==========================================
+  // SINCRONIZACIÓN REACTIVA DE CÍRCULOS GEOJSON DE INTERACCIÓN
+  // ==========================================
+  const updateInteractionCircles = useCallback(
+    (targetMap?: maplibregl.Map) => {
+      const map = targetMap || mapRef.current;
+      if (!map) return;
+
+      if (!isMapStyleLoaded(map)) {
+        const onStyleLoad = () => {
+          if (mapRef.current === map) {
+            updateInteractionCirclesRef.current?.(map);
+          }
+        };
+        map.once('style.load', onStyleLoad);
+        return;
+      }
+
+      try {
+        // 1. Cajas de suministros / Airdrops (40m)
+        const cratesSource = map.getSource('crates-zones') as maplibregl.GeoJSONSource | undefined;
+        if (cratesSource) {
+          const activeCrates = isMeWounded
+            ? []
+            : crates.filter(
+                (c) =>
+                  !c.opened &&
+                  typeof c.lat === 'number' &&
+                  typeof c.lng === 'number' &&
+                  !isNaN(c.lat) &&
+                  !isNaN(c.lng) &&
+                  (c.lat !== 0 || c.lng !== 0)
+              );
+          const crateFeatures = activeCrates.map((c) =>
+            createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40)
+          );
+          cratesSource.setData({
+            type: 'FeatureCollection',
+            features: crateFeatures,
+          });
+        }
+
+        // 2. Entidades sobre el terreno: Armas/Loot y Mascotas Silvestres (25m)
+        const rangesSource = map.getSource('interaction-ranges') as maplibregl.GeoJSONSource | undefined;
+        if (rangesSource) {
+          const activeLoot = isMeWounded
+            ? []
+            : droppedItems
+                .filter(
+                  (d) =>
+                    typeof d.lat === 'number' &&
+                    typeof d.lng === 'number' &&
+                    !isNaN(d.lat) &&
+                    !isNaN(d.lng) &&
+                    (d.lat !== 0 || d.lng !== 0)
+                )
+                .map((d) => ({
+                  ...createGeoJsonCircle({ lat: d.lat, lng: d.lng }, 25),
+                  properties: { type: 'loot', id: d.id },
+                }));
+
+          const activePets = isMeWounded
+            ? []
+            : wildPets
+                .filter(
+                  (wp) =>
+                    typeof wp.lat === 'number' &&
+                    typeof wp.lng === 'number' &&
+                    !isNaN(wp.lat) &&
+                    !isNaN(wp.lng) &&
+                    (wp.lat !== 0 || wp.lng !== 0)
+                )
+                .map((wp) => ({
+                  ...createGeoJsonCircle({ lat: wp.lat, lng: wp.lng }, 25),
+                  properties: { type: 'pet', id: wp.id },
+                }));
+
+          rangesSource.setData({
+            type: 'FeatureCollection',
+            features: [...activeLoot, ...activePets],
+          });
+        }
+
+        // 3. Soporte defensivo para fuentes o capas dinámicas huérfanas
+        const style = map.getStyle();
+        if (style && style.layers) {
+          const activeEntityIds = new Set([
+            ...crates.filter((c) => !c.opened).map((c) => c.id),
+            ...wildPets.map((wp) => wp.id),
+            ...droppedItems.map((d) => d.id),
+          ]);
+          style.layers.forEach((layer) => {
+            if (layer.id.startsWith('circle-layer-') || layer.id.startsWith('entity-radius-')) {
+              const entityId = layer.id.replace('circle-layer-', '').replace('entity-radius-', '');
+              if (!activeEntityIds.has(entityId)) {
+                if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+                if (map.getSource(layer.id)) map.removeSource(layer.id);
+              }
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('[GameMap] Error al sincronizar círculos GeoJSON de interacción:', err);
+      }
+    },
+    [crates, wildPets, droppedItems, isMeWounded]
+  );
+
+  const updateInteractionCirclesRef = useRef<(targetMap?: maplibregl.Map) => void>(updateInteractionCircles);
+  updateInteractionCirclesRef.current = updateInteractionCircles;
+
+  useEffect(() => {
+    updateInteractionCircles();
+  }, [crates, wildPets, droppedItems, isMeWounded, mapLoaded, styleVersion, updateInteractionCircles]);
+
   // Actualización de fuentes GeoJSON tácticas
   const updateEntityInfluenceSources = useCallback(
     (map: maplibregl.Map) => {
@@ -741,24 +856,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         visionSource.setData(createGeoJsonCircle(myCoords, Math.min(visionRadius, playAreaRadius)));
       }
 
-      // 4. Actualizar crates-zones
-      const cratesSource = map.getSource('crates-zones') as maplibregl.GeoJSONSource | undefined;
-      if (cratesSource) {
-        const crateFeatures = isMeWounded
-          ? []
-          : crates
-              .filter(
-                (c) =>
-                  !c.opened &&
-                  typeof c.lat === 'number' &&
-                  typeof c.lng === 'number' &&
-                  !isNaN(c.lat) &&
-                  !isNaN(c.lng) &&
-                  (c.lat !== 0 || c.lng !== 0)
-              )
-              .map((c) => createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40));
-        cratesSource.setData({ type: 'FeatureCollection', features: crateFeatures });
-      }
+      // 4. Actualizar círculos de interacción GeoJSON (suministros, loot y mascotas)
+      updateInteractionCirclesRef.current?.(map);
 
       // 5. Actualizar structures-zones
       const structuresSource = map.getSource('structures-zones') as maplibregl.GeoJSONSource | undefined;
@@ -780,42 +879,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             properties: { type: s.type, id: s.id },
           }));
         structuresSource.setData({ type: 'FeatureCollection', features: structureFeatures });
-      }
-
-      // 6. Actualizar interaction-ranges
-      const rangesSource = map.getSource('interaction-ranges') as maplibregl.GeoJSONSource | undefined;
-      if (rangesSource) {
-        const features = isMeWounded
-          ? []
-          : [
-              ...droppedItems
-                .filter(
-                  (d) =>
-                    typeof d.lat === 'number' &&
-                    typeof d.lng === 'number' &&
-                    !isNaN(d.lat) &&
-                    !isNaN(d.lng) &&
-                    (d.lat !== 0 || d.lng !== 0)
-                )
-                .map((d) => ({
-                  ...createGeoJsonCircle({ lat: d.lat, lng: d.lng }, 25),
-                  properties: { type: 'loot', id: d.id },
-                })),
-              ...wildPets
-                .filter(
-                  (wp) =>
-                    typeof wp.lat === 'number' &&
-                    typeof wp.lng === 'number' &&
-                    !isNaN(wp.lat) &&
-                    !isNaN(wp.lng) &&
-                    (wp.lat !== 0 || wp.lng !== 0)
-                )
-                .map((wp) => ({
-                  ...createGeoJsonCircle({ lat: wp.lat, lng: wp.lng }, 25),
-                  properties: { type: 'pet', id: wp.id },
-                })),
-            ];
-        rangesSource.setData({ type: 'FeatureCollection', features });
       }
     } catch (err) {
       console.warn('[GameMap] Error al actualizar fuentes de entidades:', err);
@@ -1446,35 +1509,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     if (!map) return;
 
     // Actualizar zonas de interacción de 40m translúcidas en el mapa
-    if (isMapStyleLoaded(map)) {
-      try {
-        const source = map.getSource('crates-zones') as maplibregl.GeoJSONSource | undefined;
-        if (source) {
-          const activeCrates = isMeWounded
-            ? []
-            : crates.filter(
-                (c) =>
-                  !c.opened &&
-                  typeof c.lat === 'number' &&
-                  typeof c.lng === 'number' &&
-                  !isNaN(c.lat) &&
-                  !isNaN(c.lng) &&
-                  (c.lat !== 0 || c.lng !== 0)
-              );
-          const features = activeCrates.map(
-            (c) => createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40)
-          );
-          source.setData({
-            type: 'FeatureCollection',
-            features,
-          });
-        }
-      } catch (err) {
-        console.warn('[GameMap] Error al actualizar zonas de cajas:', err);
-      }
-    }
+    updateInteractionCirclesRef.current?.(map);
 
-    const currentCrateIds = new Set(crates.map((c) => c.id));
+    const currentCrateIds = new Set(crates.filter((c) => !c.opened).map((c) => c.id));
     crateMarkersRef.current.forEach((marker, id) => {
       if (!currentCrateIds.has(id)) {
         marker.remove();
@@ -1943,39 +1980,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !isMapStyleLoaded(map)) return;
-
-    try {
-      const source = map.getSource('interaction-ranges') as maplibregl.GeoJSONSource | undefined;
-      if (!source) return;
-
-      if (isMeWounded) {
-        source.setData({ type: 'FeatureCollection', features: [] });
-        return;
-      }
-
-      const features = [
-        ...droppedItems
-          .filter((d) => typeof d.lat === 'number' && typeof d.lng === 'number' && !isNaN(d.lat) && !isNaN(d.lng) && (d.lat !== 0 || d.lng !== 0))
-          .map((d) => ({
-            ...createGeoJsonCircle({ lat: d.lat, lng: d.lng }, 25),
-            properties: { type: 'loot', id: d.id },
-          })),
-        ...wildPets
-          .filter((wp) => typeof wp.lat === 'number' && typeof wp.lng === 'number' && !isNaN(wp.lat) && !isNaN(wp.lng) && (wp.lat !== 0 || wp.lng !== 0))
-          .map((wp) => ({
-            ...createGeoJsonCircle({ lat: wp.lat, lng: wp.lng }, 25),
-            properties: { type: 'pet', id: wp.id },
-          })),
-      ];
-
-      source.setData({
-        type: 'FeatureCollection',
-        features,
-      });
-    } catch (err) {
-      console.warn('[GameMap] Error al actualizar rangos de interacción:', err);
-    }
+    if (!map) return;
+    updateInteractionCirclesRef.current?.(map);
   }, [droppedItems, wildPets, isMeWounded, mapLoaded, styleVersion]);
 
   // ==========================================
