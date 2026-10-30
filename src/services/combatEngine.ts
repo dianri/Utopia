@@ -298,6 +298,9 @@ export const WEAPON_ICONS: Record<WeaponType, string> = {
 };
 
 export function getWeaponIcon(weaponType?: WeaponType | string): string {
+  if (weaponType === 'rpg' || weaponType === 'rocket_launcher') {
+    return WEAPON_ICONS.rocket_launcher;
+  }
   if (weaponType && weaponType in WEAPON_ICONS) {
     return WEAPON_ICONS[weaponType as WeaponType];
   }

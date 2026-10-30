@@ -28,6 +28,50 @@ interface BackpackModalProps {
   onPickDroppedItem?: (dropped: DroppedItem) => void;
 }
 
+const WEAPON_ICON_MAP: Record<string, string> = {
+  fists: '/assets/icons/weapons/weapon-fists.png',
+  knife: '/assets/icons/weapons/weapon-knife.png',
+  axe: '/assets/icons/weapons/weapon-axe.png',
+  pistol: '/assets/icons/weapons/weapon-pistol.png',
+  shotgun: '/assets/icons/weapons/weapon-shotgun.png',
+  rifle: '/assets/icons/weapons/weapon-rifle.png',
+  grenade: '/assets/icons/weapons/weapon-grenade.png',
+  rpg: '/assets/icons/weapons/weapon-rpg.png',
+  rocket_launcher: '/assets/icons/weapons/weapon-rpg.png',
+  medkit: '/assets/icons/crates/crate-medkit.png',
+  ammo: '/assets/icons/crates/crate-ammo.png',
+};
+
+const getItemIcon = (item: { type?: string; tier?: number; category?: string }): string => {
+  if (item.category === 'health' || item.type === 'medkit') return '/assets/icons/crates/crate-medkit.png';
+  if (item.category === 'ammo' || item.type === 'ammo') return '/assets/icons/crates/crate-ammo.png';
+  if (item.type && WEAPON_ICON_MAP[item.type]) return WEAPON_ICON_MAP[item.type];
+  switch (item.tier) {
+    case 7: return WEAPON_ICON_MAP.rpg;
+    case 6: return WEAPON_ICON_MAP.grenade;
+    case 5: return WEAPON_ICON_MAP.rifle;
+    case 4: return WEAPON_ICON_MAP.shotgun;
+    case 3: return WEAPON_ICON_MAP.pistol;
+    case 2: return WEAPON_ICON_MAP.axe;
+    case 1: return WEAPON_ICON_MAP.knife;
+    case 0:
+    default: return WEAPON_ICON_MAP.fists;
+  }
+};
+
+const getPetIcon = (pet: Pet): string => {
+  if (pet.icon && pet.icon.startsWith('/assets/')) return pet.icon;
+  const petMap: Record<string, string> = {
+    dog: '/assets/icons/pets/pet-dog.png',
+    drone: '/assets/icons/pets/pet-drone.png',
+    electric_mouse: '/assets/icons/pets/pet-electric-mouse.png',
+    rabbit: '/assets/icons/pets/pet-rabbit.png',
+    cat: '/assets/icons/pets/pet-cat.png',
+    med_bot: '/assets/icons/pets/pet-medbot.png',
+  };
+  return petMap[pet.type] || `/assets/icons/pets/${pet.id}.png`;
+};
+
 export const BackpackModal: React.FC<BackpackModalProps> = ({
   isOpen,
   onClose,
@@ -269,9 +313,16 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-9 h-9 rounded-lg bg-black/60 border border-hud-border flex items-center justify-center shrink-0">
-                            {tierInfo.icon}
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex h-14 w-14 shrink-0 items-center justify-center">
+                            <img
+                              src={getItemIcon(item)}
+                              alt={item.name}
+                              className="h-full w-full object-contain select-none drop-shadow-[0_4px_10px_rgba(0,0,0,0.85)] drop-shadow-[0_0_8px_rgba(34,211,238,0.4)]"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                              }}
+                            />
                           </div>
                           <div className="min-w-0">
                             <div className="flex items-center gap-2">
@@ -364,9 +415,16 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
                           key={dropped.id}
                           className="p-2.5 rounded-xl bg-black/60 border border-amber-500/40 flex items-center justify-between gap-2"
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className="w-8 h-8 rounded-lg bg-amber-950/40 border border-amber-500/60 flex items-center justify-center text-sm shrink-0">
-                              {tierInfo.icon}
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center">
+                              <img
+                                src={getItemIcon(dropped.item)}
+                                alt={dropped.item.name}
+                                className="h-full w-full object-contain select-none drop-shadow-[0_3px_8px_rgba(0,0,0,0.85)]"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
                             </div>
                             <div className="min-w-0">
                               <span className="text-xs font-mono font-bold text-white uppercase block truncate">
@@ -443,14 +501,18 @@ export const BackpackModal: React.FC<BackpackModalProps> = ({
                     >
                       {/* ENCABEZADO: AVATAR, NOMBRE Y ESTADO */}
                       <div className="flex items-center gap-3">
-                        <div
-                          className={`w-12 h-12 rounded-xl border flex items-center justify-center text-2xl shadow-lg shrink-0 ${
-                            pet.isWounded
-                              ? 'bg-slate-900 border-slate-700 grayscale opacity-60'
-                              : 'bg-emerald-950/60 border-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.3)]'
-                          }`}
-                        >
-                          {pet.icon}
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center">
+                          <img
+                            src={getPetIcon(pet)}
+                            alt={pet.name}
+                            className={`h-full w-full object-contain select-none drop-shadow-[0_4px_10px_rgba(0,0,0,0.85)] drop-shadow-[0_0_8px_rgba(52,211,153,0.5)] transition-all ${
+                              pet.isWounded ? 'grayscale opacity-60' : ''
+                            }`}
+                            onError={(e) => {
+                              // Si falla la carga, fallback temporal limpio
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
                         </div>
 
                         <div className="flex-1 min-w-0">

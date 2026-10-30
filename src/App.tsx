@@ -1128,7 +1128,7 @@ export const App: React.FC = () => {
       onPetAdopted: ({ wildPetId, playerId, playerNickname, pet }) => {
         setWildPets((prev) => prev.filter((wp) => wp.id !== wildPetId));
         if (playerId !== myPlayerRef.current?.id) {
-          addLog(`🐾 ${playerNickname} ha adoptado a ${pet.name} ${pet.icon}!`, 'info');
+          addLog(`🐾 ${playerNickname} ha adoptado a ${pet.name}!`, 'info');
           setPlayers((prev) =>
             prev.map((p) => {
               if (p.id === playerId) {
@@ -3455,7 +3455,7 @@ export const App: React.FC = () => {
           if (prevPets.some((p) => p.id === wp.pet.id) || prevPets.length >= MAX_PETS_PER_PLAYER) return prev;
 
           const updatedPets = [...prevPets, wp.pet];
-          addLog(`¡Has adoptado a ${wp.pet.name} ${wp.pet.icon}! Te acompañará fielmente en la misión.`, 'loot');
+          addLog(`¡Has adoptado a ${wp.pet.name}! Te acompañará fielmente en la misión.`, 'loot');
           soundEffects.playCrateLoot();
 
           // Sincronizar adopción a la sala
@@ -3733,7 +3733,7 @@ export const App: React.FC = () => {
         return updated;
       });
       realtimeRef.current.broadcastNewWildPet(newPet);
-      addLog(`🐾 Se ha avistado una nueva criatura en el mapa: ${newPet.pet.name} ${newPet.pet.icon}`, 'info');
+      addLog(`🐾 Se ha avistado una nueva criatura en el mapa: ${newPet.pet.name}`, 'info');
     };
 
     const airdropTimeout = setTimeout(() => {
@@ -4100,7 +4100,7 @@ export const App: React.FC = () => {
       if (prevPets.some((p) => p.id === wp.pet.id) || prevPets.length >= MAX_PETS_PER_PLAYER) return prev;
 
       const updatedPets = [...prevPets, wp.pet];
-      addLog(`¡Has adoptado a ${wp.pet.name} ${wp.pet.icon}! Te acompañará fielmente en la misión.`, 'loot');
+      addLog(`¡Has adoptado a ${wp.pet.name}! Te acompañará fielmente en la misión.`, 'loot');
       soundEffects.playCrateLoot();
 
       realtimeRef.current.broadcastPetAdopted(wp.id, prev.nickname, wp.pet);
