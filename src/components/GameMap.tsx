@@ -283,16 +283,19 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       // 4. Capas dinámicas: Radio de interacción de suministros (40m)
       if (!map.getSource('crates-zones')) {
-        const initialCrateFeatures = crates
-          .filter(
-            (c) =>
-              !c.opened &&
-              typeof c.lat === 'number' &&
-              typeof c.lng === 'number' &&
-              !isNaN(c.lat) &&
-              !isNaN(c.lng)
-          )
-          .map((c) => createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40));
+        const initialCrateFeatures = isMeWounded
+          ? []
+          : crates
+              .filter(
+                (c) =>
+                  !c.opened &&
+                  typeof c.lat === 'number' &&
+                  typeof c.lng === 'number' &&
+                  !isNaN(c.lat) &&
+                  !isNaN(c.lng) &&
+                  (c.lat !== 0 || c.lng !== 0)
+              )
+              .map((c) => createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40));
 
         map.addSource('crates-zones', {
           type: 'geojson',
@@ -333,7 +336,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
               typeof s.lat === 'number' &&
               typeof s.lng === 'number' &&
               !isNaN(s.lat) &&
-              !isNaN(s.lng)
+              !isNaN(s.lng) &&
+              (s.lat !== 0 || s.lng !== 0)
           )
           .map((s) => {
             const circle = createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius);
@@ -591,16 +595,19 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       // 4. Actualizar crates-zones
       const cratesSource = map.getSource('crates-zones') as maplibregl.GeoJSONSource | undefined;
       if (cratesSource) {
-        const crateFeatures = crates
-          .filter(
-            (c) =>
-              !c.opened &&
-              typeof c.lat === 'number' &&
-              typeof c.lng === 'number' &&
-              !isNaN(c.lat) &&
-              !isNaN(c.lng)
-          )
-          .map((c) => createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40));
+        const crateFeatures = isMeWounded
+          ? []
+          : crates
+              .filter(
+                (c) =>
+                  !c.opened &&
+                  typeof c.lat === 'number' &&
+                  typeof c.lng === 'number' &&
+                  !isNaN(c.lat) &&
+                  !isNaN(c.lng) &&
+                  (c.lat !== 0 || c.lng !== 0)
+              )
+              .map((c) => createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40));
         cratesSource.setData({ type: 'FeatureCollection', features: crateFeatures });
       }
 
@@ -616,7 +623,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
               typeof s.lat === 'number' &&
               typeof s.lng === 'number' &&
               !isNaN(s.lat) &&
-              !isNaN(s.lng)
+              !isNaN(s.lng) &&
+              (s.lat !== 0 || s.lng !== 0)
           )
           .map((s) => ({
             ...createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius),
@@ -1257,7 +1265,17 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       try {
         const source = map.getSource('crates-zones') as maplibregl.GeoJSONSource | undefined;
         if (source) {
-          const activeCrates = crates.filter((c) => !c.opened);
+          const activeCrates = isMeWounded
+            ? []
+            : crates.filter(
+                (c) =>
+                  !c.opened &&
+                  typeof c.lat === 'number' &&
+                  typeof c.lng === 'number' &&
+                  !isNaN(c.lat) &&
+                  !isNaN(c.lng) &&
+                  (c.lat !== 0 || c.lng !== 0)
+              );
           const features = activeCrates.map(
             (c) => createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40)
           );
@@ -1386,17 +1404,26 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const source = map.getSource('structures-zones') as maplibregl.GeoJSONSource | undefined;
         if (source) {
           const visibleStructures = isMeWounded ? structures.filter((s) => s.type === 'hospital') : structures;
-          const features = visibleStructures.map((s) => {
-            const circle = createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius);
-            return {
-              ...circle,
-              properties: {
-                ...circle.properties,
-                type: s.type,
-                id: s.id,
-              },
-            };
-          });
+          const features = visibleStructures
+            .filter(
+              (s) =>
+                typeof s.lat === 'number' &&
+                typeof s.lng === 'number' &&
+                !isNaN(s.lat) &&
+                !isNaN(s.lng) &&
+                (s.lat !== 0 || s.lng !== 0)
+            )
+            .map((s) => {
+              const circle = createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius);
+              return {
+                ...circle,
+                properties: {
+                  ...circle.properties,
+                  type: s.type,
+                  id: s.id,
+                },
+              };
+            });
           source.setData({
             type: 'FeatureCollection',
             features,
@@ -1460,9 +1487,21 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // ==========================================
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !isMapLoadedRef.current) return;
+    if (!center.lat || !center.lng || (center.lat === 0 && center.lng === 0)) return;
 
-    const currentDroppedIds = new Set(droppedItems.map((d) => d.id));
+    const currentDroppedIds = new Set(
+      droppedItems
+        .filter(
+          (d) =>
+            typeof d.lat === 'number' &&
+            typeof d.lng === 'number' &&
+            !isNaN(d.lat) &&
+            !isNaN(d.lng) &&
+            (d.lat !== 0 || d.lng !== 0)
+        )
+        .map((d) => d.id)
+    );
     droppedItemMarkersRef.current.forEach((marker, id) => {
       if (!currentDroppedIds.has(id)) {
         marker.remove();
@@ -1496,6 +1535,16 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     };
 
     droppedItems.forEach((dropped) => {
+      if (
+        typeof dropped.lat !== 'number' ||
+        typeof dropped.lng !== 'number' ||
+        isNaN(dropped.lat) ||
+        isNaN(dropped.lng) ||
+        (dropped.lat === 0 && dropped.lng === 0)
+      ) {
+        return;
+      }
+
       if (!droppedItemMarkersRef.current.has(dropped.id)) {
         const style = getTierStyle(dropped.item);
         const el = document.createElement('div');
@@ -1542,7 +1591,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (el) el.style.display = isMeWounded ? 'none' : 'block';
       }
     });
-  }, [droppedItems, isMeWounded]);
+  }, [droppedItems, isMeWounded, mapLoaded, center.lat, center.lng]);
 
   // ==========================================
   // 6.7. MARCADORES DE MASCOTAS SILVESTRES (PETS EN EL MAPA)

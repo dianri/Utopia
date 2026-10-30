@@ -1056,9 +1056,13 @@ export const App: React.FC = () => {
         addLog(`¡${activatedBy} activó el Radar Táctico! Monstruo revelado`, 'info');
       },
       onCrateLooted: ({ crateId, playerNickname, weaponName }) => {
-        setCrates((prev) =>
-          prev.map((c) => (c.id === crateId ? { ...c, opened: true } : c))
-        );
+        setCrates((prev) => {
+          const updated = prev.map((c) => (c.id === crateId ? { ...c, opened: true } : c));
+          if (roomRef.current?.id && myPlayerRef.current?.isHost) {
+            syncRoomEntitiesToSupabase(roomRef.current.id, { crates: updated });
+          }
+          return updated;
+        });
         addLog(`${playerNickname} saqueó un airdrop: ${weaponName}`, 'loot');
       },
       onPlayerRevived: ({ revivedPlayerId, reviverNickname }) => {
@@ -1109,7 +1113,13 @@ export const App: React.FC = () => {
         addLog(`Objeto en el terreno: ${dropped.item.name} (T${dropped.item.tier}) soltado por ${dropped.droppedBy || 'un aliado'}.`, 'loot');
       },
       onItemPicked: ({ droppedItemId, playerId }) => {
-        setDroppedItems((prev) => prev.filter((d) => d.id !== droppedItemId));
+        setDroppedItems((prev) => {
+          const updated = prev.filter((d) => d.id !== droppedItemId);
+          if (roomRef.current?.id && myPlayerRef.current?.isHost) {
+            syncRoomEntitiesToSupabase(roomRef.current.id, { droppedItems: updated });
+          }
+          return updated;
+        });
         const picker = playersRef.current.find((p) => p.id === playerId);
         if (picker && picker.id !== myPlayerRef.current?.id) {
           addLog(`${picker.nickname} recogió un objeto del terreno.`, 'info');
@@ -1180,7 +1190,7 @@ export const App: React.FC = () => {
                 : null
             );
           }
-          if (payload.crates && payload.crates.length > 0) {
+          if (payload.crates) {
             setCrates(payload.crates);
           }
           if (payload.droppedItems) {
@@ -3370,9 +3380,13 @@ export const App: React.FC = () => {
       const dist = getDistanceMeters(myCoord, crate);
       if (dist <= 40) {
         // Saquear caja
-        setCrates((prev) =>
-          prev.map((c) => (c.id === crate.id ? { ...c, opened: true } : c))
-        );
+        setCrates((prev) => {
+          const updated = prev.map((c) => (c.id === crate.id ? { ...c, opened: true } : c));
+          if (room?.id) {
+            syncRoomEntitiesToSupabase(room.id, { crates: updated });
+          }
+          return updated;
+        });
 
         // 1. RECOLECCIÓN AISLADA DE SUMINISTROS (CURACIÓN ESTRICTAMENTE LIMITADA A BOTIQUINES)
         let lootedName = 'Suministros';
@@ -3498,9 +3512,13 @@ export const App: React.FC = () => {
       const fetchingPet = activePets.find((pet) => dist <= pet.fetchRadiusMeters);
       if (fetchingPet) {
         // Marcar caja como abierta
-        setCrates((prev) =>
-          prev.map((c) => (c.id === crate.id ? { ...c, opened: true } : c))
-        );
+        setCrates((prev) => {
+          const updated = prev.map((c) => (c.id === crate.id ? { ...c, opened: true } : c));
+          if (room?.id) {
+            syncRoomEntitiesToSupabase(room.id, { crates: updated });
+          }
+          return updated;
+        });
 
         let lootedName = 'Suministros';
         setMyPlayer((prev) => {
@@ -4025,7 +4043,13 @@ export const App: React.FC = () => {
       return;
     }
 
-    setDroppedItems((prev) => prev.filter((d) => d.id !== dropped.id));
+    setDroppedItems((prev) => {
+      const updated = prev.filter((d) => d.id !== dropped.id);
+      if (roomRef.current?.id) {
+        syncRoomEntitiesToSupabase(roomRef.current.id, { droppedItems: updated });
+      }
+      return updated;
+    });
     realtimeRef.current.broadcastItemPicked(dropped.id);
 
     setMyPlayer((prev) => {
