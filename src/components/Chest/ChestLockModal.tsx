@@ -87,14 +87,12 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
       soundEffects.playCrateLoot();
       soundEffects.vibrate([60, 40, 80]);
 
-      setTimeout(() => {
-        setFeedback('idle');
-        if (currentStep === 0) {
-          onStepSuccess(1, 1);
-        } else {
-          onStepSuccess(2, 0); // Pasa a Fase 2
-        }
-      }, 500);
+      setFeedback('idle');
+      if (currentStep === 0) {
+        onStepSuccess(1, 1);
+      } else {
+        onStepSuccess(2, 0); // Pasa a Fase 2
+      }
     } else {
       // Fallo
       setFeedback('fail');
@@ -199,24 +197,16 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
     if (color === sequence[userSequenceIndex]) {
       const nextIdx = userSequenceIndex + 1;
       if (nextIdx >= sequence.length) {
-        // Bloquear nuevos toques mientras se resuelve el cerrojo
-        isProcessingInputRef.current = true;
-        // Breve retardo para que el jugador aprecie la iluminación del último botón
-        setTimeout(() => {
-          setFeedback('success');
-          soundEffects.playCrateLoot();
-          soundEffects.vibrate([60, 40, 80]);
-
-          setTimeout(() => {
-            setFeedback('idle');
-            isProcessingInputRef.current = false;
-            if (currentStep === 0) {
-              onStepSuccess(2, 1);
-            } else {
-              onStepSuccess(3, 0); // Pasa a Fase 3
-            }
-          }, 600);
-        }, 220);
+        setFeedback('success');
+        soundEffects.playCrateLoot();
+        soundEffects.vibrate([60, 40, 80]);
+        isProcessingInputRef.current = false;
+        setFeedback('idle');
+        if (currentStep === 0) {
+          onStepSuccess(2, 1);
+        } else {
+          onStepSuccess(3, 0); // Pasa a Fase 3
+        }
       } else {
         setUserSequenceIndex(nextIdx);
       }
@@ -281,24 +271,20 @@ export const ChestLockModal: React.FC<ChestLockModalProps> = ({
       soundEffects.vibrate([80, 50, 120]);
 
       if (currentStep === 0) {
-        setTimeout(() => {
-          setFeedback('idle');
-          onStepSuccess(3, 1);
-        }, 700);
+        setFeedback('idle');
+        onStepSuccess(3, 1);
       } else {
         // ¡PASO 6 COMPLETADO / SEXTO CERROJO RESUELTO!
         setIsVictorious(true);
-        setTimeout(() => {
-          setFeedback('idle');
-          if (onChestDecrypted) {
-            onChestDecrypted();
-          } else if (onVictory) {
-            onVictory();
-          }
-          if (onClose) {
-            onClose();
-          }
-        }, 700);
+        setFeedback('idle');
+        if (onChestDecrypted) {
+          onChestDecrypted();
+        } else if (onVictory) {
+          onVictory();
+        }
+        if (onClose) {
+          onClose();
+        }
       }
     } else {
       setFeedback('fail');

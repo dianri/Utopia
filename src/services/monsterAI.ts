@@ -61,7 +61,7 @@ export class MonsterAIController {
     const now = Date.now();
 
     // 1. GESTIÓN DE MUERTE TEMPORAL Y REAPARICIÓN SILENCIOSA (60 SEGUNDOS)
-    if (monster.hp <= 0 || monster.state === 'dead') {
+    if (monster.hp <= 0 || monster.state === 'dead' || monster.state === 'defeated' || monster.state === 'wounded') {
       const remaining = (monster.respawnTimeRemaining ?? 60) - 1;
       if (remaining <= 0) {
         // Reaparición silenciosa en una posición alejada dentro del área jugable
@@ -88,7 +88,7 @@ export class MonsterAIController {
       } else {
         result.updatedMonster = {
           ...monster,
-          state: 'dead',
+          state: 'defeated',
           hp: 0,
           respawnTimeRemaining: remaining,
           isRespawning: true,

@@ -68,6 +68,7 @@ import { useGeolocation } from './hooks/useGeolocation';
 import { useCombatLoop } from './hooks/useCombatLoop';
 import { useHostElection } from './hooks/useHostElection';
 import { useMonsterAI } from './hooks/useMonsterAI';
+import { PVP_TRIGGER_RADIUS_METERS } from './hooks/usePvPCombat';
 
 import { GameMap } from './components/GameMap';
 import { TacticalHeader } from './components/HUD/TacticalHeader';
@@ -663,13 +664,13 @@ export const App: React.FC = () => {
 
       if (me.lat == null || me.lng == null || target.lat == null || target.lng == null) return;
 
-      // 2. Comprobar distancia física (<= 15m para combate cuerpo a cuerpo / PvP)
+      // 2. Comprobar distancia física (<= 28m para combate cuerpo a cuerpo / PvP)
       const dist = getDistanceMeters(
         { lat: me.lat, lng: me.lng },
         { lat: target.lat, lng: target.lng }
       );
 
-      if (dist <= 15) {
+      if (dist <= PVP_TRIGGER_RADIUS_METERS) {
         initiatePvPCombatWith(target);
       } else {
         // Si está lejos, trazar movimiento hacia el rival
@@ -1020,16 +1021,23 @@ export const App: React.FC = () => {
         }
       },
       onMonsterDamaged: ({ damage, fromPlayerId, currentHp, monsterId }) => {
+        const monsterDefeatedState = currentHp <= 0 ? 'defeated' : undefined;
         setMonsters((prev) =>
           prev.map((m) => {
             if ((monsterId && m.id === monsterId) || (!monsterId && (m.id === prev[0]?.id || prev.length === 1))) {
-              return { ...m, hp: currentHp };
+              return { ...m, hp: currentHp, ...(monsterDefeatedState ? { state: monsterDefeatedState } : {}) };
             }
             return m;
           })
         );
         if (!monsterId || monsterId === activeCombatMonsterIdRef.current || monsterId === monsterRef.current.id) {
-          setMonster((prev) => ({ ...prev, hp: currentHp }));
+          setMonster((prev) => ({ ...prev, hp: currentHp, ...(monsterDefeatedState ? { state: monsterDefeatedState } : {}) }));
+        }
+        if (currentHp <= 0) {
+          addLog('¡Monstruo abatido en combate! La criatura yace herida en el terreno.', 'loot');
+          if (fromPlayerId && fromPlayerId === myPlayerRef.current?.id) {
+            setMyPlayer((prev) => (prev ? { ...prev, monsterKills: prev.monsterKills + 1 } : null));
+          }
         }
         if (fromPlayerId) {
           const targetMonsterAI = monsterId ? monsterAIsRef.current.get(monsterId) : monsterAIRef.current;
@@ -1603,8 +1611,8 @@ export const App: React.FC = () => {
         }
       }
 
-      // Detección y desencadenante de Combate PvP Automático (<= 12 metros)
-      const PVP_TRIGGER_RADIUS = 12;
+      // Detección y desencadenante de Combate PvP Automático (<= 28 metros)
+      const PVP_TRIGGER_RADIUS = PVP_TRIGGER_RADIUS_METERS;
       if (
         currentRoom?.status === 'playing' &&
         Date.now() >= fleeImmunityUntilRef.current &&
@@ -2198,12 +2206,18 @@ export const App: React.FC = () => {
       const now = Date.now();
       const currentTargetId = activeCombatMonsterIdRef.current || monsterRef.current.id;
       realtimeRef.current.broadcastMonsterDamaged(damage, newHp, currentTargetId);
-      setMonster((prev) => ({ ...prev, hp: newHp }));
+      const monsterDefeatedState = newHp <= 0 ? 'defeated' : undefined;
+      setMonster((prev) => ({ ...prev, hp: newHp, ...(monsterDefeatedState ? { state: monsterDefeatedState } : {}) }));
       setMonsters((prev) =>
         prev.map((m) =>
-          m.id === currentTargetId || (!currentTargetId && m === prev[0]) ? { ...m, hp: newHp } : m
+          m.id === currentTargetId || (!currentTargetId && m === prev[0])
+            ? { ...m, hp: newHp, ...(monsterDefeatedState ? { state: monsterDefeatedState } : {}) }
+            : m
         )
       );
+      if (newHp <= 0) {
+        addLogRef.current('¡Monstruo abatido en combate! La criatura yace herida en el terreno.', 'loot');
+      }
 
       if (myPlayerRef.current) {
         const ai = currentTargetId ? monsterAIsRef.current.get(currentTargetId) : monsterAIRef.current;
@@ -3152,8 +3166,8 @@ export const App: React.FC = () => {
         playerCoord
       );
 
-      // 6. Invocar/desplegar el monstruo secuencial de la siguiente fase
-      const newMonster = createSequentialMonster(nextChestIdx, centerCoord, gameRadius);
+      // 6. Invocar/desplegar el monstruo secuencial de la siguiente fase (anclado en el nuevo cofre)
+      const newMonster = createSequentialMonster(nextChestIdx, nextCoords, gameRadius);
       const updatedMonsters = [...monstersRef.current, newMonster];
       setMonsters(updatedMonsters);
       activeCombatMonsterIdRef.current = newMonster.id || null;
@@ -3428,13 +3442,11 @@ export const App: React.FC = () => {
       const dist = getDistanceMeters(myCoord, { lat: wp.lat, lng: wp.lng });
       if (dist <= PET_ADOPTION_RADIUS_METERS) {
         if (hasMaxPets) {
-          // Bloquear adopción y emitir feedback táctico con throttling (máx 1 aviso cada 8s)
+          // Bloquear adopción pero emitir toast informativo sin alarmas sonoras
           const now = Date.now();
           if (now - lastPetCapacityWarningRef.current > 8000) {
             lastPetCapacityWarningRef.current = now;
-            addLog('CAPACIDAD MÁXIMA DE MASCOTAS (3/3): No puedes vincular más acompañantes.', 'warning');
-            soundEffects.playAlarm();
-            soundEffects.vibrate(150);
+            addLog('Escuadra completa (3/3 mascotas activas).', 'info');
           }
           return;
         }
@@ -4068,9 +4080,8 @@ export const App: React.FC = () => {
 
     const currentPets = player.pets || [];
     if (currentPets.length >= MAX_PETS_PER_PLAYER) {
-      addLog('CAPACIDAD MÁXIMA DE MASCOTAS (3/3): No puedes vincular más acompañantes.', 'warning');
-      soundEffects.playAlarm();
-      soundEffects.vibrate(150);
+      addLog('Escuadra completa (3/3 mascotas activas).', 'info');
+      handleMapClickRef.current?.({ lat: wp.lat, lng: wp.lng });
       return;
     }
 
@@ -4646,14 +4657,18 @@ export const App: React.FC = () => {
     localStorage.setItem('utopia_active_room', gameData.code);
     setSavedActiveRoomCode(gameData.code);
 
-    // Sincronizar monstruos según la fase de cofre actual
+    // Sincronizar monstruos según la fase de cofre actual (anclados al tesoro)
     const currentChestIdx = gameData.settings?.current_chest_index ?? 1;
+    const initialTreasureCoord = {
+      lat: gameData.treasure_lat || gameData.center_lat,
+      lng: gameData.treasure_lng || gameData.center_lng,
+    };
     const joinedMonsters: Monster[] = [];
     for (let cIdx = 1; cIdx <= currentChestIdx; cIdx++) {
       joinedMonsters.push(
         createSequentialMonster(
           cIdx,
-          { lat: gameData.center_lat, lng: gameData.center_lng },
+          initialTreasureCoord,
           gameData.play_area_radius
         )
       );

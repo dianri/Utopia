@@ -308,9 +308,38 @@
 }
 
 /* Jerarquía de capas para avatar y comitiva */
-.maplibregl-marker[data-is-me="true"],
-.marker-player[data-is-me="true"] {
-  z-index: 40 !important;
+.maplibregl-map,
+.maplibregl-canvas-container,
+.maplibregl-marker {
+  z-index: 10 !important;
+}
+
+/* Barras HUD y Modales de interfaz: prioridad absoluta */
+header,
+.tactical-header,
+.hud-top-bar,
+.hud-bottom-bar,
+.hud-control-overlay {
+  z-index: 50 !important;
+  position: relative;
+}
+
+/* Modales y avisos emergentes */
+.modal-overlay,
+.tactical-modal {
+  z-index: 100 !important;
+}
+
+/* Animación de peligro parpadeante para monstruos derrotados/heridos */
+@keyframes pulseRedHazard {
+  0%, 100% {
+    filter: drop-shadow(0 0 8px rgba(239, 68, 68, 0.8));
+    opacity: 0.75;
+  }
+  50% {
+    filter: drop-shadow(0 0 18px rgba(239, 68, 68, 1)) drop-shadow(0 0 26px rgba(220, 38, 38, 0.95));
+    opacity: 1;
+  }
 }
 
 /* Las animaciones procedimentales operan dentro del contenedor interno sin afectar el root */
