@@ -3,8 +3,9 @@ import type { Player, Weapon, Pet, Monster } from '../../types/game';
 import { DEFAULT_WEAPONS_BY_ROLE, getModifiedWeaponStats, getWeaponIcon } from '../../services/combatEngine';
 import { soundEffects } from '../../services/soundEffects';
 import { usePvPCombat } from '../../hooks/usePvPCombat';
+import { useEnemyEvasion } from '../../hooks/useEnemyEvasion';
 import { supabase } from '../../lib/supabase';
-import { Swords, ShieldAlert, Crosshair, Zap, Shield, Skull, Heart, Footprints, AlertTriangle } from 'lucide-react';
+import { Swords, ShieldAlert, Crosshair, Zap, Shield, Skull, Heart, Footprints, AlertTriangle, Target } from 'lucide-react';
 
 interface PvPArenaProps {
   isOpen: boolean;
@@ -53,6 +54,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
   const [attackCooldown, setAttackCooldown] = useState<number>(0);
   const [duelOutcome, setDuelOutcome] = useState<'ongoing' | 'victory' | 'defeat' | 'fled'>('ongoing');
   const [damageNumbers, setDamageNumbers] = useState<PvPDamageItem[]>([]);
+  const [missMarkers, setMissMarkers] = useState<{ id: number; x: number; y: number }[]>([]);
 
   const myPlayerRef = useRef<Player>(myPlayer);
   myPlayerRef.current = myPlayer;
@@ -67,6 +69,13 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
   myHpRef.current = myHp;
 
   const lastAttackTimeRef = useRef<number>(0);
+
+  // Motor de Evasión Procedimental del Adversario (PvP)
+  const isCombatFinished = !isOpen || duelOutcome !== 'ongoing' || opponentHp <= 0;
+  const { targetOffset, isHitReaction, evasionSpeedClass, triggerHitReaction } = useEnemyEvasion({
+    enemyType: opponentPlayer.role,
+    isCombatFinished,
+  });
 
   const equippedWeapon: Weapon = myPlayer.equippedWeapon || DEFAULT_WEAPONS_BY_ROLE[myPlayer.role];
   const weaponStats = getModifiedWeaponStats(equippedWeapon, myPlayer.role);
@@ -237,8 +246,10 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
 
   const isOpponentHit = cardHitAnim;
 
-  // Manejador de ataque del jugador (pulsación sobre avatar central o botón inferior)
-  const handleExecuteAttackOnOpponent = useCallback(() => {
+  // ==========================================
+  // IMPACTO ACERTADO: DISPARO DIRECTO SOBRE EL RIVAL
+  // ==========================================
+  const handleDirectTargetStrike = useCallback(() => {
     if (!isOpen || duelOutcome !== 'ongoing' || opponentHpRef.current <= 0) return;
 
     const now = Date.now();
@@ -248,10 +259,18 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
       return;
     }
 
+    if (equippedWeapon.ammo !== -1 && equippedWeapon.ammo <= 0) {
+      soundEffects.vibrate(20);
+      return;
+    }
+
     lastAttackTimeRef.current = now;
     setIsAttacking(true);
     setCardHitAnim(true);
     setAttackCooldown(fireInterval);
+
+    // Evasión y micro-reacción física refleja del rival
+    triggerHitReaction();
 
     // Audio del arma
     const soundType = equippedWeapon.weaponType === 'knife' || equippedWeapon.weaponType === 'axe' || equippedWeapon.type === 'melee'
@@ -306,9 +325,56 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
       setIsAttacking(false);
       setCardHitAnim(false);
     }, 200);
-  }, [isOpen, duelOutcome, equippedWeapon, effectiveDamage, sendAttack, onOpponentDamaged, sendDefeat, onPvPVictory]);
+  }, [isOpen, duelOutcome, equippedWeapon, effectiveDamage, triggerHitReaction, sendAttack, onOpponentDamaged, sendDefeat, onPvPVictory]);
 
-  const handleAttack = handleExecuteAttackOnOpponent;
+  // ==========================================
+  // DISPARO FALLIDO: TOQUE EN EL ÁREA VACÍA DE LA ARENA PVP
+  // ==========================================
+  const handleMissClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isOpen || duelOutcome !== 'ongoing' || opponentHpRef.current <= 0) return;
+
+    const now = Date.now();
+    const fireInterval = equippedWeapon.cadenceMs || equippedWeapon.fireRateMs || 400;
+
+    if (now - lastAttackTimeRef.current < fireInterval) {
+      return;
+    }
+
+    if (equippedWeapon.ammo !== -1 && equippedWeapon.ammo <= 0) {
+      soundEffects.vibrate(20);
+      return;
+    }
+
+    lastAttackTimeRef.current = now;
+    setAttackCooldown(fireInterval);
+
+    const soundType = equippedWeapon.weaponType === 'knife' || equippedWeapon.weaponType === 'axe' || equippedWeapon.type === 'melee'
+      ? 'melee'
+      : (equippedWeapon.weaponType as any) || 'pistol';
+    soundEffects.playGunshot(soundType);
+    soundEffects.vibrate(20);
+
+    // Capturar coordenadas relativas del toque para la marca de fallo
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+
+    const missId = Date.now() + Math.random();
+    setMissMarkers((prev) => [...prev, { id: missId, x: clickX, y: clickY }]);
+    setTimeout(() => {
+      setMissMarkers((prev) => prev.filter((m) => m.id !== missId));
+    }, 650);
+
+    // Número flotante de fallo
+    const numId = Date.now() + Math.random();
+    setDamageNumbers((prev) => [
+      ...prev,
+      { id: numId, label: '¡FALLO!', text: '¡FALLO!', isCrit: false, isIncoming: false },
+    ]);
+    setTimeout(() => {
+      setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));
+    }, 750);
+  }, [isOpen, duelOutcome, equippedWeapon]);
 
   // Barra de cooldown de ataque
   useEffect(() => {
@@ -508,7 +574,9 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
                   )}
                   <span
                     className={`font-mono font-black text-sm sm:text-base tracking-wide whitespace-nowrap ${
-                      d.isIncoming
+                      d.label === '¡FALLO!' || d.text === '¡FALLO!'
+                        ? 'text-slate-400 drop-shadow-[0_0_8px_rgba(148,163,184,0.8)]'
+                        : d.isIncoming
                         ? 'text-red-500 drop-shadow-[0_0_8px_rgba(239,68,68,0.9)]'
                         : d.isPet
                         ? 'text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.9)]'
@@ -521,45 +589,74 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
               ))}
             </div>
 
-            {/* Contenedor Clicable / Táctil del Rival */}
-            <button
-              type="button"
-              onClick={handleExecuteAttackOnOpponent}
-              onTouchStart={(e) => {
-                e.preventDefault();
-                handleExecuteAttackOnOpponent();
-              }}
-              disabled={isAttacking || opponentHp <= 0 || duelOutcome !== 'ongoing'}
-              aria-label={`Atacar a ${opponentPlayer.nickname}`}
-              className={`group relative flex h-32 w-32 sm:h-36 sm:w-36 items-center justify-center rounded-full border-2 transition-all duration-150 select-none focus:outline-none cursor-pointer ${
-                isOpponentHit
-                  ? 'border-red-400 bg-red-900/60 shadow-[0_0_35px_rgba(239,68,68,0.85)] scale-95 animate-hitShake'
-                  : 'border-red-500/80 bg-red-950/40 shadow-[0_0_25px_rgba(239,68,68,0.4)] hover:border-red-400 hover:shadow-[0_0_35px_rgba(239,68,68,0.7)] active:scale-90'
-              } disabled:opacity-50 disabled:pointer-events-none`}
+            {/* ZONA DE TIRO TÁCTICA: HITBOX DINÁMICA DEL RIVAL */}
+            <div 
+              className="relative w-full h-56 sm:h-64 flex items-center justify-center overflow-hidden rounded-xl bg-slate-950/60 border border-red-950/60 cursor-crosshair select-none my-1 sm:my-2"
+              onClick={handleMissClick}
             >
-              {/* Resplandor pulsante de combate */}
-              <div className="absolute inset-0 rounded-full bg-red-500/10 animate-ping pointer-events-none" />
+              {/* Retícula de radar de fondo decorativa */}
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.08)_0,transparent_70%)] pointer-events-none" />
 
-              {/* Avatar / Icono del Rival */}
-              <div className="w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center transition-transform group-hover:scale-105">
-                <img
-                  src={getRoleAvatar(opponentPlayer.role)}
-                  alt={opponentPlayer.nickname}
-                  className="w-24 h-24 sm:w-28 sm:h-28 object-contain drop-shadow-[0_0_15px_rgba(239,68,68,0.8)]"
-                />
+              {/* Marcas de disparos fallidos */}
+              {missMarkers.map((m) => (
+                <div
+                  key={m.id}
+                  className="absolute pointer-events-none -translate-x-1/2 -translate-y-1/2 animate-ping z-20"
+                  style={{ left: m.x, top: m.y }}
+                >
+                  <div className="relative flex items-center justify-center">
+                    <span className="text-red-500 font-bold text-xs">❌</span>
+                    <span className="absolute -top-4 text-[10px] font-mono font-bold text-slate-400 bg-black/85 px-1.5 py-0.5 rounded border border-slate-700 whitespace-nowrap shadow-md">
+                      ¡FALLO!
+                    </span>
+                  </div>
+                </div>
+              ))}
+
+              {/* CONTENEDOR DEL OPONENTE EN MOVIMIENTO EVASIVO */}
+              <div
+                className={`absolute will-change-transform transition-transform ease-out cursor-pointer z-10 ${evasionSpeedClass} ${
+                  isHitReaction ? 'scale-90 brightness-150 animate-hitShake' : 'scale-100'
+                }`}
+                style={{
+                  transform: `translate3d(${targetOffset.x}px, ${targetOffset.y}px, 0)`,
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDirectTargetStrike();
+                }}
+              >
+                {/* Halo de blanco / Retícula hostil sobre la figura */}
+                <div className="relative group p-3 flex items-center justify-center">
+                  {/* Círculo indicador de impacto giratorio */}
+                  <div className="absolute inset-0 rounded-full border-2 border-dashed border-red-500/40 animate-spinSlow group-hover:border-red-400 pointer-events-none" />
+
+                  {/* Resplandor pulsante */}
+                  <div className="absolute inset-0 rounded-full bg-red-500/10 animate-ping pointer-events-none" />
+
+                  {/* Imagen 3D del Rival */}
+                  <img
+                    src={getRoleAvatar(opponentPlayer.role)}
+                    alt={opponentPlayer.nickname}
+                    className="w-28 h-28 sm:w-32 sm:h-32 object-contain drop-shadow-[0_0_16px_rgba(239,68,68,0.8)] pointer-events-auto select-none"
+                    draggable={false}
+                  />
+
+                  {/* Destello de impacto */}
+                  {isOpponentHit && (
+                    <div className="absolute inset-0 rounded-full bg-white/40 animate-flash pointer-events-none" />
+                  )}
+                </div>
               </div>
 
-              {/* Efecto de impacto visual si recibe daño reciente */}
-              {isOpponentHit && (
-                <div className="absolute inset-0 rounded-full bg-white/40 animate-flash pointer-events-none" />
-              )}
-            </button>
-
-            {/* Pista táctica inferior */}
-            <span className="rounded-full border border-red-500/30 bg-slate-950/80 px-3 py-1 text-[10px] sm:text-[11px] font-bold tracking-wider text-red-300 uppercase shadow-md flex items-center gap-1.5 animate-pulse">
-              <Crosshair className="w-3.5 h-3.5 text-red-400" />
-              <span>{attackCooldown > 0 ? 'RECARGANDO ARMA...' : 'TOCA EL OBJETIVO PARA ATACAR'}</span>
-            </span>
+              {/* Indicador táctico inferior */}
+              <div className="absolute bottom-2 text-center w-full pointer-events-none z-10">
+                <span className="rounded-full border border-red-500/30 bg-slate-950/85 px-3 py-1 text-[10px] sm:text-[11px] font-bold tracking-wider text-red-300 uppercase shadow-md flex items-center justify-center gap-1.5 w-max mx-auto animate-pulse">
+                  <Target className="w-3.5 h-3.5 text-red-400" />
+                  <span>{attackCooldown > 0 ? 'RECARGANDO ARMA...' : '🎯 APUNTA Y DISPARA: TOCA DIRECTAMENTE AL BLANCO'}</span>
+                </span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -611,31 +708,17 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
           </div>
         </div>
 
-        {/* Controles de Acción Inferiores */}
-        <div className="flex items-center gap-2 pt-1">
-          <button
-            type="button"
-            onClick={handleAttack}
-            disabled={attackCooldown > 0 || duelOutcome !== 'ongoing'}
-            className={`flex-1 py-3 px-4 rounded-xl font-black text-sm tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg ${
-              attackCooldown > 0 || duelOutcome !== 'ongoing'
-                ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
-                : 'bg-gradient-to-r from-red-600 to-amber-600 text-white hover:from-red-500 hover:to-amber-500 border border-red-400 shadow-[0_0_20px_rgba(239,68,68,0.4)] active:scale-95'
-            }`}
-          >
-            <img src={getWeaponIcon(equippedWeapon.weaponType)} alt={equippedWeapon.name} className="w-5 h-5 object-contain" />
-            <span>{attackCooldown > 0 ? 'RECARGANDO...' : `DISPARAR (${effectiveDamage} DMG)`}</span>
-          </button>
-
+        {/* Controles de Acción Inferiores: Botón Huir Centrado */}
+        <div className="w-full pt-1">
           <button
             type="button"
             onClick={handleFlee}
             disabled={duelOutcome !== 'ongoing'}
-            className="px-4 py-3 rounded-xl bg-gray-900 border border-gray-700 hover:border-gray-500 text-gray-300 hover:text-white font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 transition-all active:scale-95"
+            className="w-full py-3 px-4 rounded-xl bg-gray-900 border-2 border-amber-500/60 hover:border-amber-400 text-amber-300 hover:text-white font-black text-sm uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-amber-950/40 transition-all active:scale-95 disabled:opacity-50"
             title="Retirarse del combate a una zona segura"
           >
             <Footprints className="w-4 h-4 text-amber-400" />
-            <span>Huir</span>
+            <span>HUIR (5s SPRINT)</span>
           </button>
         </div>
 

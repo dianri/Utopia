@@ -130,16 +130,25 @@
   animation: flash 0.25s ease-out forwards;
 }
 
+/* Sacudida al recibir impacto directo */
 @keyframes hitShake {
-  0%, 100% { transform: scale(0.95) translate(0, 0); }
-  20% { transform: scale(0.95) translate(-4px, 2px); }
-  40% { transform: scale(0.95) translate(4px, -2px); }
-  60% { transform: scale(0.95) translate(-3px, -1px); }
-  80% { transform: scale(0.95) translate(3px, 1px); }
+  0%, 100% { transform: scale(0.92) rotate(0deg); filter: brightness(1.7); }
+  25% { transform: scale(0.90) translate(-3px, 2px) rotate(-3deg); }
+  75% { transform: scale(0.94) translate(3px, -2px) rotate(3deg); }
 }
 
 .animate-hitShake {
-  animation: hitShake 0.2s ease-in-out;
+  animation: hitShake 0.18s ease-in-out;
+}
+
+/* Giro suave para la retícula del objetivo */
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.animate-spinSlow {
+  animation: spinSlow 12s linear infinite;
 }
 
 @keyframes floatUp {

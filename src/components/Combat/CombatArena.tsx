@@ -3,6 +3,7 @@ import type { Player, Monster, Weapon, Pet } from '../../types/game';
 import { DEFAULT_WEAPONS_BY_ROLE, getModifiedWeaponStats, getWeaponIcon } from '../../services/combatEngine';
 import { getMonsterVisualConfig } from '../../services/mapEntities';
 import { soundEffects } from '../../services/soundEffects';
+import { useEnemyEvasion } from '../../hooks/useEnemyEvasion';
 import { ShieldAlert, Crosshair, Zap, Flame, Target, Footprints, Shield, Skull, Swords, AlertTriangle, Heart } from 'lucide-react';
 
 interface CombatArenaProps {
@@ -47,6 +48,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   const [attackCooldown, setAttackCooldown] = useState<number>(0);
   const [damagedPetId, setDamagedPetId] = useState<string | null>(null);
   const [damageNumbers, setDamageNumbers] = useState<CombatDamageItem[]>([]);
+  const [missMarkers, setMissMarkers] = useState<{ id: number; x: number; y: number }[]>([]);
 
   const monsterRef = useRef<Monster>(monster);
   monsterRef.current = monster;
@@ -96,10 +98,17 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
   const lastAttackTimeRef = useRef<number>(0);
 
+  // Motor de Evasión Procedimental del Monstruo
+  const isCombatFinished = !isOpen || !isMonsterAlive || isPlayerCriticallyWounded;
+  const { targetOffset, isHitReaction, evasionSpeedClass, triggerHitReaction } = useEnemyEvasion({
+    enemyType: monster.type || monster.id,
+    isCombatFinished,
+  });
+
   // ==========================================
-  // ATAQUE DEL JUGADOR (BOTÓN O TAP EN LA CARTA)
+  // IMPACTO ACERTADO: DISPARO DIRECTO SOBRE EL BLANCO
   // ==========================================
-  const handlePlayerAttack = useCallback(() => {
+  const handleDirectTargetStrike = useCallback(() => {
     if (!isOpen || monster.hp <= 0 || monster.state === 'dead') return;
 
     const now = Date.now();
@@ -121,6 +130,9 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
     setIsAttacking(true);
     setCardHitAnim(true);
     setAttackCooldown(fireInterval);
+
+    // Evasión y micro-reacción física refleja
+    triggerHitReaction();
 
     // Audio y hápticos
     soundEffects.playGunshot(equippedWeapon.type === 'melee' ? 'melee' : 'rifle');
@@ -146,7 +158,58 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
       setIsAttacking(false);
       setCardHitAnim(false);
     }, 200);
-  }, [isOpen, monster.hp, monster.state, equippedWeapon, isMarksmanBoosted, effectiveDamage, onAttack]);
+  }, [isOpen, monster.hp, monster.state, equippedWeapon, isMarksmanBoosted, effectiveDamage, onAttack, triggerHitReaction]);
+
+  // ==========================================
+  // DISPARO FALLIDO: TOQUE EN EL ÁREA VACÍA DE LA ARENA
+  // ==========================================
+  const handleMissClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isOpen || monster.hp <= 0 || monster.state === 'dead') return;
+
+    const now = Date.now();
+    const fireInterval = equippedWeapon.cadenceMs || equippedWeapon.fireRateMs || 400;
+
+    if (now - lastAttackTimeRef.current < fireInterval) {
+      return; // En cooldown
+    }
+
+    // Comprobar munición
+    if (equippedWeapon.ammo !== -1 && equippedWeapon.ammo <= 0) {
+      soundEffects.vibrate(20);
+      return;
+    }
+
+    lastAttackTimeRef.current = now;
+    setAttackCooldown(fireInterval);
+
+    // Audio y vibración de disparo errado
+    soundEffects.playGunshot(equippedWeapon.type === 'melee' ? 'melee' : 'rifle');
+    soundEffects.vibrate(20);
+
+    // Descontar 1 bala por disparo errado al aire (0 daño infligido)
+    onAttack(0, monster.hp, equippedWeapon);
+
+    // Capturar coordenadas relativas del toque para la marca de fallo
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickY = e.clientY - rect.top;
+
+    const missId = Date.now() + Math.random();
+    setMissMarkers((prev) => [...prev, { id: missId, x: clickX, y: clickY }]);
+    setTimeout(() => {
+      setMissMarkers((prev) => prev.filter((m) => m.id !== missId));
+    }, 650);
+
+    // Texto flotante de disparo fallido
+    const numId = Date.now() + Math.random();
+    setDamageNumbers((prev) => [
+      ...prev,
+      { id: numId, label: '¡FALLO!', text: '¡FALLO!', isCrit: false },
+    ]);
+    setTimeout(() => {
+      setDamageNumbers((prev) => prev.filter((n) => n.id !== numId));
+    }, 750);
+  }, [isOpen, monster.hp, monster.state, equippedWeapon, onAttack]);
 
   // Barra de progreso de recarga / cooldown de ataque
   useEffect(() => {
@@ -452,7 +515,9 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
               )}
               <span
                 className={`font-mono font-black text-sm sm:text-base tracking-wide whitespace-nowrap ${
-                  num.isIncoming
+                  num.label === '¡FALLO!' || num.text === '¡FALLO!'
+                    ? 'text-slate-400 drop-shadow-[0_0_8px_rgba(148,163,184,0.8)]'
+                    : num.isIncoming
                     ? 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]'
                     : num.isPet
                     ? 'text-amber-300 drop-shadow-[0_0_12px_rgba(251,191,36,0.9)]'
@@ -468,12 +533,9 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         </div>
 
         <div
-          onClick={handlePlayerAttack}
-          role="button"
-          tabIndex={0}
-          className={`w-full max-w-[320px] rounded-2xl bg-gradient-to-b ${visual.cardBgGradient} border-2 transition-transform duration-100 cursor-pointer shadow-2xl relative overflow-hidden group active:scale-95 ${
+          className={`w-full max-w-[320px] rounded-2xl bg-gradient-to-b ${visual.cardBgGradient} border-2 transition-transform duration-100 shadow-2xl relative overflow-hidden ${
             cardHitAnim
-              ? `${visual.cardHitBorder} scale-95 ${visual.cardHitGlow}`
+              ? `${visual.cardHitBorder} ${visual.cardHitGlow}`
               : monster.isEnraged
               ? 'border-orange-500/80 shadow-[0_0_30px_rgba(249,115,22,0.4)]'
               : `${visual.cardBorder} ${visual.cardGlow}`
@@ -492,33 +554,76 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
             </span>
           </div>
 
-          {/* Ilustración / Avatar del Monstruo */}
-          <div className="relative h-44 sm:h-48 w-full bg-gradient-to-b from-black/60 via-black/80 to-slate-950 flex items-center justify-center overflow-hidden">
-            <div className={`absolute inset-0 ${visual.avatarRadialGlow}`} />
+          {/* Ilustración / Arena Táctica de Puntería y Evasión del Monstruo */}
+          <div
+            className="relative h-56 sm:h-64 w-full bg-gradient-to-b from-black/70 via-black/90 to-slate-950 flex items-center justify-center overflow-hidden cursor-crosshair select-none"
+            onClick={handleMissClick}
+          >
+            {/* Retícula de radar de fondo decorativa */}
+            <div className={`absolute inset-0 ${visual.avatarRadialGlow} opacity-40 pointer-events-none`} />
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.08)_0,transparent_70%)] pointer-events-none" />
 
-            {/* Efecto de pulso en furia */}
+            {/* Marcas momentáneas de disparos fallidos */}
+            {missMarkers.map((m) => (
+              <div
+                key={m.id}
+                className="absolute pointer-events-none -translate-x-1/2 -translate-y-1/2 animate-ping z-20"
+                style={{ left: m.x, top: m.y }}
+              >
+                <div className="relative flex items-center justify-center">
+                  <span className="text-red-500 font-bold text-xs">❌</span>
+                  <span className="absolute -top-4 text-[10px] font-mono font-bold text-slate-400 bg-black/85 px-1.5 py-0.5 rounded border border-slate-700 whitespace-nowrap shadow-md">
+                    ¡FALLO!
+                  </span>
+                </div>
+              </div>
+            ))}
+
+            {/* CONTENEDOR DEL MONSTRUO EN MOVIMIENTO EVASIVO */}
             <div
-              className={`w-28 h-28 sm:w-32 sm:h-32 rounded-full border-2 ${visual.avatarBorder} flex items-center justify-center relative transition-all duration-300 ${
-                cardHitAnim ? `scale-110 ${visual.avatarBg}` : visual.avatarBg
+              className={`absolute will-change-transform transition-transform ease-out cursor-pointer z-10 ${evasionSpeedClass} ${
+                isHitReaction ? 'scale-90 brightness-150 animate-hitShake' : 'scale-100'
               }`}
+              style={{
+                transform: `translate3d(${targetOffset.x}px, ${targetOffset.y}px, 0)`,
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDirectTargetStrike();
+              }}
             >
-              <img
-                src={visual.icon}
-                alt={monster.name || visual.label}
-                className={`w-24 h-24 sm:w-28 sm:h-28 object-contain select-none transition-all duration-300 ${
-                  monster.isEnraged ? 'scale-110 drop-shadow-[0_0_20px_rgba(249,115,22,0.8)] animate-pulse' : 'drop-shadow-xl'
-                }`}
-              />
+              {/* Halo de blanco / Retícula hostil sobre la figura */}
+              <div className="relative group p-3 flex items-center justify-center">
+                {/* Círculo indicador de impacto giratorio */}
+                <div className="absolute inset-0 rounded-full border-2 border-dashed border-red-500/40 animate-spinSlow group-hover:border-red-400 pointer-events-none" />
 
-              {/* Ojos brillantes / destello biomecánico */}
-              <div className={`absolute top-8 left-8 w-2.5 h-2.5 rounded-full ${visual.eyeColor} animate-ping`} />
-              <div className={`absolute top-8 right-8 w-2.5 h-2.5 rounded-full ${visual.eyeColor} animate-ping`} />
+                {/* Efecto de pulso en furia o combate */}
+                <div
+                  className={`w-28 h-28 sm:w-32 sm:h-32 rounded-full border-2 ${visual.avatarBorder} flex items-center justify-center relative transition-all duration-300 ${
+                    cardHitAnim ? `scale-105 ${visual.avatarBg}` : visual.avatarBg
+                  }`}
+                >
+                  <img
+                    src={visual.icon}
+                    alt={monster.name || visual.label}
+                    className={`w-24 h-24 sm:w-28 sm:h-28 object-contain pointer-events-auto select-none transition-all duration-300 ${
+                      monster.isEnraged ? 'scale-110 drop-shadow-[0_0_20px_rgba(249,115,22,0.8)] animate-pulse' : 'drop-shadow-xl'
+                    }`}
+                    draggable={false}
+                  />
+
+                  {/* Ojos brillantes / destello biomecánico */}
+                  <div className={`absolute top-7 left-7 w-2 h-2 rounded-full ${visual.eyeColor} animate-ping pointer-events-none`} />
+                  <div className={`absolute top-7 right-7 w-2 h-2 rounded-full ${visual.eyeColor} animate-ping pointer-events-none`} />
+                </div>
+              </div>
             </div>
 
-            {/* Indicador de toque rápido */}
-            <div className="absolute bottom-2 text-center w-full">
-              <span className="text-[10px] font-mono text-slate-300/90 uppercase tracking-widest bg-black/70 px-2 py-0.5 rounded border border-slate-700/60">
-                TOCA LA CARTA PARA ATACAR
+            {/* Indicador táctico interactivo en la base de la carta */}
+            <div className="absolute bottom-2 text-center w-full pointer-events-none z-10">
+              <span className="text-[10px] font-mono font-bold text-red-300 uppercase tracking-widest bg-black/80 px-2.5 py-1 rounded-full border border-red-500/40 shadow-lg flex items-center justify-center gap-1.5 w-max mx-auto animate-pulse">
+                <Target className="w-3.5 h-3.5 text-red-400" />
+                <span>{attackCooldown > 0 ? 'RECARGANDO ARMA...' : '🎯 APUNTA Y DISPARA: TOCA DIRECTAMENTE AL BLANCO'}</span>
               </span>
             </div>
           </div>
@@ -663,28 +768,12 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
           </div>
         </div>
 
-        {/* BOTONES DE ACCIÓN: ATACAR Y HUIR */}
-        <div className="grid grid-cols-2 gap-3 pt-1">
-          {/* Botón Principal: ATACAR */}
-          <button
-            type="button"
-            onClick={handlePlayerAttack}
-            disabled={attackCooldown > 0 || (equippedWeapon.ammo !== -1 && equippedWeapon.ammo <= 0)}
-            className={`py-3.5 px-4 rounded-xl font-mono font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 ${
-              attackCooldown > 0
-                ? 'bg-slate-800 text-slate-400 border border-slate-700 cursor-not-allowed opacity-60'
-                : 'bg-gradient-to-r from-red-600 to-orange-500 hover:from-red-500 hover:to-orange-400 text-white shadow-red-500/40 border border-red-400/50'
-            }`}
-          >
-            <Crosshair className={`w-4 h-4 ${isAttacking ? 'animate-spin' : ''}`} />
-            <span>{isAttacking ? 'DISPARANDO' : 'ATACAR'}</span>
-          </button>
-
-          {/* Botón Secundario: HUIR */}
+        {/* BOTONES DE ACCIÓN: HUIR (EXPANDIDO Y CENTRADO) */}
+        <div className="w-full pt-1">
           <button
             type="button"
             onClick={onFlee}
-            className="py-3.5 px-4 rounded-xl font-mono font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 bg-slate-800/90 hover:bg-slate-700/90 text-amber-300 border-2 border-amber-500/60 shadow-lg shadow-amber-950/40 transition-all active:scale-95"
+            className="w-full py-3.5 px-4 rounded-xl font-mono font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 bg-slate-800/90 hover:bg-slate-700/90 text-amber-300 border-2 border-amber-500/60 shadow-lg shadow-amber-950/40 transition-all active:scale-95"
           >
             <Footprints className="w-4 h-4 text-amber-400" />
             <span>HUIR (5s SPRINT)</span>
