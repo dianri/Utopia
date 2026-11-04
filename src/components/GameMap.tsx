@@ -48,6 +48,7 @@ export const SOURCE_HOSPITAL_GUIDELINE = 'hospital-guideline-source';
 
 /**
  * Genera un polígono GeoJSON circular cerrado en proyección [lng, lat]
+ * Cumple estrictamente con la especificación RFC 7946 (3 niveles de array en coordinates)
  */
 export function createCircleFeature(
   center: [number, number] | Coordinates, // [lng, lat] o Coordinates
@@ -55,10 +56,18 @@ export function createCircleFeature(
   properties: Record<string, any> = {},
   points = 64
 ): GeoJSON.Feature<GeoJSON.Polygon> {
-  const [lng, lat] = Array.isArray(center) ? center : [center.lng, center.lat];
+  const rawLng = Array.isArray(center) ? center[0] : center?.lng;
+  const rawLat = Array.isArray(center) ? center[1] : center?.lat;
+  const lng = typeof rawLng === 'number' && !isNaN(rawLng) && rawLng !== 0 ? rawLng : INITIAL_LNG;
+  const lat = typeof rawLat === 'number' && !isNaN(rawLat) && rawLat !== 0 ? rawLat : INITIAL_LAT;
+  const radius =
+    typeof radiusInMeters === 'number' && !isNaN(radiusInMeters) && radiusInMeters > 0
+      ? radiusInMeters
+      : 350;
+
   const coords: [number, number][] = [];
-  const distanceX = radiusInMeters / (111320 * Math.cos((lat * Math.PI) / 180));
-  const distanceY = radiusInMeters / 110540;
+  const distanceX = radius / (111320 * Math.cos((lat * Math.PI) / 180));
+  const distanceY = radius / 110540;
 
   for (let i = 0; i < points; i++) {
     const theta = (i / points) * (2 * Math.PI);
@@ -66,15 +75,15 @@ export function createCircleFeature(
     const y = distanceY * Math.sin(theta);
     coords.push([lng + x, lat + y]);
   }
-  // Cierre estricto del polígono GeoJSON: el último punto debe ser exactamente igual al primero
-  coords.push(coords[0]);
+  // Cierre estricto del polígono GeoJSON: el último punto debe ser idéntico en valor exacto al primero
+  coords.push([coords[0][0], coords[0][1]]);
 
   return {
     type: 'Feature',
     properties,
     geometry: {
       type: 'Polygon',
-      coordinates: [coords],
+      coordinates: [coords], // Nivel 1: array de anillos -> Nivel 2: anillo exterior -> Nivel 3: par [lng, lat]
     },
   };
 }
@@ -743,32 +752,40 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             type: 'geojson',
             data: { type: 'FeatureCollection', features: [] },
           });
+        }
 
-          if (!map.getLayer(LAYER_BOUNDARY_FILL)) {
-            map.addLayer({
-              id: LAYER_BOUNDARY_FILL,
-              type: 'fill',
-              source: SOURCE_BOUNDARY,
-              paint: {
-                'fill-color': '#00f0ff',
-                'fill-opacity': 0.08,
-              },
-            });
-          }
+        if (!map.getLayer(LAYER_BOUNDARY_FILL)) {
+          map.addLayer({
+            id: LAYER_BOUNDARY_FILL,
+            type: 'fill',
+            source: SOURCE_BOUNDARY,
+            layout: {
+              visibility: 'visible',
+            },
+            paint: {
+              'fill-color': '#00f0ff',
+              'fill-opacity': 0.06,
+            },
+          });
+        }
 
-          if (!map.getLayer(LAYER_BOUNDARY_LINE)) {
-            map.addLayer({
-              id: LAYER_BOUNDARY_LINE,
-              type: 'line',
-              source: SOURCE_BOUNDARY,
-              paint: {
-                'line-color': '#00f2fe',
-                'line-width': 2.5,
-                'line-dasharray': [3, 2],
-                'line-opacity': 0.85,
-              },
-            });
-          }
+        if (!map.getLayer(LAYER_BOUNDARY_LINE)) {
+          map.addLayer({
+            id: LAYER_BOUNDARY_LINE,
+            type: 'line',
+            source: SOURCE_BOUNDARY,
+            layout: {
+              visibility: 'visible',
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': '#00f2fe',
+              'line-width': 3.5,
+              'line-dasharray': [3, 2],
+              'line-opacity': 0.95,
+            },
+          });
         }
 
         // 2. FUENTE Y CAPAS DE RADIOS DE INFLUENCIA (Armas, Cajas, Mascotas, Refugios, Hospital, Tesoro)
@@ -964,6 +981,31 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             },
           });
         }
+
+        // 5. GARANTÍA DE ORDEN Z EN WEBGL: Elevar las capas vectoriales por encima de las capas raster (satélite)
+        const vectorLayersElevated = [
+          LAYER_BOUNDARY_FILL,
+          LAYER_BOUNDARY_LINE,
+          LAYER_CIRCLES_FILL,
+          LAYER_CIRCLES_LINE,
+          LAYER_PLAYER_VISION_FILL,
+          LAYER_PLAYER_VISION_LINE,
+          'player-vision-outline',
+          'hospital-guideline-halo',
+          'hospital-guideline-line',
+          'wounded-perimeter-fill',
+          'wounded-perimeter-outline',
+        ];
+
+        vectorLayersElevated.forEach((layerId) => {
+          try {
+            if (map.getLayer(layerId)) {
+              map.moveLayer(layerId);
+            }
+          } catch {
+            // Ignorar durante transiciones de estilo
+          }
+        });
       } catch (err) {
         console.warn('[GameMap] Error al configurar capas y fuentes de mapa:', err);
       }
@@ -983,30 +1025,74 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!map || !isMapStyleLoaded(map)) return;
 
       try {
-        const source = (map.getSource(SOURCE_BOUNDARY) || map.getSource('play-area')) as
+        let source = (map.getSource(SOURCE_BOUNDARY) || map.getSource('play-area')) as
           | maplibregl.GeoJSONSource
           | undefined;
-        if (!source) return;
 
-        const centerLng = center?.lng ?? INITIAL_LNG;
-        const centerLat = center?.lat ?? INITIAL_LAT;
-        const radius = playAreaRadius || 350;
+        // Si la fuente aún no existía en el estilo, registrar fuentes y capas inmediatamente
+        if (!source) {
+          setupMapLayersAndSources(map);
+          source = (map.getSource(SOURCE_BOUNDARY) || map.getSource('play-area')) as
+            | maplibregl.GeoJSONSource
+            | undefined;
+        }
+
+        if (!source) {
+          console.warn('[GameMap:Boundary] No se pudo resolver la fuente GeoJSON del límite.');
+          return;
+        }
+
+        const centerLng =
+          typeof center?.lng === 'number' && !isNaN(center.lng) && center.lng !== 0
+            ? center.lng
+            : INITIAL_LNG;
+        const centerLat =
+          typeof center?.lat === 'number' && !isNaN(center.lat) && center.lat !== 0
+            ? center.lat
+            : INITIAL_LAT;
+        const radius =
+          typeof playAreaRadius === 'number' && !isNaN(playAreaRadius) && playAreaRadius > 0
+            ? playAreaRadius
+            : 350;
 
         const boundaryFeature = createCircleFeature([centerLng, centerLat], radius, {
           color: '#00f2fe',
-          fillOpacity: 0.03,
-          id: 'game-boundary',
+          fillOpacity: 0.06,
+          id: 'operational-game-boundary',
+          type: 'game-boundary',
         });
 
         source.setData({
           type: 'FeatureCollection',
           features: [boundaryFeature],
         });
+
+        // Asegurar visibilidad activa y elevación sobre el lienzo WebGL
+        try {
+          if (map.getLayer(LAYER_BOUNDARY_FILL)) {
+            map.setLayoutProperty(LAYER_BOUNDARY_FILL, 'visibility', 'visible');
+            map.moveLayer(LAYER_BOUNDARY_FILL);
+          }
+          if (map.getLayer(LAYER_BOUNDARY_LINE)) {
+            map.setLayoutProperty(LAYER_BOUNDARY_LINE, 'visibility', 'visible');
+            map.moveLayer(LAYER_BOUNDARY_LINE);
+          }
+        } catch {
+          // Ignorar si el estilo está mutando
+        }
+
+        console.info('[GameMap:Boundary] Sincronizado límite operacional:', {
+          sourceExists: true,
+          center: [centerLng, centerLat],
+          radiusMeters: radius,
+          vertexCount: boundaryFeature.geometry.coordinates[0]?.length || 0,
+          injected: true,
+        });
       } catch (err) {
         console.warn('[GameMap] Error al sincronizar límite de juego:', err);
       }
     },
-    [center?.lat, center?.lng, playAreaRadius]
+    [center?.lat, center?.lng, playAreaRadius, setupMapLayersAndSources]
   );
 
   /**
@@ -1127,7 +1213,14 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             );
           });
 
-        // B. COFRE DEL TESORO (Desaparece si está abierto, saqueado, en transición o victoria)
+        const playerPos = {
+          lat: myPlayer?.lat ?? center?.lat ?? INITIAL_LAT,
+          lng: myPlayer?.lng ?? center?.lng ?? INITIAL_LNG,
+        };
+        const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
+        const currentVisionRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
+
+        // B. COFRE DEL TESORO: Solo se dibuja círculo perimetral (rojo) si está activamente CUSTODIADO por un monstruo vivo y AVISTADO
         const isChestActive = !isChestOpened && !isChestTransitioning && !isVictory && !isMeWounded;
         const hasValidChestCoords =
           treasureLocation &&
@@ -1137,15 +1230,21 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           !isNaN(treasureLocation.lng) &&
           (treasureLocation.lat !== 0 || treasureLocation.lng !== 0);
 
-        if (isChestActive && hasValidChestCoords) {
-          activeFeatures.push(
-            createCircleFeature([treasureLocation.lng, treasureLocation.lat], 25, {
-              color: isChestGuarded ? '#ef4444' : '#f59e0b', // Rojo peligro si hay monstruo guardián, ámbar si está libre
-              fillOpacity: 0.18,
-              id: 'active-chest',
-              type: 'chest',
-            })
-          );
+        // Erradicación de círculos naranjas residuales: si el cofre está libre/desbloqueado no se dibuja ningún círculo en el suelo.
+        // Solo si está bajo custodia activa de un enemigo vivo y el jugador lo tiene en su campo visual/radar, se proyecta la zona roja de alerta.
+        if (isChestActive && hasValidChestCoords && isChestGuarded) {
+          const distToChest = getDistanceMeters(playerPos, treasureLocation);
+          const isChestSpotted = distToChest <= currentVisionRadius || isRadarActive;
+          if (isChestSpotted) {
+            activeFeatures.push(
+              createCircleFeature([treasureLocation.lng, treasureLocation.lat], 25, {
+                color: '#ef4444', // Rojo peligro hostil exclusivo de custodia activa
+                fillOpacity: 0.16,
+                id: 'active-chest',
+                type: 'chest',
+              })
+            );
+          }
         }
 
         // C. MASCOTAS SILVESTRES (Desaparecen si ya han sido domesticadas/recogidas)
@@ -1221,12 +1320,25 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             });
         }
 
-        // F. MONSTRUOS: Radios de amenaza/aggro de monstruos en combate
+        // F. MONSTRUOS: Radios de amenaza/aggro (exclusivamente para monstruos vivos y avistados)
         if (!isMeWounded) {
           const activeMonstersList = monsters && monsters.length > 0 ? monsters : (monster ? [monster] : []);
           activeMonstersList
-            .filter((m) => m.status !== 'defeated' && m.state !== 'defeated' && m.state !== 'dead' && m.hp > 0)
-            .forEach((m, idx) => {
+            .filter((m) => {
+              // 1. Exclusión total de enemigos muertos, heridos o neutralizados (nunca proyectan círculo de peligro)
+              if (
+                !isMonsterAlive(m) ||
+                (m as any).isDead ||
+                m.status === 'defeated' ||
+                m.status === 'wounded' ||
+                m.state === 'defeated' ||
+                m.state === 'wounded' ||
+                m.state === 'dead' ||
+                m.hp <= 0
+              ) {
+                return false;
+              }
+              // 2. Coordenadas válidas
               if (
                 typeof m.lat !== 'number' ||
                 typeof m.lng !== 'number' ||
@@ -1234,8 +1346,14 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                 isNaN(m.lng) ||
                 (m.lat === 0 && m.lng === 0)
               ) {
-                return;
+                return false;
               }
+              // 3. Comprobar que el monstruo esté realmente avistado por el jugador (dentro del radio de visión o radar activo)
+              const distToMonster = getDistanceMeters(playerPos, { lat: m.lat, lng: m.lng });
+              const isSpotted = distToMonster <= currentVisionRadius || isRadarActive;
+              return isSpotted;
+            })
+            .forEach((m, idx) => {
               activeFeatures.push(
                 createCircleFeature(
                   [m.lng, m.lat],
@@ -1692,7 +1810,18 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     if (!treasureLocation.lat || !treasureLocation.lng) return false;
     const all = monsters && monsters.length > 0 ? monsters : (monster ? [monster] : []);
     return all.some((m) => {
-      if (!isMonsterAlive(m) || (m as any).isDead) return false;
+      if (
+        !isMonsterAlive(m) ||
+        (m as any).isDead ||
+        m.status === 'defeated' ||
+        m.status === 'wounded' ||
+        m.state === 'defeated' ||
+        m.state === 'wounded' ||
+        m.state === 'dead' ||
+        m.hp <= 0
+      ) {
+        return false;
+      }
       const d = getDistanceMeters({ lat: m.lat, lng: m.lng }, treasureLocation);
       return d <= 25;
     });
