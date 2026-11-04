@@ -1673,6 +1673,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   );
 
   // Referencias para interoperabilidad y callbacks directos
+  const syncGameBoundaryRef = useRef<(targetMap?: maplibregl.Map) => void>(syncGameBoundary);
+  syncGameBoundaryRef.current = syncGameBoundary;
+
   const updateInteractionCircles = syncAllInteractionCircles;
   const updateInteractionCirclesRef = useRef<(targetMap?: maplibregl.Map) => void>(syncAllInteractionCircles);
   updateInteractionCirclesRef.current = syncAllInteractionCircles;
@@ -1905,6 +1908,22 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       updateEmergencyOverlaysRef.current?.(map);
     });
 
+    const handleIdle = () => {
+      if (mapRef.current && isMapStyleLoaded(mapRef.current)) {
+        syncGameBoundaryRef.current?.(mapRef.current);
+      }
+    };
+    map.on('idle', handleIdle);
+
+    const handleStyleData = () => {
+      if (mapRef.current && isMapStyleLoaded(mapRef.current)) {
+        if (!mapRef.current.getLayer(LAYER_BOUNDARY_LINE) || !mapRef.current.getLayer(LAYER_BOUNDARY_HALO)) {
+          syncGameBoundaryRef.current?.(mapRef.current);
+        }
+      }
+    };
+    map.on('styledata', handleStyleData);
+
     // Control de interacción de puntero y arrastre
     map.on('mousedown', (e) => {
       pointerDownPosRef.current = { x: e.point.x, y: e.point.y };
@@ -1999,6 +2018,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       });
       monsterKinematicsRef.current.clear();
 
+      map.off('idle', handleIdle);
+      map.off('styledata', handleStyleData);
       map.remove();
       mapRef.current = null;
       isMapLoadedRef.current = false;
