@@ -227,6 +227,8 @@ export const App: React.FC = () => {
 
   const isRoleSkillActiveRef = useRef<boolean>(false);
   isRoleSkillActiveRef.current = isRoleSkillActive;
+  const lastMapAttackTimeRef = useRef<number>(0);
+  const [isMapShooting, setIsMapShooting] = useState<boolean>(false);
 
   // COFRE Y EXTRACCIÓN (30s)
   const [chestCountdown, setChestCountdown] = useState<number>(30);
@@ -685,27 +687,210 @@ export const App: React.FC = () => {
 
   const handleMonsterMarkerClick = useCallback(
     (targetMonster: Monster) => {
+      // 1. Obtener la entidad más reciente desde monstersRef para evitar stale closures
+      const currentList =
+        monstersRef.current && monstersRef.current.length > 0
+          ? monstersRef.current
+          : [monsterRef.current];
+      const liveMonster = currentList.find((m) => m.id === targetMonster.id) || targetMonster;
+
       const isWounded =
-        targetMonster.status === 'wounded' ||
-        targetMonster.status === 'defeated' ||
-        targetMonster.state === 'wounded' ||
-        targetMonster.state === 'defeated' ||
-        targetMonster.state === 'dead' ||
-        targetMonster.hp <= 0;
+        liveMonster.status === 'wounded' ||
+        liveMonster.status === 'defeated' ||
+        liveMonster.state === 'wounded' ||
+        liveMonster.state === 'defeated' ||
+        liveMonster.state === 'dead' ||
+        liveMonster.hp <= 0;
 
       if (isWounded) {
         soundEffects.vibrate(20);
-        addLog('Monstruo neutralizado y herido de gravedad.', 'info');
+        addLog(`Monstruo ${liveMonster.name || 'objetivo'} neutralizado y herido de gravedad.`, 'info');
         return;
       }
 
-      // Si está activo y vivo, desplazarse hacia sus coordenadas
-      addLog(`Rastreando objetivo: ${targetMonster.name || 'Monstruo'}. Avanzando hacia su posición...`, 'info');
+      const player = myPlayerRef.current;
+      if (
+        !player ||
+        !player.isAlive ||
+        player.isCriticallyWounded ||
+        player.status === 'critically_wounded' ||
+        !!player.insideBuildingId
+      ) {
+        soundEffects.vibrate(20);
+        addLog('No puedes atacar en tu estado actual.', 'warning');
+        return;
+      }
+
+      // Validar si el jugador está en zona segura (Refugios u Hospital)
+      const allStructures = structuresRef.current;
+      if (isPlayerInSafeZone(player, allStructures) || (player as any).in_safe_zone) {
+        soundEffects.vibrate(20);
+        addLog('No puedes atacar mientras te encuentras dentro de una zona segura.', 'warning');
+        return;
+      }
+
+      const center = roomRef.current
+        ? { lat: roomRef.current.centerLat, lng: roomRef.current.centerLng }
+        : { lat: 37.4018, lng: -2.1565 };
+      const playerCoords: Coordinates = {
+        lat: player.lat ?? center.lat,
+        lng: player.lng ?? center.lng,
+      };
+      const monsterCoords: Coordinates = {
+        lat: liveMonster.lat,
+        lng: liveMonster.lng,
+      };
+      const dist = getDistanceMeters(playerCoords, monsterCoords);
+
+      const equippedWeapon =
+        player.equippedWeapon || DEFAULT_WEAPONS_BY_ROLE[player.role] || WEAPON_REGISTRY.combat_knife;
+      const baseStats = getModifiedWeaponStats(equippedWeapon, player.role);
+      const isMarksmanBoosted = isRoleSkillActiveRef.current && player.role === 'marksman';
+      const rangeMeters = isMarksmanBoosted ? Math.round(baseStats.rangeMeters * 1.5) : baseStats.rangeMeters;
+      const damage = isMarksmanBoosted ? Math.round(baseStats.damage * 1.25) : baseStats.damage;
+      const isRangedWeapon = equippedWeapon.type !== 'melee';
+
+      // 2. DISPARO CON ARMA A DISTANCIA DESDE EL MAPA EXTERIOR
+      if (isRangedWeapon) {
+        if (dist <= rangeMeters) {
+          const now = Date.now();
+          const fireRate = equippedWeapon.fireRateMs || 400;
+          if (now - lastMapAttackTimeRef.current < fireRate) {
+            return; // Respetar cadencia de fuego
+          }
+          lastMapAttackTimeRef.current = now;
+
+          // Verificación de munición
+          if (equippedWeapon.ammo !== -1 && equippedWeapon.ammo <= 0) {
+            soundEffects.vibrate(25);
+            addLog(`¡${equippedWeapon.name} sin munición! Cambiando a arma de emergencia.`, 'warning');
+            const fallback = WEAPON_REGISTRY.baseball_bat;
+            setMyPlayer((prev) => (prev ? { ...prev, equippedWeapon: fallback } : null));
+            return;
+          }
+
+          // Consumo de munición
+          if (equippedWeapon.ammo > 0) {
+            const updatedWeapon = { ...equippedWeapon, ammo: Math.max(0, equippedWeapon.ammo - 1) };
+            setMyPlayer((prev) => (prev ? { ...prev, equippedWeapon: updatedWeapon } : null));
+          }
+
+          // Efectos de sonido y vibración táctica
+          soundEffects.playGunshot(equippedWeapon.type === 'melee' ? 'melee' : 'rifle');
+          soundEffects.vibrate(35);
+          setIsMapShooting(true);
+          setTimeout(() => setIsMapShooting(false), 220);
+
+          const newHp = Math.max(0, liveMonster.hp - damage);
+          const isDefeated = newHp <= 0;
+          const monsterId = liveMonster.id || 'monster_1';
+
+          // Emitir evento de daño por Supabase Realtime con el ID dinámico de la entidad
+          realtimeRef.current.broadcastMonsterDamaged(damage, newHp, monsterId);
+
+          if (isDefeated) {
+            realtimeRef.current.broadcastMonsterStatusUpdated(
+              monsterId,
+              'wounded',
+              0,
+              player.nickname || 'Cazador'
+            );
+            addLog(`¡${liveMonster.name || 'Monstruo'} abatido a distancia con ${equippedWeapon.name}!`, 'loot');
+            setMyPlayer((prev) => (prev ? { ...prev, monsterKills: (prev.monsterKills || 0) + 1 } : null));
+            if (activeCombatMonsterIdRef.current === monsterId) {
+              setIsCombatArenaOpen(false);
+              activeCombatMonsterIdRef.current = null;
+            }
+          } else {
+            addLog(
+              `🎯 Impacto a distancia con ${equippedWeapon.name} (${Math.round(dist)}m): -${damage} HP (${liveMonster.name}: ${newHp}/${liveMonster.maxHp} HP)`,
+              'combat'
+            );
+          }
+
+          // Actualizar objetivo activo
+          setActiveCombatMonsterId(monsterId);
+          activeCombatMonsterIdRef.current = monsterId;
+
+          const updatedMonsterData: Monster = {
+            ...liveMonster,
+            hp: newHp,
+            ...(isDefeated
+              ? {
+                  status: 'wounded',
+                  state: 'wounded',
+                  defeatedAt: now,
+                  defeatedBy: player.nickname || 'Cazador',
+                  isGuardingChest: false,
+                }
+              : {}),
+          };
+          setMonster(updatedMonsterData);
+          monsterRef.current = updatedMonsterData;
+
+          setMonsters((prev) =>
+            prev.map((m) =>
+              (m.id || 'default') === monsterId
+                ? {
+                    ...m,
+                    hp: newHp,
+                    ...(isDefeated
+                      ? {
+                          status: 'wounded',
+                          state: 'wounded',
+                          defeatedAt: now,
+                          defeatedBy: player.nickname || 'Cazador',
+                          isGuardingChest: false,
+                        }
+                      : {}),
+                  }
+                : m
+            )
+          );
+
+          // Aggro reactivo hacia el tirador
+          const ai = monsterAIsRef.current.get(monsterId) || monsterAIRef.current;
+          if (ai && !isDefeated) {
+            ai.setAggroTarget(player.id);
+          }
+          return;
+        } else {
+          // Fuera de alcance
+          soundEffects.vibrate(20);
+          addLog(
+            `Monstruo fuera de alcance (${Math.round(dist)}m / alcance del arma: ${rangeMeters}m). Acércate a tiro.`,
+            'warning'
+          );
+          if (handleMapClickRef.current) {
+            handleMapClickRef.current({ lat: liveMonster.lat, lng: liveMonster.lng });
+          }
+          return;
+        }
+      }
+
+      // 3. APERTURA DE ARENA O COMBATE CUERPO A CUERPO COMO RESPALDO
+      if (dist <= 5) {
+        setActiveCombatMonsterId(liveMonster.id || null);
+        activeCombatMonsterIdRef.current = liveMonster.id || null;
+        setMonster(liveMonster);
+        monsterRef.current = liveMonster;
+        setIsCombatArenaOpen(true);
+        if (typeof cancelMovementRef.current === 'function') {
+          cancelMovementRef.current();
+        }
+        addLog(`Iniciando combate cuerpo a cuerpo con ${liveMonster.name || 'la criatura'}...`, 'combat');
+        return;
+      }
+
+      addLog(
+        `Avanzando hacia ${liveMonster.name || 'el objetivo'} para combate cuerpo a cuerpo (${Math.round(dist)}m)...`,
+        'info'
+      );
       if (handleMapClickRef.current) {
-        handleMapClickRef.current({ lat: targetMonster.lat, lng: targetMonster.lng });
+        handleMapClickRef.current({ lat: liveMonster.lat, lng: liveMonster.lng });
       }
     },
-    [addLog]
+    [isPlayerInSafeZone, addLog]
   );
 
   // 1. INICIALIZAR SESIÓN ANÓNIMA, VERIFICAR SESIÓN ACTIVA Y DETECTAR URL PARAM ?room=CODE
@@ -845,7 +1030,20 @@ export const App: React.FC = () => {
           const duelMonster = updatedMonsters.find((m) => m.id === activeCombatMonsterIdRef.current);
           if (duelMonster) setMonster(duelMonster);
         } else if (updatedMonsters.length > 0) {
-          setMonster(updatedMonsters[0]);
+          const livingMonster = updatedMonsters.find(
+            (m) =>
+              m.hp > 0 &&
+              m.status !== 'wounded' &&
+              m.status !== 'defeated' &&
+              m.state !== 'dead' &&
+              m.state !== 'defeated' &&
+              m.state !== 'wounded'
+          );
+          if (livingMonster) {
+            setMonster(livingMonster);
+          } else {
+            setMonster(updatedMonsters[updatedMonsters.length - 1]);
+          }
         }
       },
       onMonsterStatusUpdated: ({ monsterId, status, hp, defeatedBy }) => {
@@ -2144,20 +2342,50 @@ export const App: React.FC = () => {
   });
 
   // ==========================================
+  // SELECCIÓN UNIVERSAL DE OBJETIVO ACTIVO / VIVO
+  // ==========================================
+  const activeOrTargetMonster = useMemo(() => {
+    const list = monsters && monsters.length > 0 ? monsters : [monster];
+    if (activeCombatMonsterId) {
+      const activeM = list.find((m) => m.id === activeCombatMonsterId);
+      if (activeM) return activeM;
+    }
+    const living = list.filter(
+      (m) =>
+        m.hp > 0 &&
+        m.status !== 'wounded' &&
+        m.status !== 'defeated' &&
+        m.state !== 'dead' &&
+        m.state !== 'defeated' &&
+        m.state !== 'wounded'
+    );
+    if (living.length === 0) return monster;
+    if (living.length === 1 || !myPlayer?.lat || !myPlayer?.lng) return living[0];
+
+    const myPos = { lat: myPlayer.lat, lng: myPlayer.lng };
+    return living.reduce((closest, curr) => {
+      const distClosest = getDistanceMeters(myPos, closest);
+      const distCurr = getDistanceMeters(myPos, curr);
+      return distCurr < distClosest ? curr : closest;
+    }, living[0]);
+  }, [monsters, monster, activeCombatMonsterId, myPlayer?.lat, myPlayer?.lng]);
+
+  // ==========================================
   // BUCLE DE COMBATE CONTINUO EN MOVIMIENTO (MANUAL Y AUTOMÁTICO)
   // ==========================================
   const { isFiringWeapon, manualAttack } = useCombatLoop({
     isPlaying: room?.status === 'playing' && !!myPlayer?.isAlive,
     myPlayer,
-    monster,
+    monster: activeOrTargetMonster,
     roomCenter: room ? { lat: room.centerLat, lng: room.centerLng } : undefined,
     isRoleSkillActive,
     onAttackMonster: (damage, newHp, weapon, now) => {
+      const targetId = activeOrTargetMonster.id || monster.id || 'monster_1';
       const isDefeated = newHp <= 0;
-      realtimeRef.current.broadcastMonsterDamaged(damage, newHp, monster.id);
+      realtimeRef.current.broadcastMonsterDamaged(damage, newHp, targetId);
       if (isDefeated) {
         realtimeRef.current.broadcastMonsterStatusUpdated(
-          monster.id || 'monster_1',
+          targetId,
           'wounded',
           0,
           myPlayerRef.current?.nickname || 'Cazador'
@@ -2178,7 +2406,7 @@ export const App: React.FC = () => {
       }));
       setMonsters((prev) =>
         prev.map((m) =>
-          m.id === monster.id || prev.length === 1
+          (m.id || 'default') === targetId
             ? {
                 ...m,
                 hp: newHp,
@@ -2197,15 +2425,18 @@ export const App: React.FC = () => {
       );
       if (isDefeated) {
         addLogRef.current('¡Monstruo abatido en combate! La criatura yace herida en el terreno.', 'loot');
-        setMyPlayer((prev) => (prev ? { ...prev, monsterKills: prev.monsterKills + 1 } : null));
-        if (activeCombatMonsterIdRef.current === monster.id) {
+        setMyPlayer((prev) => (prev ? { ...prev, monsterKills: (prev.monsterKills || 0) + 1 } : null));
+        if (activeCombatMonsterIdRef.current === targetId) {
           setIsCombatArenaOpen(false);
           activeCombatMonsterIdRef.current = null;
         }
       }
 
-      if (myPlayerRef.current && monsterAIRef.current) {
-        monsterAIRef.current.setAggroTarget(myPlayerRef.current.id);
+      if (myPlayerRef.current) {
+        const ai = monsterAIsRef.current.get(targetId) || monsterAIRef.current;
+        if (ai && !isDefeated) {
+          ai.setAggroTarget(myPlayerRef.current.id);
+        }
       }
 
       setMyPlayer((prev) => {
@@ -5151,7 +5382,7 @@ export const App: React.FC = () => {
   const distToMonster = myPlayer
     ? getDistanceMeters(
         { lat: myPlayer.lat ?? room?.centerLat ?? 0, lng: myPlayer.lng ?? room?.centerLng ?? 0 },
-        monster
+        activeOrTargetMonster
       )
     : 999;
 
@@ -5420,7 +5651,7 @@ export const App: React.FC = () => {
                 ((myPlayer.equippedWeapon?.rangeMeters ?? 25) *
                   (isRoleSkillActive && myPlayer.role === 'marksman' ? 1.5 : 1))
               }
-              isFiring={isFiringWeapon}
+              isFiring={isFiringWeapon || isMapShooting}
               isCriticallyWounded={myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded'}
               backpackItemCount={myPlayer.inventory?.length ?? 2}
               onOpenBackpack={() => setIsBackpackOpen(true)}
@@ -5625,7 +5856,7 @@ export const App: React.FC = () => {
         <CombatArena
           isOpen={isCombatArenaOpen}
           myPlayer={myPlayer}
-          monster={monster}
+          monster={activeOrTargetMonster}
           isRoleSkillActive={isRoleSkillActive}
           onAttack={handleArenaAttack}
           onPlayerDamaged={handleArenaPlayerDamaged}

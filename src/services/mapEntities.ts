@@ -571,10 +571,12 @@ export function createSequentialMonster(
     lng: spawnPoint.lng,
     hp: config.maxHp,
     maxHp: config.maxHp,
+    status: 'patrolling',
     state: 'patrol',
     targetPlayerId: null,
     speedMps: config.speedMps,
     isEnraged: false,
+    isGuardingChest: true,
   };
 }
 

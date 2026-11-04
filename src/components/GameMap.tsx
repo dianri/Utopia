@@ -732,6 +732,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const onMonsterClickRef = useRef(onMonsterClick);
   onMonsterClickRef.current = onMonsterClick;
 
+  const monstersPropRef = useRef<Monster[]>(monsters || []);
+  monstersPropRef.current = monsters && monsters.length > 0 ? monsters : (monster ? [monster] : []);
+
   const onOpenChestRef = useRef(onOpenChest);
   onOpenChestRef.current = onOpenChest;
   const hasTriggeredChestInMapRef = useRef<boolean>(false);
@@ -2906,6 +2909,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const el = document.createElement('div');
         el.className = 'map-marker-anchor marker-monster monster-map-marker';
         el.setAttribute('data-entity', 'monster');
+        el.setAttribute('data-monster-id', m.id || monsterKey);
         el.setAttribute('data-defeated', isDefeated ? 'true' : 'false');
         if (isDefeated) {
           el.style.pointerEvents = 'none';
@@ -2916,7 +2920,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           el.style.cursor = 'pointer';
           el.onclick = (e) => {
             e.stopPropagation();
-            onMonsterClickRef.current?.(m);
+            const targetId = el.getAttribute('data-monster-id') || m.id || monsterKey;
+            const currentList = monstersPropRef.current;
+            const freshMonster =
+              currentList.find((item) => (item.id || item.name) === targetId) ||
+              currentList.find((item) => item.id === m.id) ||
+              m;
+            onMonsterClickRef.current?.(freshMonster);
           };
         }
         el.innerHTML = renderMonsterContent(isDefeated);
@@ -2935,6 +2945,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (el) {
           el.className = 'map-marker-anchor marker-monster monster-map-marker';
           el.setAttribute('data-entity', 'monster');
+          el.setAttribute('data-monster-id', m.id || monsterKey);
           if (isDefeated) {
             el.style.pointerEvents = 'none';
             el.style.cursor = 'default';
@@ -2944,7 +2955,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             el.style.cursor = 'pointer';
             el.onclick = (e) => {
               e.stopPropagation();
-              onMonsterClickRef.current?.(m);
+              const targetId = el.getAttribute('data-monster-id') || m.id || monsterKey;
+              const currentList = monstersPropRef.current;
+              const freshMonster =
+                currentList.find((item) => (item.id || item.name) === targetId) ||
+                currentList.find((item) => item.id === m.id) ||
+                m;
+              onMonsterClickRef.current?.(freshMonster);
             };
           }
 
