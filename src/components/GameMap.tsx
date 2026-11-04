@@ -24,6 +24,8 @@ import {
   isWildPetActive,
   isSupplyCrateActive,
   isDroppedItemActive,
+  isPlayerWoundedOrCritical,
+  resolveHospitalCoordinates,
 } from '../services/mapEntities';
 import { soundEffects } from '../services/soundEffects';
 
@@ -129,7 +131,8 @@ export const isMapStyleLoaded = (
 };
 
 /**
- * Muta directamente el LineString del trazado hacia el hospital en el hilo de renderizado sin latencia
+ * Muta directamente el LineString del trazado hacia el hospital en el hilo de renderizado sin latencia.
+ * Garantiza resiliencia frente a recargas de estilo, orden Z en WebGL y sanitización de coordenadas [lng, lat].
  */
 export const updateHospitalGuidelineSync = (
   map: maplibregl.Map,
@@ -140,43 +143,122 @@ export const updateHospitalGuidelineSync = (
 ) => {
   if (!map || !isMapStyleLoaded(map)) return;
 
+  // 1. Garantizar de forma defensiva que la fuente y capas existan en el estilo activo de MapLibre
+  if (!map.getSource(SOURCE_HOSPITAL_GUIDELINE)) {
+    try {
+      map.addSource(SOURCE_HOSPITAL_GUIDELINE, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+    } catch {
+      // Ignorar si el estilo se encuentra en transición
+    }
+  }
+
+  if (!map.getSource('hospital-guideline')) {
+    try {
+      map.addSource('hospital-guideline', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+    } catch {
+      // Ignorar
+    }
+  }
+
+  if (!map.getLayer('hospital-guideline-halo')) {
+    try {
+      map.addLayer({
+        id: 'hospital-guideline-halo',
+        type: 'line',
+        source: SOURCE_HOSPITAL_GUIDELINE,
+        layout: {
+          visibility: isWounded ? 'visible' : 'none',
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': '#000000',
+          'line-width': 6.0,
+          'line-opacity': 0.85,
+        },
+      });
+    } catch {
+      // Ignorar
+    }
+  }
+
+  if (!map.getLayer('hospital-guideline-line')) {
+    try {
+      map.addLayer({
+        id: 'hospital-guideline-line',
+        type: 'line',
+        source: SOURCE_HOSPITAL_GUIDELINE,
+        layout: {
+          visibility: isWounded ? 'visible' : 'none',
+          'line-join': 'round',
+          'line-cap': 'round',
+        },
+        paint: {
+          'line-color': '#ef4444',
+          'line-width': 4.0,
+          'line-dasharray': [3, 2],
+          'line-opacity': 1.0,
+        },
+      });
+    } catch {
+      // Ignorar
+    }
+  }
+
   const source1 = map.getSource(SOURCE_HOSPITAL_GUIDELINE) as maplibregl.GeoJSONSource | undefined;
   const source2 = map.getSource('hospital-guideline') as maplibregl.GeoJSONSource | undefined;
-  if (!source1 && !source2) return;
+
+  // 2. Normalización y sanitización estricta de coordenadas geográficas [longitud, latitud]
+  let pLng = typeof playerLng === 'number' && !isNaN(playerLng) ? playerLng : INITIAL_LNG;
+  let pLat = typeof playerLat === 'number' && !isNaN(playerLat) ? playerLat : INITIAL_LAT;
+  if (pLng > 0 && pLat < 0) {
+    const tmp = pLng;
+    pLng = pLat;
+    pLat = tmp;
+  }
+
+  let hLng = typeof hospitalCoords?.lng === 'number' && !isNaN(hospitalCoords.lng) ? hospitalCoords.lng : -2.1558;
+  let hLat = typeof hospitalCoords?.lat === 'number' && !isNaN(hospitalCoords.lat) ? hospitalCoords.lat : 37.401;
+  if (hLng > 0 && hLat < 0) {
+    const tmp = hLng;
+    hLng = hLat;
+    hLat = tmp;
+  }
 
   const shouldRender = Boolean(
     isWounded &&
-    hospitalCoords &&
-    typeof playerLat === 'number' &&
-    typeof playerLng === 'number' &&
-    !isNaN(playerLat) &&
-    !isNaN(playerLng) &&
-    (playerLat !== 0 || playerLng !== 0) &&
-    typeof hospitalCoords.lat === 'number' &&
-    typeof hospitalCoords.lng === 'number' &&
-    !isNaN(hospitalCoords.lat) &&
-    !isNaN(hospitalCoords.lng)
+    (pLat !== 0 || pLng !== 0) &&
+    (hLat !== 0 || hLng !== 0)
   );
 
-  const guidelineData: any =
-    shouldRender && hospitalCoords
-      ? {
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: [
-              [playerLng, playerLat],
-              [hospitalCoords.lng, hospitalCoords.lat],
-            ],
+  // 3. Estructura RFC 7946 estándar FeatureCollection
+  const guidelineData: any = {
+    type: 'FeatureCollection',
+    features: shouldRender
+      ? [
+          {
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: [
+                [pLng, pLat],
+                [hLng, hLat],
+              ],
+            },
+            properties: {
+              status: 'emergency',
+              description: 'Directriz táctica de emergencia hacia el Hospital de Campaña',
+            },
           },
-          properties: {
-            status: 'emergency',
-          },
-        }
-      : {
-          type: 'FeatureCollection',
-          features: [],
-        };
+        ]
+      : [],
+  };
 
   if (source1) source1.setData(guidelineData);
   if (source2) source2.setData(guidelineData);
@@ -185,21 +267,27 @@ export const updateHospitalGuidelineSync = (
   try {
     if (map.getLayer('hospital-guideline-halo')) {
       map.setLayoutProperty('hospital-guideline-halo', 'visibility', visibility);
+      if (shouldRender) {
+        map.moveLayer('hospital-guideline-halo');
+      }
     }
     if (map.getLayer('hospital-guideline-line')) {
       map.setLayoutProperty('hospital-guideline-line', 'visibility', visibility);
+      if (shouldRender) {
+        map.moveLayer('hospital-guideline-line');
+      }
     }
   } catch {
     // Ignorar si el estilo se está recargando
   }
 
-  // Radio perimetral de 12 metros alrededor del jugador herido
+  // 4. Radio perimetral de 12 metros alrededor del jugador herido
   const perimeterSource = map.getSource('wounded-perimeter') as maplibregl.GeoJSONSource | undefined;
   if (perimeterSource) {
     if (shouldRender) {
       perimeterSource.setData({
         type: 'FeatureCollection',
-        features: [createGeoJsonCircle({ lat: playerLat, lng: playerLng }, 12)],
+        features: [createGeoJsonCircle({ lat: pLat, lng: pLng }, 12)],
       });
     } else {
       perimeterSource.setData({
@@ -211,12 +299,25 @@ export const updateHospitalGuidelineSync = (
   try {
     if (map.getLayer('wounded-perimeter-fill')) {
       map.setLayoutProperty('wounded-perimeter-fill', 'visibility', visibility);
+      if (shouldRender) map.moveLayer('wounded-perimeter-fill');
     }
     if (map.getLayer('wounded-perimeter-outline')) {
       map.setLayoutProperty('wounded-perimeter-outline', 'visibility', visibility);
+      if (shouldRender) map.moveLayer('wounded-perimeter-outline');
     }
   } catch {
     // Ignorar
+  }
+
+  // 5. Trazas informativas de depuración en consola
+  if (shouldRender) {
+    console.info(
+      `[HospitalGuideline] Avatar en estado HERIDO detectado. Línea discontinua trazada: ` +
+      `[Lng: ${pLng.toFixed(6)}, Lat: ${pLat.toFixed(6)}] -> [Lng: ${hLng.toFixed(6)}, Lat: ${hLat.toFixed(6)}]. ` +
+      `Datos inyectados en fuente GeoJSON de MapLibre y capas elevadas al tope WebGL.`
+    );
+  } else if (!isWounded) {
+    console.info('[HospitalGuideline] Avatar sin estado herido (operativo). Fuente GeoJSON vaciada y directriz oculta.');
   }
 };
 
@@ -653,12 +754,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const updateEmergencyOverlaysRef = useRef<(map: maplibregl.Map) => void>(() => {});
 
   // Estado del jugador local: Herido / Incapacitado (visión de emergencia hospitalaria)
-  const isMeWounded = Boolean(
-    myPlayer.isCriticallyWounded ||
-    myPlayer.status === 'critically_wounded' ||
-    (myPlayer.status as string) === 'wounded' ||
-    (typeof myPlayer.hp === 'number' && myPlayer.hp <= 0)
-  );
+  const isMeWounded = isPlayerWoundedOrCritical(myPlayer);
 
   // ==========================================
   // GESTIÓN ROBUSTA DE FUENTES Y CAPAS GEOJSON RESILIENTES
@@ -916,8 +1012,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             },
             paint: {
               'line-color': '#000000',
-              'line-width': 5.5,
-              'line-opacity': 0.75,
+              'line-width': 6.0,
+              'line-opacity': 0.85,
             },
           });
         }
@@ -934,9 +1030,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             },
             paint: {
               'line-color': '#ef4444',
-              'line-width': 3.5,
+              'line-width': 4.0,
               'line-dasharray': [3, 2],
-              'line-opacity': 0.9,
+              'line-opacity': 1.0,
             },
           });
         }
@@ -1013,8 +1109,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     [isMeWounded]
   );
 
-  const hospital = structures.find((s) => s.type === 'hospital');
-  const hospitalCoords = hospital ? { lat: hospital.lat, lng: hospital.lng } : null;
+  // Localización defensiva y garantizada de coordenadas del Hospital de Campaña (nunca retorna null)
+  const hospitalCoords = useMemo(
+    () => resolveHospitalCoordinates(structures, center, playAreaRadius, treasureLocation),
+    [structures, center?.lat, center?.lng, playAreaRadius, treasureLocation?.lat, treasureLocation?.lng]
+  );
 
   /**
    * Sincroniza la geometría del límite de la zona de juego con fallbacks robustos
@@ -1556,6 +1655,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     myPlayer?.lng,
     myPlayer?.hp,
     myPlayer?.status,
+    myPlayer?.isCriticallyWounded,
     (myPlayer as any)?.visionRadius,
     (myPlayer as any)?.interactionRadius,
     myPlayer?.role,
@@ -2138,7 +2238,14 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       try {
         const source = map.getSource('structures-zones') as maplibregl.GeoJSONSource | undefined;
         if (source) {
-          const visibleStructures = isMeWounded ? structures.filter((s) => s.type === 'hospital') : structures;
+          const visibleStructures = isMeWounded
+            ? structures.filter((s) => {
+                const t = String(s.type || '').toLowerCase();
+                const id = String(s.id || '').toLowerCase();
+                const n = String(s.name || '').toLowerCase();
+                return t === 'hospital' || id.includes('hospital') || n.includes('hospital');
+              })
+            : structures;
           const features = visibleStructures
             .filter(
               (s) =>
@@ -2178,7 +2285,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     });
 
     structures.forEach((structure) => {
-      const isHospital = structure.type === 'hospital';
+      const isHospital =
+        String(structure.type || '').toLowerCase() === 'hospital' ||
+        String(structure.id || '').toLowerCase().includes('hospital') ||
+        String(structure.name || '').toLowerCase().includes('hospital');
       const badgeBorder = isHospital ? 'border-emerald-400' : 'border-cyan-400';
       const badgeText = isHospital ? 'text-emerald-300' : 'text-cyan-300';
       const icon = isHospital ? '/assets/icons/structures/structure-hospital.png' : '/assets/icons/structures/structure-shelter.png';
@@ -2762,7 +2872,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const lng = p.lng ?? center.lng;
       const isMe = p.id === myPlayer.id;
       const hpPercent = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
-      const isCriticallyWounded = p.isCriticallyWounded || p.status === 'critically_wounded' || (p.hp <= 0 && p.isAlive);
+      const isCriticallyWounded = isPlayerWoundedOrCritical(p);
       const isInside = !!p.insideBuildingId;
 
       let kin = playerKinematicsRef.current.get(p.id);
@@ -2925,7 +3035,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }
 
         // Cinemática del jugador: activa tanto en estado normal como herido/crítico camino al hospital
-        const isGhostPlayer = !p.isAlive && !isCriticallyWounded && p.status !== 'critically_wounded';
+        const isGhostPlayer = !p.isAlive && !isCriticallyWounded;
         if (isGhostPlayer) {
           if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
           if (kin.flankWatchInterval) {
@@ -3054,7 +3164,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     structureMarkersRef.current.forEach((marker, id) => {
       const struct = structures.find((s) => s.id === id);
-      const isHospital = struct?.type === 'hospital';
+      const isHospital = Boolean(
+        struct &&
+          (String(struct.type || '').toLowerCase() === 'hospital' ||
+            String(struct.id || '').toLowerCase().includes('hospital') ||
+            String(struct.name || '').toLowerCase().includes('hospital'))
+      );
       const el = marker.getElement();
       if (el) el.style.display = isMeWounded && !isHospital ? 'none' : 'block';
     });
@@ -3157,6 +3272,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     isMeWounded,
     myPlayer.lat,
     myPlayer.lng,
+    myPlayer.hp,
+    myPlayer.status,
+    myPlayer.isCriticallyWounded,
     myPlayer.insideBuildingId,
     structures,
     center.lat,

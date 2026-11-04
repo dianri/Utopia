@@ -4,6 +4,15 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Unreleased]
+### Fixed
+- **Fixed: Persistent visibility and reactive real-time synchronization of emergency guideline line to Field Hospital when wounded (`GameMap.tsx`, `mapEntities.ts`, `types/game.ts`, `CHANGELOG.md`, `README.md`):**
+  - **Unificación de Detección de Estado Herido (`isPlayerWoundedOrCritical`):** Normalizada la evaluación de estado crítico para responder ante flags booleanos (`isCriticallyWounded`), enumerados y cadenas insensibles a mayúsculas/minúsculas (`critically_wounded`, `wounded`, `downed`, `incapacitated`, `herido`, etc.) y caídas de salud crítica ($\le 1\text{ HP}$ o $\le 5\%$), sincronizándose con la insignia `[HERIDO]`.
+  - **Localización Defensiva y Coordenadas del Hospital (`resolveHospitalCoordinates`):** Búsqueda insensible a mayúsculas en estructuras (`type === 'hospital'`, id o nombre descriptivo) con fallback determinista basado en el vector radial del cofre y contingencia estática fija en Las Meriendas (`37.4010, -2.1558`). La directriz médica nunca falla por estructuras no cargadas o coordenadas nulas.
+  - **Sanitización de Orden Geográfico `[longitud, latitud]`:** Corrección e inversión preventiva de coordenadas para garantizar que el `LineString` de MapLibre GL se alimente con tuplas RFC 7946 estrictas `[[pLng, pLat], [hLng, hLat]]`.
+  - **Reactividad Inmediata en Reposo Absoluto:** La línea se proyecta en el instante exacto en que el avatar recibe daño o entra en estado crítico sin necesidad de realizar zancadas ni eventos de movimiento físico, actualizándose síncronamente durante el avance y desapareciendo de inmediato tras la curación.
+  - **Garantía de Elevación WebGL sobre Ortofoto Satelital:** Llamada a `map.moveLayer` para situar las capas `hospital-guideline-halo` (6.0px negro 0.85) y `hospital-guideline-line` (4.0px carmesí discontinuo [3, 2] 1.0) en la cúspide de la pila de renderizado, manteniéndose visibles al alternar entre vista Táctica y Satélite.
+  - **Trazabilidad y Depuración en Consola:** Integración de registros informativos `[HospitalGuideline]` que reportan la detección del estado herido, coordenadas finales proyectadas y confirmación de inyección en la fuente GeoJSON.
+
 ### Added
 - **Added: Conditional threat zone visibility with discovery check and tactical corpse styling for fallen monsters (`GameMap.tsx`, `index.css`, `App.tsx`, `CHANGELOG.md`, `README.md`):**
   - **Condicionamiento del Círculo de Amenaza a la Visión y Estado Vivo:** El círculo perimetral rojo (`#ef4444`) en la capa GeoJSON ahora solo se genera si el monstruo está con vida (`isMonsterAlive`) Y se encuentra activamente avistado por el jugador (dentro del radio de visión del avatar o con radar activo). Se erradica la filtración de coordenadas de monstruos ocultos en la niebla de guerra.

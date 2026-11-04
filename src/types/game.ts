@@ -17,7 +17,7 @@ export interface MapStructure {
   radius: number; // Radio de interacción en metros
 }
 
-export type PlayerStatus = 'active' | 'critically_wounded' | 'dead';
+export type PlayerStatus = 'active' | 'critically_wounded' | 'dead' | 'wounded' | 'downed' | 'incapacitated';
 
 export const DEFAULT_PLAYER_SPEED: PlayerSpeed = 'normal';
 
