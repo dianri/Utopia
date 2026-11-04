@@ -8,6 +8,7 @@ interface UseGeolocationOptions {
   initialPosition: Coordinates | null;
   positionKey?: string | null;
   onPositionChange: (pos: Coordinates, isFinal?: boolean) => void;
+  onVisualStep?: (pos: Coordinates) => void;
   isAlive: boolean;
   isSlowed?: boolean;
   speedMultiplier?: number;
@@ -20,6 +21,7 @@ export function useGeolocation({
   initialPosition,
   positionKey,
   onPositionChange,
+  onVisualStep,
   isAlive,
   isSlowed = false,
   speedMultiplier = 1,
@@ -33,6 +35,11 @@ export function useGeolocation({
 
   const onPositionChangeRef = useRef(onPositionChange);
   onPositionChangeRef.current = onPositionChange;
+
+  const onVisualStepRef = useRef(onVisualStep);
+  onVisualStepRef.current = onVisualStep;
+
+  const lastStateUpdateTimeRef = useRef<number>(0);
 
   const currentPosRef = useRef<Coordinates | null>(currentPosition);
   currentPosRef.current = currentPosition;
@@ -122,6 +129,8 @@ export function useGeolocation({
         setIsGpsActive(true);
         setGpsError(null);
         setCurrentPosition(coords);
+        currentPosRef.current = coords;
+        onVisualStepRef.current?.(coords);
         if (isHandlingPositionChangeRef.current) return;
         isHandlingPositionChangeRef.current = true;
         try {
@@ -183,13 +192,25 @@ export function useGeolocation({
         deltaMs
       );
 
-      setCurrentPosition(position);
-      if (!isHandlingPositionChangeRef.current) {
-        isHandlingPositionChangeRef.current = true;
-        try {
-          onPositionChangeRef.current(position, arrived);
-        } finally {
-          isHandlingPositionChangeRef.current = false;
+      currentPosRef.current = position;
+
+      // 1. Cinemática visual a 60 FPS sin pasar por React ni provocar re-renderizados
+      onVisualStepRef.current?.(position);
+
+      // 2. Estrangulamiento (throttling) de estado React a ~6.6 Hz (cada 150 ms) o inmediato al llegar
+      const now = performance.now();
+      const shouldCommitState = arrived || (now - lastStateUpdateTimeRef.current >= 150);
+
+      if (shouldCommitState) {
+        lastStateUpdateTimeRef.current = now;
+        setCurrentPosition(position);
+        if (!isHandlingPositionChangeRef.current) {
+          isHandlingPositionChangeRef.current = true;
+          try {
+            onPositionChangeRef.current(position, arrived);
+          } finally {
+            isHandlingPositionChangeRef.current = false;
+          }
         }
       }
 

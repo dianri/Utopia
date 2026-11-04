@@ -70,7 +70,7 @@ import { useHostElection } from './hooks/useHostElection';
 import { useMonsterAI } from './hooks/useMonsterAI';
 import { PVP_TRIGGER_RADIUS_METERS } from './hooks/usePvPCombat';
 
-import { GameMap } from './components/GameMap';
+import { GameMap, type GameMapHandle } from './components/GameMap';
 import { TacticalHeader } from './components/HUD/TacticalHeader';
 import { WeaponWheel } from './components/HUD/WeaponWheel';
 import { RoleSkillButton } from './components/HUD/RoleSkillButton';
@@ -496,15 +496,47 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // ESTRUCTURAS TÁCTICAS EN EL MAPA (1 HOSPITAL Y 4 REFUGIOS)
-  const structures = useMemo<MapStructure[]>(() => {
-    if (!room) return [];
-    return generateMapStructures(
-      { lat: room.centerLat, lng: room.centerLng },
-      room.playAreaRadius,
-      { lat: room.treasureLat, lng: room.treasureLng }
-    );
-  }, [room?.centerLat, room?.centerLng, room?.playAreaRadius, room?.treasureLat, room?.treasureLng]);
+  // ==========================================
+  // ESTRUCTURAS TÁCTICAS DE SALA (INMUTABLES)
+  // Hospital de Campaña y Refugios Tácticos (Alfa, Bravo, Charlie, Delta)
+  // Totalmente desacopladas de las fases y cofres. Congeladas durante toda la sesión.
+  // ==========================================
+  const [structures, setStructures] = useState<MapStructure[]>([]);
+  const structuresRoomIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!room?.id) {
+      if (structures.length > 0) {
+        setStructures([]);
+        structuresRoomIdRef.current = null;
+      }
+      return;
+    }
+
+    // Si ya inicializamos las estructuras para esta partida, mantenerlas congeladas (inmutabilidad estricta)
+    if (structuresRoomIdRef.current === room.id && structures.length > 0) {
+      return;
+    }
+
+    // 1. Prioridad: estructuras fijas guardadas en la configuración de la sala
+    const savedStructures = (room as any).settings?.structures;
+    if (Array.isArray(savedStructures) && savedStructures.length > 0) {
+      setStructures(savedStructures);
+      structuresRoomIdRef.current = room.id;
+      return;
+    }
+
+    // 2. Generación inicial autoritativa para la sala (completamente desacoplada del cofre del tesoro)
+    const center: Coordinates = {
+      lat: room.centerLat ?? (room as any).center_lat ?? 37.4018,
+      lng: room.centerLng ?? (room as any).center_lng ?? -2.1565,
+    };
+    const radius = room.playAreaRadius ?? (room as any).play_area_radius ?? 100;
+    const initialStructures = generateMapStructures(center, radius);
+
+    setStructures(initialStructures);
+    structuresRoomIdRef.current = room.id;
+  }, [room?.id, room?.centerLat, room?.centerLng, room?.playAreaRadius]);
 
   const structuresRef = useRef<MapStructure[]>(structures);
   structuresRef.current = structures;
@@ -2109,6 +2141,28 @@ export const App: React.FC = () => {
     return PLAYER_SPEED_MPS[DEFAULT_PLAYER_SPEED];
   }, [room?.playerSpeed, savedActiveRoomCode]);
 
+  const gameMapHandleRef = useRef<GameMapHandle | null>(null);
+
+  // Cinemática desacoplada a 60 FPS: traslada el marcador y la directriz hospitalaria en cada frame sin re-renderizar React
+  const handleVisualStep = useCallback((coords: Coordinates) => {
+    if (myPlayerRef.current) {
+      myPlayerRef.current.lat = coords.lat;
+      myPlayerRef.current.lng = coords.lng;
+    }
+    gameMapHandleRef.current?.updateLocalPlayerKinematics(coords);
+  }, []);
+
+  // Proyección anticipada e inmediata (0 ms) de la directriz al hospital ante daño crítico o letal
+  const triggerEmergencyGuidelineImmediate = useCallback(() => {
+    if (myPlayerRef.current) {
+      const coords = {
+        lat: myPlayerRef.current.lat ?? roomRef.current?.centerLat ?? 0,
+        lng: myPlayerRef.current.lng ?? roomRef.current?.centerLng ?? 0,
+      };
+      gameMapHandleRef.current?.triggerEmergencyGuideline(coords);
+    }
+  }, []);
+
   const { setManualDestination, resetPosition, cancelMovement } = useGeolocation({
     mode: room?.movementMode ?? 'manual',
     baseSpeedMps: effectiveBaseSpeedMps,
@@ -2120,6 +2174,7 @@ export const App: React.FC = () => {
         : null,
     positionKey: room?.id ?? null,
     onPositionChange: handlePositionChange,
+    onVisualStep: handleVisualStep,
     isAlive: myPlayer?.isAlive ?? true,
     isSlowed: myPlayer?.isSlowed ?? false,
     speedMultiplier: fleeImmunityUntil > Date.now() ? 1.3 : 1,
@@ -2338,6 +2393,7 @@ export const App: React.FC = () => {
       soundEffects.triggerDamageHaptics();
       soundEffects.playAlarm();
       if (isWounded) {
+        triggerEmergencyGuidelineImmediate();
         addLogRef.current?.('¡ATAQUE CRÍTICO! Has quedado Herido de Muerte. ¡Corre al Hospital!', 'warning');
       } else {
         addLogRef.current?.(`¡Has recibido ${damageApplied} de daño de ${monsterName}!`, 'combat');
@@ -2853,6 +2909,7 @@ export const App: React.FC = () => {
           setIsCombatArenaOpen(false);
           setActiveCombatMonsterId(null);
           activeCombatMonsterIdRef.current = null;
+          triggerEmergencyGuidelineImmediate();
           soundEffects.triggerDamageHaptics();
           soundEffects.playAlarm();
           addLog('¡ATAQUE CRÍTICO EN LA ARENA! Has quedado Herido de Muerte. ¡Huye al Hospital!', 'combat');
@@ -2887,6 +2944,18 @@ export const App: React.FC = () => {
   );
 
   const handleArenaClose = useCallback(() => {
+    // Si el jugador está neutralizado o herido, salir inmediatamente sin consultar nuevos monstruos
+    if (
+      myPlayerRef.current?.isCriticallyWounded ||
+      myPlayerRef.current?.status === 'critically_wounded' ||
+      (myPlayerRef.current?.hp !== undefined && myPlayerRef.current.hp <= 1)
+    ) {
+      setIsCombatArenaOpen(false);
+      setActiveCombatMonsterId(null);
+      activeCombatMonsterIdRef.current = null;
+      return;
+    }
+
     const playerCoord: Coordinates = {
       lat: myPlayerRef.current?.lat ?? roomRef.current?.centerLat ?? 0,
       lng: myPlayerRef.current?.lng ?? roomRef.current?.centerLng ?? 0,
@@ -3017,6 +3086,9 @@ export const App: React.FC = () => {
         myPlayerRef.current.isCriticallyWounded = true;
         myPlayerRef.current.status = 'critically_wounded';
       }
+
+      // Proyección inmediata a 0 ms de la directriz médica hacia el Hospital
+      triggerEmergencyGuidelineImmediate();
 
       setPlayers((prev) =>
         prev.map((p) =>
@@ -4771,6 +4843,11 @@ export const App: React.FC = () => {
       1
     );
 
+    const initialStructures = generateMapStructures(
+      config.center,
+      config.radiusMeters
+    );
+
     // Insertar partida en Supabase con tolerancia a columnas opcionales
     const hostRoomSpeed: PlayerSpeed = config.playerSpeed || DEFAULT_PLAYER_SPEED;
     const basePayload = {
@@ -4790,6 +4867,7 @@ export const App: React.FC = () => {
         active_wild_pets: initialPets,
         active_dropped_items: [],
         current_chest_index: 1,
+        structures: initialStructures,
       },
       play_area_radius: config.radiusMeters,
       center_lat: config.center.lat,
@@ -5535,6 +5613,7 @@ export const App: React.FC = () => {
           onOpenChest={handleOpenChestModal}
           onPlayerMarkerClick={handlePlayerMarkerClick}
           onMonsterClick={handleMonsterMarkerClick}
+          mapHandleRef={gameMapHandleRef}
         />
       ) : (
         /* PANTALLA DE INICIO / LOBBY PRINCIPAL */
