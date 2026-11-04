@@ -642,3 +642,5 @@ export function generateNextChestLocation(
 
   return bestPoint;
 }
+
+export { updateHospitalGuidelineSync } from '../components/GameMap';
