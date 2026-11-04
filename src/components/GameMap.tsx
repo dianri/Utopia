@@ -1175,18 +1175,39 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           });
         }
 
-        // 3. Autosuficiencia: Crear capas de relleno y línea si no existen
+        // 3. Autosuficiencia: Crear capas de relleno, halo y línea discontinua si no existen
         if (!map.getLayer(LAYER_BOUNDARY_FILL)) {
           map.addLayer({
             id: LAYER_BOUNDARY_FILL,
             type: 'fill',
             source: SOURCE_BOUNDARY,
+            filter: ['==', '$type', 'Polygon'],
             layout: {
               visibility: 'visible',
             },
             paint: {
               'fill-color': '#00f2fe',
-              'fill-opacity': 0.05,
+              'fill-opacity': 0.12,
+            },
+          });
+        }
+
+        if (!map.getLayer(LAYER_BOUNDARY_HALO)) {
+          map.addLayer({
+            id: LAYER_BOUNDARY_HALO,
+            type: 'line',
+            source: SOURCE_BOUNDARY,
+            filter: ['==', '$type', 'LineString'],
+            layout: {
+              visibility: 'visible',
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': '#00f2fe',
+              'line-width': 6.0,
+              'line-opacity': 0.55,
+              'line-blur': 1.5,
             },
           });
         }
@@ -1196,14 +1217,15 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             id: LAYER_BOUNDARY_LINE,
             type: 'line',
             source: SOURCE_BOUNDARY,
+            filter: ['==', '$type', 'LineString'],
             layout: {
               visibility: 'visible',
               'line-join': 'round',
-              'line-cap': 'round',
+              'line-cap': 'butt',
             },
             paint: {
               'line-color': '#00f2fe',
-              'line-width': 4.0,
+              'line-width': 3.2,
               'line-dasharray': [3, 2],
               'line-opacity': 1.0,
             },
@@ -1222,8 +1244,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         // 4. Coordenadas y radio con valores predeterminados sólidos (Las Meriendas: 37.4018, -2.1565, 350m)
         const rawLng = center?.lng;
         const rawLat = center?.lat;
-        let centerLng = typeof rawLng === 'number' && !isNaN(rawLng) && rawLng !== 0 ? rawLng : INITIAL_LNG;
-        let centerLat = typeof rawLat === 'number' && !isNaN(rawLat) && rawLat !== 0 ? rawLat : INITIAL_LAT;
+        let centerLng =
+          typeof rawLng === 'number' && !isNaN(rawLng) && Math.abs(rawLng) > 0.0001 ? rawLng : INITIAL_LNG;
+        let centerLat =
+          typeof rawLat === 'number' && !isNaN(rawLat) && Math.abs(rawLat) > 0.0001 ? rawLat : INITIAL_LAT;
         if (centerLng > 0 && centerLat < 0) {
           const tmp = centerLng;
           centerLng = centerLat;
@@ -1238,7 +1262,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         // 5. Geometría cerrada de alta fidelidad: Polígono para relleno y LineString perimetral
         const boundaryPolygon = createCircleFeature([centerLng, centerLat], radius, {
           color: '#00f2fe',
-          fillOpacity: 0.05,
+          fillOpacity: 0.12,
           id: 'operational-game-boundary-fill',
           type: 'game-boundary',
         });
@@ -1263,11 +1287,15 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           features: [boundaryPolygon, boundaryLineFeature],
         });
 
-        // 7. Forzar visibilidad explícita y elevar capa de línea a la cúspide de la pila WebGL
+        // 7. Forzar visibilidad explícita y elevar capa de halo y línea a la cúspide de la pila WebGL
         try {
           if (map.getLayer(LAYER_BOUNDARY_FILL)) {
             map.setLayoutProperty(LAYER_BOUNDARY_FILL, 'visibility', 'visible');
             map.moveLayer(LAYER_BOUNDARY_FILL);
+          }
+          if (map.getLayer(LAYER_BOUNDARY_HALO)) {
+            map.setLayoutProperty(LAYER_BOUNDARY_HALO, 'visibility', 'visible');
+            map.moveLayer(LAYER_BOUNDARY_HALO);
           }
           if (map.getLayer(LAYER_BOUNDARY_LINE)) {
             map.setLayoutProperty(LAYER_BOUNDARY_LINE, 'visibility', 'visible');
@@ -1288,6 +1316,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           isClosed: firstPoint[0] === lastPoint[0] && firstPoint[1] === lastPoint[1],
           vertexCount: perimeterCoords.length,
           sourceId: SOURCE_BOUNDARY,
+          haloLayerMounted: Boolean(map.getLayer(LAYER_BOUNDARY_HALO)),
           lineLayerMounted: Boolean(map.getLayer(LAYER_BOUNDARY_LINE)),
           fillLayerMounted: Boolean(map.getLayer(LAYER_BOUNDARY_FILL)),
         });
@@ -3359,6 +3388,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         LAYER_CIRCLES_FILL,
         LAYER_CIRCLES_LINE,
         LAYER_BOUNDARY_FILL,
+        LAYER_BOUNDARY_HALO,
         LAYER_BOUNDARY_LINE,
         LAYER_PLAYER_VISION_FILL,
         LAYER_PLAYER_VISION_LINE,
