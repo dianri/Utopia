@@ -4,6 +4,12 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Unreleased]
+### Changed
+- **Changed: Redesigned fallen monster visuals with latent revival pulse and compact tactical badge (`GameMap.tsx`, `index.css`, `CHANGELOG.md`, `README.md`):**
+  - **Insignia Táctica Minimalista:** Simplificada la etiqueta del marcador de monstruos caídos a `💀 ABATIDO`, eliminando el volcado redundante del nombre dinámico de la criatura para despejar la vista táctica sobre el terreno exterior. Incorporado fondo carbón translúcido (`bg-slate-950/90`), borde carmesí de advertencia (`border-red-500/70`) y texto contrastado en rojo (`text-red-200 font-mono font-black`).
+  - **Restauración de Visibilidad y Nitidez de la Silueta:** Eliminada la opacidad excesiva y la desaturación total plana que fundía el cuerpo con la ortofoto satelital. La ilustración conserva un 75-85% de su saturación original con contraste reforzado (1.15-1.22), permitiendo distinguir con claridad la anatomía de la criatura en el suelo.
+  - **Alerta de Reanimación Inminente (`@keyframes monsterRevivalPulse`):** Implementada una animación continua de 1.3s con modulación de escala (`0.90` a `0.96`), brillo y fogonazos de peligro carmesí mediante doble `drop-shadow` de alta intensidad (`rgba(239, 68, 68, 1)` y `rgba(220, 38, 38, 0.85)`), transmitiendo la tensión táctica de una amenaza latente en recarga de energía lista para reanimarse.
+
 ### Fixed
 - **Fixed: Resolved MapLibre lineSDF shader conflict and implemented geometry filtering with high-contrast dual-layer boundary rendering (`GameMap.tsx`, `geoUtils.ts`, `App.tsx`, `CHANGELOG.md`, `README.md`):**
   - **Erradicación del Conflicto de Shader en `lineSDF`:** Sustituido `'line-cap': 'round'` por `'line-cap': 'butt'` en la capa discontinua perimetral (`LAYER_BOUNDARY_LINE`). Se elimina la discontinuidad de longitud cero en el vértice de cierre del bucle geodésico que provocaba el descarte de triángulos en el atlas dinámico de texturas de MapLibre GL v5 sobre WebGL.

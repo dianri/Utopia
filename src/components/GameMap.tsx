@@ -2848,21 +2848,21 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (defeated) {
           return `
             <div class="marker-container flex flex-col items-center select-none pointer-events-none">
-              <!-- Cadáver táctico: derribado en el suelo, desaturado al 100%, sin brillos ni halos -->
+              <!-- Cuerpo caído con alerta pulsante de reanimación inminente -->
               <div class="monster-corpse-marker relative flex items-center justify-center pointer-events-none">
                 <img 
                   src="${visual.icon || `/assets/icons/monsters/monster-${monsterTypeStr}.png`}" 
-                  alt="${m.name || visual.label}"
-                  width="44" 
-                  height="44" 
-                  style="width: 44px !important; height: 44px !important; max-width: 44px !important; max-height: 44px !important; object-fit: contain;" 
+                  alt="💀 ABATIDO"
+                  width="46" 
+                  height="46" 
+                  style="width: 46px !important; height: 46px !important; max-width: 46px !important; max-height: 46px !important; object-fit: contain;" 
                   class="select-none pointer-events-none"
                 />
               </div>
 
-              <!-- Insignia táctica sobria de baja neutralizada (fondo carbón, texto apagado) -->
-              <span class="mt-1 px-2 py-0.5 rounded bg-slate-900/90 border border-slate-700/80 text-[9px] font-mono font-bold tracking-wider text-slate-400 uppercase whitespace-nowrap shadow-md backdrop-blur-sm pointer-events-none">
-                💀 ${m.name || visual.label} (ABATIDO)
+              <!-- Insignia táctica compacta de baja neutralizada -->
+              <span class="mt-1 px-2 py-0.5 rounded-md bg-slate-950/90 border border-red-500/70 text-[9px] font-mono font-black tracking-wider text-red-200 uppercase whitespace-nowrap shadow-lg shadow-red-950/50 backdrop-blur-sm pointer-events-none">
+                💀 ABATIDO
               </span>
             </div>
           `;
