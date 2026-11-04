@@ -58,7 +58,7 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
   };
 
   return (
-    <header className="absolute top-0 left-0 right-0 z-30 p-2 sm:p-3 pointer-events-none">
+    <header className="tactical-header hud-top-bar absolute top-0 left-0 right-0 z-50 p-2 sm:p-3 pointer-events-none">
       <div className="max-w-4xl mx-auto flex flex-col gap-1.5 sm:gap-2">
         {/* FILA SUPERIOR: SALA, ROL, SIGILO Y CONECTADOS */}
         <div className="flex items-center justify-between bg-hud-dark/90 border border-hud-border/80 backdrop-blur-md px-3 py-1.5 rounded-lg shadow-xl pointer-events-auto">

@@ -2062,7 +2062,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           </div>
         `;
 
-        el.addEventListener('click', (e) => {
+        const handlePetClick = (e: MouseEvent) => {
           e.stopPropagation();
           const hasMaxPetsNow = (myPlayerRef.current?.pets || []).length >= MAX_PETS_PER_PLAYER;
           if (hasMaxPetsNow) {
@@ -2083,7 +2083,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             onMapClickRef.current?.({ lat: wp.lat, lng: wp.lng });
             onAdoptWildPetRef.current?.(wp);
           }
-        });
+        };
+
+        el.onclick = handlePetClick;
 
         const marker = new maplibregl.Marker({
           element: el,
@@ -2106,6 +2108,28 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           el.title = hasMaxPets
             ? 'Capacidad máxima de mascotas (3/3): Comitiva completa'
             : `Mascota silvestre: ${wp.pet.name} (Toca para adoptar)`;
+
+          el.onclick = (e: MouseEvent) => {
+            e.stopPropagation();
+            const hasMaxPetsNow = (myPlayerRef.current?.pets || []).length >= MAX_PETS_PER_PLAYER;
+            if (hasMaxPetsNow) {
+              onMapClickRef.current?.({ lat: wp.lat, lng: wp.lng });
+              onAdoptWildPetRef.current?.(wp);
+              return;
+            }
+
+            const myPos = {
+              lat: myPlayerRef.current?.lat ?? center.lat,
+              lng: myPlayerRef.current?.lng ?? center.lng,
+            };
+            const dist = getDistanceMeters(myPos, { lat: wp.lat, lng: wp.lng });
+            if (dist <= 25) {
+              onAdoptWildPetRef.current?.(wp);
+            } else {
+              onMapClickRef.current?.({ lat: wp.lat, lng: wp.lng });
+              onAdoptWildPetRef.current?.(wp);
+            }
+          };
         }
       }
     });
@@ -2140,7 +2164,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       const distToMonster = getDistanceMeters(myCoords, m);
       const isDefeated = m.state === 'dead' || m.state === 'defeated' || m.state === 'wounded' || m.hp <= 0;
-      const isVisible = (distToMonster <= visionRadius || isRadarActive);
+      const isVisible = (distToMonster <= Math.max(visionRadius, isDefeated ? 90 : visionRadius) || isRadarActive);
 
       let kin = monsterKinematicsRef.current.get(monsterKey);
       if (!kin) {
@@ -2474,7 +2498,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           }
         }
 
-        if (!p.isAlive) {
+        // Cinemática del jugador: activa tanto en estado normal como herido/crítico camino al hospital
+        const isGhostPlayer = !p.isAlive && !isCriticallyWounded && p.status !== 'critically_wounded';
+        if (isGhostPlayer) {
           if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
           kin.isMoving = false;
           kin.stopTimeout = null;

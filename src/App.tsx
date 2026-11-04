@@ -1990,8 +1990,20 @@ export const App: React.FC = () => {
     roomCenter: room ? { lat: room.centerLat, lng: room.centerLng } : undefined,
     isRoleSkillActive,
     onAttackMonster: (damage, newHp, weapon, now) => {
-      realtimeRef.current.broadcastMonsterDamaged(damage, newHp);
-      setMonster((prev) => ({ ...prev, hp: newHp }));
+      const monsterDefeatedState = newHp <= 0 ? 'defeated' : undefined;
+      realtimeRef.current.broadcastMonsterDamaged(damage, newHp, monster.id);
+      setMonster((prev) => ({ ...prev, hp: newHp, ...(monsterDefeatedState ? { state: monsterDefeatedState } : {}) }));
+      setMonsters((prev) =>
+        prev.map((m) =>
+          m.id === monster.id || prev.length === 1
+            ? { ...m, hp: newHp, ...(monsterDefeatedState ? { state: monsterDefeatedState } : {}) }
+            : m
+        )
+      );
+      if (newHp <= 0) {
+        addLogRef.current('¡Monstruo abatido en combate! La criatura yace herida en el terreno.', 'loot');
+        setMyPlayer((prev) => (prev ? { ...prev, monsterKills: prev.monsterKills + 1 } : null));
+      }
 
       if (myPlayerRef.current && monsterAIRef.current) {
         monsterAIRef.current.setAggroTarget(myPlayerRef.current.id);
@@ -2901,7 +2913,7 @@ export const App: React.FC = () => {
         canEngageInPvP(myPlayer, other, structuresRef.current)
       ) {
         const dist = getDistanceMeters(myCoord, { lat: other.lat, lng: other.lng });
-        if (dist <= 12) {
+        if (dist <= PVP_TRIGGER_RADIUS_METERS) {
           initiatePvPCombatWith(other);
           break;
         }
@@ -3087,13 +3099,14 @@ export const App: React.FC = () => {
     const currentRoom = roomRef.current;
     if (!currentRoom) return;
 
-    // 1. Activar de inmediato período de gracia / enfriamiento y cerrar modal
-    isChestTransitioningRef.current = true;
-    setIsChestTransitioning(true);
-    hasTriggeredChestOpenRef.current = true;
+    // 1. Liberar de inmediato banderas de interacción y cerrar modal sin bloqueos de movimiento
+    isChestTransitioningRef.current = false;
+    setIsChestTransitioning(false);
+    hasTriggeredChestOpenRef.current = false;
     setIsChestLockModalOpen(false);
     isChestLockModalOpenRef.current = false;
     setIsChestInteractedGlobally(false);
+    realtimeRef.current.broadcastChestInteracting(false);
     setChestPhase(1);
     setChestStep(0);
     chestPhaseRef.current = 1;
@@ -3101,12 +3114,8 @@ export const App: React.FC = () => {
 
     if (chestTransitionCooldownTimerRef.current) {
       clearTimeout(chestTransitionCooldownTimerRef.current);
+      chestTransitionCooldownTimerRef.current = null;
     }
-    chestTransitionCooldownTimerRef.current = setTimeout(() => {
-      isChestTransitioningRef.current = false;
-      setIsChestTransitioning(false);
-      hasTriggeredChestOpenRef.current = false;
-    }, 5000);
 
     // 2. Incrementar chests_opened localmente
     const myId = myPlayerRef.current?.id;
@@ -5113,7 +5122,7 @@ export const App: React.FC = () => {
           />
 
           {/* BARRA DE ACCIONES INFERIOR ORGANIZADA (MOCHILA + ARMA + HABILIDAD/CURA) */}
-          <div className="fixed bottom-4 left-3 right-3 flex items-center gap-2 z-30 pointer-events-none pb-[env(safe-area-inset-bottom,0.5rem)]">
+          <div className="hud-bottom-bar fixed bottom-4 left-3 right-3 flex items-center gap-2 z-50 pointer-events-none pb-[env(safe-area-inset-bottom,0.5rem)]">
             <WeaponWheel
               weapon={myPlayer.equippedWeapon || DEFAULT_WEAPONS_BY_ROLE[myPlayer.role]}
               distToMonster={distToMonster}

@@ -307,7 +307,8 @@
   max-height: 24px !important;
 }
 
-/* Jerarquía de capas para avatar y comitiva */
+/* Contenedores de MapLibre: nunca por encima del HUD */
+#map,
 .maplibregl-map,
 .maplibregl-canvas-container,
 .maplibregl-marker {
@@ -321,7 +322,6 @@ header,
 .hud-bottom-bar,
 .hud-control-overlay {
   z-index: 50 !important;
-  position: relative;
 }
 
 /* Modales y avisos emergentes */
@@ -340,6 +340,10 @@ header,
     filter: drop-shadow(0 0 18px rgba(239, 68, 68, 1)) drop-shadow(0 0 26px rgba(220, 38, 38, 0.95));
     opacity: 1;
   }
+}
+
+.defeated-monster img {
+  animation: pulseRedHazard 1.2s infinite ease-in-out !important;
 }
 
 /* Las animaciones procedimentales operan dentro del contenedor interno sin afectar el root */

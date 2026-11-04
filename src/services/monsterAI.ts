@@ -1,6 +1,7 @@
 import type { Monster, Coordinates, Player } from '../types/game';
 import { getDistanceMeters, getDestinationPoint, stepTowards, getBearing, getRandomPointInCircle } from './geoUtils';
 import { soundEffects } from './soundEffects';
+import { spawnNearTreasure } from './mapEntities';
 
 export interface MonsterAIUpdateResult {
   updatedMonster: Monster;
@@ -64,13 +65,11 @@ export class MonsterAIController {
     if (monster.hp <= 0 || monster.state === 'dead' || monster.state === 'defeated' || monster.state === 'wounded') {
       const remaining = (monster.respawnTimeRemaining ?? 60) - 1;
       if (remaining <= 0) {
-        // Reaparición silenciosa en una posición alejada dentro del área jugable
+        // Reaparición silenciosa anclada al tesoro en un radio de custodia (15 a 35 metros)
         result.justRespawned = true;
         this.hadEnraged = false;
-        const respawnPos =
-          this.centerLocation && this.playAreaRadius
-            ? getRandomPointInCircle(this.centerLocation, this.playAreaRadius * 0.75)
-            : this.treasureLocation;
+        const offset = 15 + Math.random() * 20; // 15 a 35 metros
+        const respawnPos = spawnNearTreasure(this.treasureLocation.lat, this.treasureLocation.lng, offset);
 
         result.updatedMonster = {
           ...monster,
