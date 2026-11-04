@@ -16,7 +16,7 @@ import type {
   Pet,
 } from '../types/game';
 import { PLAYER_SPEED_MPS, isMonsterAlive } from '../types/game';
-import { createGeoJsonCircle, getDistanceMeters } from '../services/geoUtils';
+import { createGeoJsonCircle, getDistanceMeters, getDestinationPoint } from '../services/geoUtils';
 import { getVisionRadius, getCrateVisualInfo } from '../services/combatEngine';
 import {
   MAX_PETS_PER_PLAYER,
@@ -60,22 +60,26 @@ export function createCircleFeature(
 ): GeoJSON.Feature<GeoJSON.Polygon> {
   const rawLng = Array.isArray(center) ? center[0] : center?.lng;
   const rawLat = Array.isArray(center) ? center[1] : center?.lat;
-  const lng = typeof rawLng === 'number' && !isNaN(rawLng) && rawLng !== 0 ? rawLng : INITIAL_LNG;
-  const lat = typeof rawLat === 'number' && !isNaN(rawLat) && rawLat !== 0 ? rawLat : INITIAL_LAT;
+  let lng = typeof rawLng === 'number' && !isNaN(rawLng) && rawLng !== 0 ? rawLng : INITIAL_LNG;
+  let lat = typeof rawLat === 'number' && !isNaN(rawLat) && rawLat !== 0 ? rawLat : INITIAL_LAT;
+
+  // Sanitización defensiva contra inversión accidental [lat, lng]
+  if (lng > 0 && lat < 0) {
+    const tmp = lng;
+    lng = lat;
+    lat = tmp;
+  }
+
   const radius =
     typeof radiusInMeters === 'number' && !isNaN(radiusInMeters) && radiusInMeters > 0
       ? radiusInMeters
       : 350;
 
   const coords: [number, number][] = [];
-  const distanceX = radius / (111320 * Math.cos((lat * Math.PI) / 180));
-  const distanceY = radius / 110540;
-
   for (let i = 0; i < points; i++) {
-    const theta = (i / points) * (2 * Math.PI);
-    const x = distanceX * Math.cos(theta);
-    const y = distanceY * Math.sin(theta);
-    coords.push([lng + x, lat + y]);
+    const bearing = (i * 360) / points;
+    const pt = getDestinationPoint({ lat, lng }, radius, bearing);
+    coords.push([pt.lng, pt.lat]);
   }
   // Cierre estricto del polígono GeoJSON: el último punto debe ser idéntico en valor exacto al primero
   coords.push([coords[0][0], coords[0][1]]);
@@ -859,8 +863,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
               visibility: 'visible',
             },
             paint: {
-              'fill-color': '#00f0ff',
-              'fill-opacity': 0.06,
+              'fill-color': '#00f2fe',
+              'fill-opacity': 0.05,
             },
           });
         }
@@ -877,9 +881,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             },
             paint: {
               'line-color': '#00f2fe',
-              'line-width': 3.5,
+              'line-width': 4.0,
               'line-dasharray': [3, 2],
-              'line-opacity': 0.95,
+              'line-opacity': 1.0,
             },
           });
         }
@@ -1116,57 +1120,122 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   );
 
   /**
-   * Sincroniza la geometría del límite de la zona de juego con fallbacks robustos
+   * Sincroniza la geometría del límite de la zona de juego con fallbacks robustos y autosuficiencia
    */
   const syncGameBoundary = useCallback(
     (targetMap?: maplibregl.Map) => {
       const map = targetMap || mapRef.current;
-      if (!map || !isMapStyleLoaded(map)) return;
+      if (!map) return;
+
+      // 1. Guarda reactiva frente a carga asíncrona de estilo en MapLibre
+      if (!isMapStyleLoaded(map)) {
+        const onStyleLoad = () => {
+          if (mapRef.current === map) {
+            syncGameBoundary(map);
+          }
+        };
+        map.once('style.load', onStyleLoad);
+        return;
+      }
 
       try {
-        let source = (map.getSource(SOURCE_BOUNDARY) || map.getSource('play-area')) as
+        // 2. Autosuficiencia: Crear la fuente si aún no existe en el estilo activo
+        if (!map.getSource(SOURCE_BOUNDARY)) {
+          map.addSource(SOURCE_BOUNDARY, {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          });
+        }
+
+        // 3. Autosuficiencia: Crear capas de relleno y línea si no existen
+        if (!map.getLayer(LAYER_BOUNDARY_FILL)) {
+          map.addLayer({
+            id: LAYER_BOUNDARY_FILL,
+            type: 'fill',
+            source: SOURCE_BOUNDARY,
+            layout: {
+              visibility: 'visible',
+            },
+            paint: {
+              'fill-color': '#00f2fe',
+              'fill-opacity': 0.05,
+            },
+          });
+        }
+
+        if (!map.getLayer(LAYER_BOUNDARY_LINE)) {
+          map.addLayer({
+            id: LAYER_BOUNDARY_LINE,
+            type: 'line',
+            source: SOURCE_BOUNDARY,
+            layout: {
+              visibility: 'visible',
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': '#00f2fe',
+              'line-width': 4.0,
+              'line-dasharray': [3, 2],
+              'line-opacity': 1.0,
+            },
+          });
+        }
+
+        const source = (map.getSource(SOURCE_BOUNDARY) || map.getSource('play-area')) as
           | maplibregl.GeoJSONSource
           | undefined;
 
-        // Si la fuente aún no existía en el estilo, registrar fuentes y capas inmediatamente
         if (!source) {
-          setupMapLayersAndSources(map);
-          source = (map.getSource(SOURCE_BOUNDARY) || map.getSource('play-area')) as
-            | maplibregl.GeoJSONSource
-            | undefined;
-        }
-
-        if (!source) {
-          console.warn('[GameMap:Boundary] No se pudo resolver la fuente GeoJSON del límite.');
+          console.warn('[GameMap:Boundary] No se pudo resolver la fuente GeoJSON del límite tras asegurar su creación.');
           return;
         }
 
-        const centerLng =
-          typeof center?.lng === 'number' && !isNaN(center.lng) && center.lng !== 0
-            ? center.lng
-            : INITIAL_LNG;
-        const centerLat =
-          typeof center?.lat === 'number' && !isNaN(center.lat) && center.lat !== 0
-            ? center.lat
-            : INITIAL_LAT;
+        // 4. Coordenadas y radio con valores predeterminados sólidos (Las Meriendas: 37.4018, -2.1565, 350m)
+        const rawLng = center?.lng;
+        const rawLat = center?.lat;
+        let centerLng = typeof rawLng === 'number' && !isNaN(rawLng) && rawLng !== 0 ? rawLng : INITIAL_LNG;
+        let centerLat = typeof rawLat === 'number' && !isNaN(rawLat) && rawLat !== 0 ? rawLat : INITIAL_LAT;
+        if (centerLng > 0 && centerLat < 0) {
+          const tmp = centerLng;
+          centerLng = centerLat;
+          centerLat = tmp;
+        }
+
         const radius =
           typeof playAreaRadius === 'number' && !isNaN(playAreaRadius) && playAreaRadius > 0
             ? playAreaRadius
             : 350;
 
-        const boundaryFeature = createCircleFeature([centerLng, centerLat], radius, {
+        // 5. Geometría cerrada de alta fidelidad: Polígono para relleno y LineString perimetral
+        const boundaryPolygon = createCircleFeature([centerLng, centerLat], radius, {
           color: '#00f2fe',
-          fillOpacity: 0.06,
-          id: 'operational-game-boundary',
+          fillOpacity: 0.05,
+          id: 'operational-game-boundary-fill',
           type: 'game-boundary',
         });
 
+        const perimeterCoords = boundaryPolygon.geometry.coordinates[0];
+        const boundaryLineFeature: GeoJSON.Feature<GeoJSON.LineString> = {
+          type: 'Feature',
+          properties: {
+            color: '#00f2fe',
+            id: 'operational-game-boundary-line',
+            type: 'game-boundary',
+          },
+          geometry: {
+            type: 'LineString',
+            coordinates: perimeterCoords,
+          },
+        };
+
+        // 6. Inyectar datos en la fuente GeoJSON
         source.setData({
           type: 'FeatureCollection',
-          features: [boundaryFeature],
+          features: [boundaryPolygon, boundaryLineFeature],
         });
 
-        // Asegurar visibilidad activa y elevación sobre el lienzo WebGL
+        // 7. Forzar visibilidad explícita y elevar capa de línea a la cúspide de la pila WebGL
         try {
           if (map.getLayer(LAYER_BOUNDARY_FILL)) {
             map.setLayoutProperty(LAYER_BOUNDARY_FILL, 'visibility', 'visible');
@@ -1177,22 +1246,43 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             map.moveLayer(LAYER_BOUNDARY_LINE);
           }
         } catch {
-          // Ignorar si el estilo está mutando
+          // Ignorar si el estilo está en transición
         }
 
-        console.info('[GameMap:Boundary] Sincronizado límite operacional:', {
-          sourceExists: true,
+        // 8. Trazas informativas de depuración en consola
+        const firstPoint = perimeterCoords[0];
+        const lastPoint = perimeterCoords[perimeterCoords.length - 1];
+        console.info('[GameMap:Boundary] Perímetro operacional asegurado e inyectado:', {
           center: [centerLng, centerLat],
           radiusMeters: radius,
-          vertexCount: boundaryFeature.geometry.coordinates[0]?.length || 0,
-          injected: true,
+          firstPoint: [Number(firstPoint[0].toFixed(6)), Number(firstPoint[1].toFixed(6))],
+          lastPoint: [Number(lastPoint[0].toFixed(6)), Number(lastPoint[1].toFixed(6))],
+          isClosed: firstPoint[0] === lastPoint[0] && firstPoint[1] === lastPoint[1],
+          vertexCount: perimeterCoords.length,
+          sourceId: SOURCE_BOUNDARY,
+          lineLayerMounted: Boolean(map.getLayer(LAYER_BOUNDARY_LINE)),
+          fillLayerMounted: Boolean(map.getLayer(LAYER_BOUNDARY_FILL)),
         });
       } catch (err) {
         console.warn('[GameMap] Error al sincronizar límite de juego:', err);
       }
     },
-    [center?.lat, center?.lng, playAreaRadius, setupMapLayersAndSources]
+    [center?.lat, center?.lng, playAreaRadius]
   );
+
+  // Efecto reactivo dedicado al límite del área de operaciones
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    syncGameBoundary(map);
+  }, [
+    center?.lat,
+    center?.lng,
+    playAreaRadius,
+    mapLoaded,
+    styleVersion,
+    syncGameBoundary,
+  ]);
 
   /**
    * Sincroniza el radio de visión del jugador sobre el mapa en capas de radar
@@ -1606,6 +1696,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     };
   }, [
     isSatelliteView,
+    mapLoaded,
     setupMapLayersAndSources,
     syncAllInteractionCircles,
     syncGameBoundary,
@@ -1729,6 +1820,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       pitch: 45,
       bearing: 0,
       attributionControl: false,
+    });
+
+    map.on('style.load', () => {
+      injectTacticalOverlaysRef.current?.(map);
+      updateEntityInfluenceSourcesRef.current?.(map);
+      updateEmergencyOverlaysRef.current?.(map);
     });
 
     map.on('load', () => {
