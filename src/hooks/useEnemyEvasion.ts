@@ -4,6 +4,9 @@ export interface EvasionConfig {
   intervalMs: number;
   rangeX: number;
   rangeY: number;
+  minOffset: number;
+  minScale: number;
+  maxScale: number;
   speedClass: string;
 }
 
@@ -18,8 +21,16 @@ export const getEvasionConfig = (threatType?: string): EvasionConfig => {
     normalized.includes('monster_1') ||
     normalized === 'scout'
   ) {
-    // Muy ágil / evasión rápida (Acechador o Explorador)
-    return { intervalMs: 650, rangeX: 75, rangeY: 55, speedClass: 'duration-300' };
+    // Muy ágil / evasión rápida (Acechador o Explorador): escala compacta y saltos amplios
+    return {
+      intervalMs: 650,
+      rangeX: 95,
+      rangeY: 60,
+      minOffset: 30,
+      minScale: 0.7,
+      maxScale: 1.1,
+      speedClass: 'duration-300',
+    };
   }
 
   if (
@@ -28,7 +39,15 @@ export const getEvasionConfig = (threatType?: string): EvasionConfig => {
     normalized === 'marksman'
   ) {
     // Medio / equilibrado (Alfa o Tirador)
-    return { intervalMs: 850, rangeX: 65, rangeY: 45, speedClass: 'duration-400' };
+    return {
+      intervalMs: 850,
+      rangeX: 85,
+      rangeY: 55,
+      minOffset: 28,
+      minScale: 0.75,
+      maxScale: 1.2,
+      speedClass: 'duration-400',
+    };
   }
 
   if (
@@ -36,12 +55,49 @@ export const getEvasionConfig = (threatType?: string): EvasionConfig => {
     normalized.includes('monster_3') ||
     normalized === 'tank'
   ) {
-    // Pesado / lento (Coloso o Tanque)
-    return { intervalMs: 1200, rangeX: 45, rangeY: 30, speedClass: 'duration-600' };
+    // Pesado / lento (Coloso o Tanque): porte más grande pero desplazado del centro
+    return {
+      intervalMs: 1200,
+      rangeX: 70,
+      rangeY: 45,
+      minOffset: 25,
+      minScale: 0.85,
+      maxScale: 1.25,
+      speedClass: 'duration-600',
+    };
   }
 
   // Por defecto (Médico o entidad estándar)
-  return { intervalMs: 800, rangeX: 60, rangeY: 40, speedClass: 'duration-400' };
+  return {
+    intervalMs: 800,
+    rangeX: 80,
+    rangeY: 50,
+    minOffset: 25,
+    minScale: 0.75,
+    maxScale: 1.15,
+    speedClass: 'duration-400',
+  };
+};
+
+/**
+ * Calcula posición y escala procedural evitando acampar en el centro exacto (0,0)
+ */
+const getRandomPositionAndScale = (cfg: EvasionConfig) => {
+  const signX = Math.random() < 0.5 ? -1 : 1;
+  const signY = Math.random() < 0.5 ? -1 : 1;
+  const minX = cfg.minOffset;
+  const minY = 15;
+  const spanX = Math.max(15, cfg.rangeX - minX);
+  const spanY = Math.max(10, cfg.rangeY - minY);
+
+  const newX = signX * (minX + Math.random() * spanX);
+  const newY = signY * (minY + Math.random() * spanY);
+  const newScale = Number((cfg.minScale + Math.random() * (cfg.maxScale - cfg.minScale)).toFixed(2));
+
+  return {
+    offset: { x: Math.round(newX), y: Math.round(newY) },
+    scale: newScale,
+  };
 };
 
 export interface UseEnemyEvasionProps {
@@ -50,47 +106,57 @@ export interface UseEnemyEvasionProps {
 }
 
 /**
- * Hook de motor de evasión táctica y respuesta física inmediata para arenas de combate
+ * Hook de motor de evasión táctica, escala dinámica y respuesta física inmediata para arenas de combate
  */
 export const useEnemyEvasion = ({ enemyType, isCombatFinished }: UseEnemyEvasionProps) => {
   const [targetOffset, setTargetOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [targetScale, setTargetScale] = useState<number>(1.0);
   const [isHitReaction, setIsHitReaction] = useState<boolean>(false);
   const hitTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const config = getEvasionConfig(enemyType);
 
-  // Bucle de evasión procedimental continuo
+  // Bucle de evasión procedimental continuo con cambio de posición y escala dinámica
   useEffect(() => {
     if (isCombatFinished) {
       setTargetOffset({ x: 0, y: 0 });
+      setTargetScale(1.0);
       return;
     }
 
     const interval = setInterval(() => {
-      // Calcular nueva posición aleatoria sin salirse del área visual
-      const newX = (Math.random() * 2 - 1) * config.rangeX;
-      const newY = (Math.random() * 2 - 1) * config.rangeY;
-      setTargetOffset({ x: Math.round(newX), y: Math.round(newY) });
+      const next = getRandomPositionAndScale(config);
+      setTargetOffset(next.offset);
+      setTargetScale(next.scale);
     }, config.intervalMs);
 
     return () => clearInterval(interval);
-  }, [enemyType, isCombatFinished, config.intervalMs, config.rangeX, config.rangeY]);
+  }, [
+    enemyType,
+    isCombatFinished,
+    config.intervalMs,
+    config.rangeX,
+    config.rangeY,
+    config.minOffset,
+    config.minScale,
+    config.maxScale,
+  ]);
 
   // Disparo de micro-reacción física y esquiva refleja al recibir impacto
   const triggerHitReaction = useCallback(() => {
     if (hitTimeoutRef.current) clearTimeout(hitTimeoutRef.current);
     setIsHitReaction(true);
 
-    // Evasión instantánea a una nueva coordenada de fuga al ser alcanzado
-    const newX = (Math.random() * 2 - 1) * config.rangeX;
-    const newY = (Math.random() * 2 - 1) * config.rangeY;
-    setTargetOffset({ x: Math.round(newX), y: Math.round(newY) });
+    // Evasión instantánea a una nueva coordenada de fuga y variación de escala al ser alcanzado
+    const next = getRandomPositionAndScale(config);
+    setTargetOffset(next.offset);
+    setTargetScale(next.scale);
 
     hitTimeoutRef.current = setTimeout(() => {
       setIsHitReaction(false);
       hitTimeoutRef.current = null;
     }, 200);
-  }, [config.rangeX, config.rangeY]);
+  }, [config]);
 
   useEffect(() => {
     return () => {
@@ -100,6 +166,7 @@ export const useEnemyEvasion = ({ enemyType, isCombatFinished }: UseEnemyEvasion
 
   return {
     targetOffset,
+    targetScale,
     isHitReaction,
     evasionSpeedClass: config.speedClass,
     triggerHitReaction,

@@ -98,9 +98,9 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
   const lastAttackTimeRef = useRef<number>(0);
 
-  // Motor de Evasión Procedimental del Monstruo
+  // Motor de Evasión Procedimental del Monstruo (Puntería Activa y Escala Dinámica)
   const isCombatFinished = !isOpen || !isMonsterAlive || isPlayerCriticallyWounded;
-  const { targetOffset, isHitReaction, evasionSpeedClass, triggerHitReaction } = useEnemyEvasion({
+  const { targetOffset, targetScale, isHitReaction, evasionSpeedClass, triggerHitReaction } = useEnemyEvasion({
     enemyType: monster.type || monster.id,
     isCombatFinished,
   });
@@ -579,42 +579,44 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
               </div>
             ))}
 
-            {/* CONTENEDOR DEL MONSTRUO EN MOVIMIENTO EVASIVO */}
+            {/* CONTENEDOR DEL MONSTRUO EN MOVIMIENTO EVASIVO Y ESCALA DINÁMICA */}
             <div
-              className={`absolute will-change-transform transition-transform ease-out cursor-pointer z-10 ${evasionSpeedClass} ${
-                isHitReaction ? 'scale-90 brightness-150 animate-hitShake' : 'scale-100'
+              className={`absolute will-change-transform transition-all ease-out cursor-pointer z-10 ${evasionSpeedClass} ${
+                isHitReaction ? 'brightness-150 animate-hitShake' : ''
               }`}
               style={{
-                transform: `translate3d(${targetOffset.x}px, ${targetOffset.y}px, 0)`,
+                transform: `translate3d(${targetOffset.x}px, ${targetOffset.y}px, 0) scale(${
+                  isHitReaction ? Number((targetScale * 0.88).toFixed(2)) : targetScale
+                })`,
               }}
               onClick={(e) => {
                 e.stopPropagation();
                 handleDirectTargetStrike();
               }}
             >
-              {/* Halo de blanco / Retícula hostil sobre la figura */}
-              <div className="relative group p-3 flex items-center justify-center">
+              {/* Halo de blanco / Retícula hostil compacta sobre la figura */}
+              <div className="relative group p-2 flex items-center justify-center">
                 {/* Círculo indicador de impacto giratorio */}
                 <div className="absolute inset-0 rounded-full border-2 border-dashed border-red-500/40 animate-spinSlow group-hover:border-red-400 pointer-events-none" />
 
                 {/* Efecto de pulso en furia o combate */}
                 <div
-                  className={`w-28 h-28 sm:w-32 sm:h-32 rounded-full border-2 ${visual.avatarBorder} flex items-center justify-center relative transition-all duration-300 ${
+                  className={`w-16 h-16 sm:w-20 sm:h-20 rounded-full border-2 ${visual.avatarBorder} flex items-center justify-center relative transition-all duration-300 ${
                     cardHitAnim ? `scale-105 ${visual.avatarBg}` : visual.avatarBg
                   }`}
                 >
                   <img
                     src={visual.icon}
                     alt={monster.name || visual.label}
-                    className={`w-24 h-24 sm:w-28 sm:h-28 object-contain pointer-events-auto select-none transition-all duration-300 ${
+                    className={`w-14 h-14 sm:w-16 sm:h-16 object-contain pointer-events-auto select-none transition-all duration-300 ${
                       monster.isEnraged ? 'scale-110 drop-shadow-[0_0_20px_rgba(249,115,22,0.8)] animate-pulse' : 'drop-shadow-xl'
                     }`}
                     draggable={false}
                   />
 
                   {/* Ojos brillantes / destello biomecánico */}
-                  <div className={`absolute top-7 left-7 w-2 h-2 rounded-full ${visual.eyeColor} animate-ping pointer-events-none`} />
-                  <div className={`absolute top-7 right-7 w-2 h-2 rounded-full ${visual.eyeColor} animate-ping pointer-events-none`} />
+                  <div className={`absolute top-3.5 left-3.5 w-1.5 h-1.5 rounded-full ${visual.eyeColor} animate-ping pointer-events-none`} />
+                  <div className={`absolute top-3.5 right-3.5 w-1.5 h-1.5 rounded-full ${visual.eyeColor} animate-ping pointer-events-none`} />
                 </div>
               </div>
             </div>
