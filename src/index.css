@@ -363,4 +363,75 @@ header,
   animation: verticalLookScan 0.84s infinite steps(1);
 }
 
+/* ==========================================================================
+   Locomoción Orgánica, Inercia y Animaciones Desincronizadas para Mascotas
+   ========================================================================== */
+
+/* 1. Flotación y respiración en reposo (Idle) para mascotas aéreas y terrestres */
+@keyframes petIdleBreath {
+  0%, 100% {
+    transform: translateY(0px) scale(1, 1);
+  }
+  50% {
+    transform: translateY(-4px) scale(0.98, 1.02);
+  }
+}
+
+/* 2. Balanceo y deriva táctica para drones/robots médicos */
+@keyframes droneHoverWobble {
+  0%, 100% {
+    transform: translateY(0px) rotate(0deg);
+  }
+  25% {
+    transform: translateY(-5px) rotate(1.5deg);
+  }
+  75% {
+    transform: translateY(3px) rotate(-1.5deg);
+  }
+}
+
+/* 3. Trote táctico activo de seguimiento */
+@keyframes petTrotRun {
+  0%, 100% {
+    transform: translateY(0px) scale(1, 1);
+  }
+  40% {
+    transform: translateY(-6px) scale(0.95, 1.05);
+  }
+  75% {
+    transform: translateY(1px) scale(1.03, 0.97);
+  }
+}
+
+/* Clases de aplicación */
+.pet-idle-alive {
+  animation: petIdleBreath 2.2s infinite ease-in-out;
+}
+
+.pet-drone-hover {
+  animation: droneHoverWobble 3.4s infinite ease-in-out;
+}
+
+.pet-running-trot {
+  animation: petTrotRun 0.36s infinite ease-in-out;
+}
+
+/* Contenedor de anclaje con amortiguación y arrastre elástico (Spring Follow) */
+.escort-pet-anchor {
+  transition: transform 0.28s cubic-bezier(0.25, 0.8, 0.25, 1);
+  will-change: transform;
+}
+
+/* Orientación dinámica de mirada para mascotas */
+.pet-facing-right {
+  transform: scaleX(1);
+  transition: transform 0.15s ease-out;
+}
+
+.pet-facing-left {
+  transform: scaleX(-1);
+  transition: transform 0.15s ease-out;
+}
+
+
 

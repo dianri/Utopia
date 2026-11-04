@@ -108,6 +108,7 @@ interface EntityKinematicsRecord {
   isMoving: boolean;
   facingMode: 'right' | 'left' | 'scan';
   stopTimeout: ReturnType<typeof setTimeout> | null;
+  flankWatchInterval?: ReturnType<typeof setInterval> | null;
 }
 
 function getFacingClass(facingMode: 'right' | 'left' | 'scan', isMoving: boolean): string {
@@ -153,8 +154,14 @@ function updateKinematicsDOM(
  * Calcula el desplazamiento (offset en píxeles de pantalla) para la comitiva de mascotas
  * en formación de abanico táctico superior (hombros y sector superior del avance),
  * garantizando que la píldora de nombre y la barra de vida inferior queden 100% despejadas.
+ * Incorpora inercia y arrastre vectorial (Spring Follow) cuando el jugador se desplaza.
  */
-export const getPetEscortOffset = (index: number, total: number) => {
+export const getPetEscortOffset = (
+  index: number,
+  total: number,
+  isPlayerMoving: boolean = false,
+  facingMode: 'right' | 'left' | 'scan' = 'right'
+) => {
   // Abanico superior: distribución por encima del personaje (-90° arriba centro, -135°/-45° hombros, etc.)
   const upperAnglesMap: Record<number, number[]> = {
     1: [-90],              // Justo arriba en el centro
@@ -165,9 +172,70 @@ export const getPetEscortOffset = (index: number, total: number) => {
   const rad = ((angles[index] ?? -90) * Math.PI) / 180;
   const distance = 40;
 
+  const baseX = Math.round(Math.cos(rad) * distance);
+  const baseY = Math.round(Math.sin(rad) * distance) - 8; // Despeje superior estricto
+
+  if (!isPlayerMoving) {
+    return { x: baseX, y: baseY };
+  }
+
+  // Cuando el jugador se desplaza, aplicamos inercia de arrastre (lag vectorial)
+  // Las mascotas se retrasan con respecto al vector de avance
+  let lagX = 0;
+  let lagY = 0;
+  const inertiaFactor = 8 + index * 4;
+
+  if (facingMode === 'right') {
+    lagX = -inertiaFactor; // Arrastre hacia la izquierda
+  } else if (facingMode === 'left') {
+    lagX = inertiaFactor;  // Arrastre hacia la derecha
+  } else if (facingMode === 'scan') {
+    lagY = 6 + index * 3;  // Arrastre moderado vertical hacia abajo
+  }
+
   return {
-    x: Math.round(Math.cos(rad) * distance),
-    y: Math.round(Math.sin(rad) * distance) - 8, // Despeje superior estricto
+    x: baseX + lagX,
+    y: baseY + lagY,
+  };
+};
+
+/**
+ * Obtiene la latencia elástica de seguimiento (Spring Follow) según la posición en fila.
+ */
+export const getPetFollowLatency = (index: number): number => {
+  if (index === 0) return 0.22; // Mascota 0: Líder del flanco
+  if (index === 1) return 0.28; // Mascota 1: Centro superior
+  return 0.35;                 // Mascota 2: Retaguardia del flanco
+};
+
+/**
+ * Genera la configuración de animación orgánica y desincronización temporal por mascota.
+ */
+export const getPetAnimationStyles = (index: number, petType: string, isPlayerMoving: boolean) => {
+  // Desfase para que cada mascota respire/trote en un fotograma distinto
+  const delaySec = -(index * 0.45);
+
+  if (isPlayerMoving) {
+    // Cuando el jugador camina, trotan con ligeras diferencias de cadencia
+    const speedVariation = 0.34 + index * 0.04;
+    return {
+      animation: `petTrotRun ${speedVariation.toFixed(2)}s infinite ease-in-out`,
+      animationDelay: `${delaySec}s`,
+    };
+  }
+
+  // En reposo (Idle)
+  const isAerial = petType === 'drone' || petType === 'medbot';
+  if (isAerial) {
+    return {
+      animation: `droneHoverWobble ${(3.2 + index * 0.3).toFixed(2)}s infinite ease-in-out`,
+      animationDelay: `${delaySec}s`,
+    };
+  }
+
+  return {
+    animation: `petIdleBreath ${(2.1 + index * 0.25).toFixed(2)}s infinite ease-in-out`,
+    animationDelay: `${delaySec}s`,
   };
 };
 
@@ -175,32 +243,132 @@ export const getPetEscortOffset = (index: number, total: number) => {
  * Renderiza el HTML de las mascotas de la comitiva orbitando dentro del árbol DOM del propio jugador.
  * Al formar parte del árbol DOM del jugador, se elimina cualquier desfase, desanclaje o lag durante el zoom/pan.
  */
-export const renderPlayerEscortPetsHtml = (pets?: Pet[]) => {
+export const renderPlayerEscortPetsHtml = (
+  pets?: Pet[],
+  playerId: string = '',
+  isPlayerMoving: boolean = false,
+  facingMode: 'right' | 'left' | 'scan' = 'right'
+) => {
   if (!pets || pets.length === 0) return '';
   const totalPets = pets.length;
+  const facingClass = facingMode === 'left' ? 'pet-facing-left' : 'pet-facing-right';
+
   return pets
     .map((pet, idx) => {
-      const { x: offsetX, y: offsetY } = getPetEscortOffset(idx, totalPets);
+      const { x: offsetX, y: offsetY } = getPetEscortOffset(idx, totalPets, isPlayerMoving, facingMode);
+      const latency = getPetFollowLatency(idx);
+      const animStyles = getPetAnimationStyles(idx, pet.type, isPlayerMoving);
+
       return `
         <div 
-          class="player-escort-pet absolute top-1/2 left-1/2 pointer-events-none" 
-          style="transform: translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px));"
+          id="escort-pet-anchor-${playerId}-${idx}"
+          class="player-escort-pet escort-pet-anchor absolute top-1/2 left-1/2 pointer-events-none" 
+          style="transform: translate3d(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px), 0px); transition-duration: ${latency}s;"
         >
-          <img 
-            src="${pet.icon}" 
-            alt="${pet.name}" 
-            width="28" 
-            height="28" 
-            class="marker-entity-img select-none drop-shadow-[0_4px_6px_rgba(0,0,0,0.85)] ${
-              pet.isWounded ? 'grayscale opacity-60' : 'drop-shadow-[0_0_6px_rgba(52,211,153,0.7)]'
-            }" 
-            style="width: 28px !important; height: 28px !important; max-width: 28px !important; max-height: 28px !important;" 
-          />
-          ${pet.isWounded ? '<span class="absolute -top-1 -right-1 text-[8px] animate-spin">💫</span>' : ''}
+          <!-- 1. Capa de animación orgánica desincronizada (Idle / Wobble / Trot) -->
+          <div 
+            id="escort-pet-anim-${playerId}-${idx}"
+            class="pet-anim-wrap flex items-center justify-center pointer-events-none"
+            style="animation: ${animStyles.animation}; animation-delay: ${animStyles.animationDelay};"
+          >
+            <!-- 2. Capa de orientación dinámica de mirada (scaleX(1) / scaleX(-1)) -->
+            <div 
+              id="escort-pet-facing-${playerId}-${idx}"
+              class="pet-facing-wrap ${facingClass} flex items-center justify-center pointer-events-none"
+            >
+              <img 
+                src="${pet.icon}" 
+                alt="${pet.name}" 
+                width="28" 
+                height="28" 
+                class="marker-entity-img select-none drop-shadow-[0_4px_6px_rgba(0,0,0,0.85)] ${
+                  pet.isWounded ? 'grayscale opacity-60' : 'drop-shadow-[0_0_6px_rgba(52,211,153,0.7)]'
+                }" 
+                style="width: 28px !important; height: 28px !important; max-width: 28px !important; max-height: 28px !important;" 
+              />
+              ${pet.isWounded ? '<span class="absolute -top-1 -right-1 text-[8px] animate-spin">💫</span>' : ''}
+            </div>
+          </div>
         </div>
       `;
     })
     .join('');
+};
+
+/**
+ * Actualiza directamente el DOM de la comitiva de mascotas (transform inercial, animación y mirada)
+ * sin recrear elementos ni reiniciar transiciones CSS a 60 FPS.
+ */
+export const updatePlayerPetsKinematicsDOM = (
+  playerId: string,
+  pets: Pet[] | undefined,
+  isMoving: boolean,
+  facingMode: 'right' | 'left' | 'scan'
+) => {
+  if (!pets || pets.length === 0) return;
+  const total = pets.length;
+
+  pets.forEach((pet, idx) => {
+    const anchorEl = document.getElementById(`escort-pet-anchor-${playerId}-${idx}`);
+    if (anchorEl) {
+      const { x, y } = getPetEscortOffset(idx, total, isMoving, facingMode);
+      const latency = getPetFollowLatency(idx);
+      anchorEl.style.transform = `translate3d(calc(-50% + ${x}px), calc(-50% + ${y}px), 0px)`;
+      anchorEl.style.transitionDuration = `${latency}s`;
+    }
+
+    const animEl = document.getElementById(`escort-pet-anim-${playerId}-${idx}`);
+    if (animEl) {
+      const animStyles = getPetAnimationStyles(idx, pet.type, isMoving);
+      animEl.style.animation = animStyles.animation;
+      animEl.style.animationDelay = animStyles.animationDelay;
+    }
+
+    const facingEl = document.getElementById(`escort-pet-facing-${playerId}-${idx}`);
+    if (facingEl) {
+      facingEl.classList.remove('pet-facing-right', 'pet-facing-left');
+      const targetFacing = facingMode === 'left' ? 'pet-facing-left' : 'pet-facing-right';
+      facingEl.classList.add(targetFacing);
+    }
+  });
+};
+
+/**
+ * Inicia la vigilancia aleatoria de flancos en reposo tras permanecer inmóvil.
+ */
+export const startIdleFlankWatch = (
+  playerId: string,
+  pets: Pet[] | undefined,
+  kin: EntityKinematicsRecord
+) => {
+  if (kin.flankWatchInterval) {
+    clearInterval(kin.flankWatchInterval);
+    kin.flankWatchInterval = null;
+  }
+  if (!pets || pets.length <= 1) return;
+
+  // En reposo, tras 3.5-5 segundos, una mascota del flanco alterna su mirada para vigilar
+  kin.flankWatchInterval = setInterval(() => {
+    if (kin.isMoving) {
+      if (kin.flankWatchInterval) {
+        clearInterval(kin.flankWatchInterval);
+        kin.flankWatchInterval = null;
+      }
+      return;
+    }
+    const flankIndices = [0, pets.length - 1];
+    const targetIdx = flankIndices[Math.floor(Math.random() * flankIndices.length)];
+    const facingEl = document.getElementById(`escort-pet-facing-${playerId}-${targetIdx}`);
+    if (facingEl) {
+      if (facingEl.classList.contains('pet-facing-left')) {
+        facingEl.classList.remove('pet-facing-left');
+        facingEl.classList.add('pet-facing-right');
+      } else {
+        facingEl.classList.remove('pet-facing-right');
+        facingEl.classList.add('pet-facing-left');
+      }
+    }
+  }, 4000);
 };
 
 interface GameMapProps {
@@ -1311,6 +1479,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       playerKinematicsRef.current.forEach((kin) => {
         if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
+        if (kin.flankWatchInterval) {
+          clearInterval(kin.flankWatchInterval);
+          kin.flankWatchInterval = null;
+        }
       });
       playerKinematicsRef.current.clear();
 
@@ -2335,6 +2507,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!activePlayerIds.has(id)) {
         const kin = playerKinematicsRef.current.get(id);
         if (kin?.stopTimeout) clearTimeout(kin.stopTimeout);
+        if (kin?.flankWatchInterval) {
+          clearInterval(kin.flankWatchInterval);
+          kin.flankWatchInterval = null;
+        }
         playerKinematicsRef.current.delete(id);
         marker.remove();
         playerMarkersRef.current.delete(id);
@@ -2402,8 +2578,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
               ${isMe ? '<div class="absolute w-12 h-12 bg-cyan-400/20 rounded-full animate-ping pointer-events-none"></div>' : ''}
               
               <!-- Comitiva de Mascotas de Escolta dentro del árbol DOM del jugador -->
-              <div id="player-pets-${p.id}" class="absolute inset-0 pointer-events-none">
-                ${renderPlayerEscortPetsHtml(p.pets)}
+              <div id="player-pets-${p.id}" class="absolute inset-0 pointer-events-none" data-pets-key="${(p.pets || []).map((pet) => `${pet.id}_${pet.isWounded ? 'w' : 'a'}`).join(',')}">
+                ${renderPlayerEscortPetsHtml(p.pets, p.id, kin.isMoving, kin.facingMode)}
               </div>
 
               <!-- 1. Capa Externa: Rebote Procedural (translateY + compresión) -->
@@ -2446,6 +2622,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           .addTo(map);
 
         playerMarkersRef.current.set(p.id, marker);
+
+        if (p.pets && p.pets.length > 0 && !kin.isMoving) {
+          startIdleFlankWatch(p.id, p.pets, kin);
+        }
       } else {
         const marker = playerMarkersRef.current.get(p.id);
         marker?.setLngLat([lng, lat]);
@@ -2492,9 +2672,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         // Sincronizar comitiva de mascotas dentro del DOM del jugador
         const petsContainer = document.getElementById(`player-pets-${p.id}`);
         if (petsContainer) {
-          const newPetsHtml = renderPlayerEscortPetsHtml(p.pets);
-          if (petsContainer.innerHTML !== newPetsHtml) {
-            petsContainer.innerHTML = newPetsHtml;
+          const currentKey = (p.pets || []).map((pet) => `${pet.id}_${pet.isWounded ? 'w' : 'a'}`).join(',');
+          const prevKey = petsContainer.getAttribute('data-pets-key');
+          if (prevKey !== currentKey) {
+            petsContainer.setAttribute('data-pets-key', currentKey);
+            petsContainer.innerHTML = renderPlayerEscortPetsHtml(p.pets, p.id, kin.isMoving, kin.facingMode);
           }
         }
 
@@ -2502,9 +2684,14 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const isGhostPlayer = !p.isAlive && !isCriticallyWounded && p.status !== 'critically_wounded';
         if (isGhostPlayer) {
           if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
+          if (kin.flankWatchInterval) {
+            clearInterval(kin.flankWatchInterval);
+            kin.flankWatchInterval = null;
+          }
           kin.isMoving = false;
           kin.stopTimeout = null;
           updateKinematicsDOM(`player-bounce-${p.id}`, `player-facing-${p.id}`, false, 'right');
+          updatePlayerPetsKinematicsDOM(p.id, p.pets, false, 'right');
         } else {
           // Cinemática del jugador (activo o en estado herido/crítico camino al hospital)
           const mov = computeEntityMovement(lat, lng, kin.anchorLat, kin.anchorLng);
@@ -2515,6 +2702,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             kin.anchorLng = lng;
 
             if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
+            if (kin.flankWatchInterval) {
+              clearInterval(kin.flankWatchInterval);
+              kin.flankWatchInterval = null;
+            }
             const currentKin = kin;
             currentKin.stopTimeout = setTimeout(() => {
               currentKin.isMoving = false;
@@ -2522,9 +2713,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
               currentKin.anchorLat = lat;
               currentKin.anchorLng = lng;
               updateKinematicsDOM(`player-bounce-${p.id}`, `player-facing-${p.id}`, false, currentKin.facingMode);
+              updatePlayerPetsKinematicsDOM(p.id, p.pets, false, currentKin.facingMode);
+              startIdleFlankWatch(p.id, p.pets, currentKin);
             }, 600);
 
             updateKinematicsDOM(`player-bounce-${p.id}`, `player-facing-${p.id}`, true, kin.facingMode);
+            updatePlayerPetsKinematicsDOM(p.id, p.pets, true, kin.facingMode);
           }
         }
       }
