@@ -31,10 +31,10 @@ export const WaitingRoom: React.FC<WaitingRoomProps> = ({
   };
 
   const roleIcons: Record<PlayerRole, React.ReactNode> = {
-    medic: <HeartPulse className="w-4 h-4 text-emerald-400" />,
-    tank: <Shield className="w-4 h-4 text-blue-400" />,
-    scout: <Eye className="w-4 h-4 text-amber-400" />,
-    marksman: <Crosshair className="w-4 h-4 text-red-400" />,
+    medic: <img src="/assets/icons/roles/role-medic.png" alt="Médico" className="w-6 h-6 object-contain" />,
+    tank: <img src="/assets/icons/roles/role-tank.png" alt="Tanque" className="w-6 h-6 object-contain" />,
+    scout: <img src="/assets/icons/roles/role-scout.png" alt="Explorador" className="w-6 h-6 object-contain" />,
+    marksman: <img src="/assets/icons/roles/role-marksman.png" alt="Tirador" className="w-6 h-6 object-contain" />,
   };
 
   return (

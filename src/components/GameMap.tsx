@@ -151,25 +151,23 @@ function updateKinematicsDOM(
 
 /**
  * Calcula el desplazamiento (offset en píxeles de pantalla) para la comitiva de mascotas
- * en formación de abanico táctico (flancos y retaguardia).
- * Regla estricta: ninguna mascota se sitúa en el sector superior (315° a 45°),
- * garantizando que la cabeza, el visor y el torso del jugador queden 100% despejados.
+ * en formación de abanico táctico superior (hombros y sector superior del avance),
+ * garantizando que la píldora de nombre y la barra de vida inferior queden 100% despejadas.
  */
 export const getPetEscortOffset = (index: number, total: number) => {
-  const distance = 38; // Píxeles de distancia respecto al centro del jugador (rango 36px - 42px)
-  // Ángulos tácticos en abanico inferior/lateral (orientación compás: 0° Norte, 90° Este, 180° Sur, 270° Oeste)
-  const anglesMap: Record<number, number[]> = {
-    1: [140],             // Flanco inferior derecho
-    2: [220, 140],        // Izquierda (220°) y Derecha (140°)
-    3: [225, 180, 135],   // Izquierda (225°), Retaguardia (180°), Derecha (135°)
+  // Abanico superior: distribución por encima del personaje (-90° arriba centro, -135°/-45° hombros, etc.)
+  const upperAnglesMap: Record<number, number[]> = {
+    1: [-90],              // Justo arriba en el centro
+    2: [-135, -45],        // Diagonal superior izquierda y derecha
+    3: [-150, -90, -30],   // Arriba izquierda, arriba centro, arriba derecha
   };
-  const angles = anglesMap[total] || [180];
-  const deg = angles[index] ?? 180;
-  const rad = (deg * Math.PI) / 180;
+  const angles = upperAnglesMap[total] || [-90];
+  const rad = ((angles[index] ?? -90) * Math.PI) / 180;
+  const distance = 40;
 
   return {
-    x: Math.round(Math.sin(rad) * distance),
-    y: Math.round(-Math.cos(rad) * distance + 4), // Ligero descenso (+4px) para despejar el torso y la cabeza
+    x: Math.round(Math.cos(rad) * distance),
+    y: Math.round(Math.sin(rad) * distance) - 8, // Despeje superior estricto
   };
 };
 
@@ -2068,7 +2066,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           e.stopPropagation();
           const hasMaxPetsNow = (myPlayerRef.current?.pets || []).length >= MAX_PETS_PER_PLAYER;
           if (hasMaxPetsNow) {
-            // Notificar capacidad máxima sin desplazarse ni consumir la mascota
+            // Notificar capacidad máxima e iniciar desplazamiento automático hacia las coordenadas de la mascota
+            onMapClickRef.current?.({ lat: wp.lat, lng: wp.lng });
             onAdoptWildPetRef.current?.(wp);
             return;
           }
@@ -2140,10 +2139,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       currentMonsterIds.add(monsterKey);
 
       const distToMonster = getDistanceMeters(myCoords, m);
-      const isVisible =
-        (distToMonster <= visionRadius || isRadarActive) &&
-        m.state !== 'dead' &&
-        m.hp > 0;
+      const isDefeated = m.state === 'dead' || m.state === 'defeated' || m.state === 'wounded' || m.hp <= 0;
+      const isVisible = (distToMonster <= visionRadius || isRadarActive);
 
       let kin = monsterKinematicsRef.current.get(monsterKey);
       if (!kin) {
@@ -2158,13 +2155,27 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       }
 
       const visual = getMonsterVisualConfig(m);
-      let marker = monsterMarkersRef.current.get(monsterKey);
-      if (!marker) {
-        const el = document.createElement('div');
-        el.className = 'map-marker-anchor marker-monster monster-map-marker';
-        el.setAttribute('data-entity', 'monster');
-        el.style.pointerEvents = 'none';
-        el.innerHTML = `
+      const monsterTypeStr = m.type || 'stalker';
+
+      const renderMonsterContent = (defeated: boolean) => {
+        if (defeated) {
+          return `
+            <div class="marker-content flex flex-col items-center select-none pointer-events-none">
+              <div class="defeated-monster relative">
+                <img 
+                  src="/assets/icons/monsters/monster-${monsterTypeStr}.png" 
+                  alt="${m.name || 'Monstruo'}"
+                  class="w-12 h-12 object-contain grayscale-[40%] contrast-125 opacity-80"
+                  style="filter: drop-shadow(0 0 12px rgba(239, 68, 68, 0.95)); animation: pulseRedHazard 1.2s infinite ease-in-out;"
+                />
+                <span class="absolute -bottom-2 left-1/2 -translate-x-1/2 px-1.5 py-0.2 rounded bg-red-950/90 border border-red-500/60 text-[9px] font-black text-red-300 uppercase whitespace-nowrap">
+                  ⚠️ HERIDO / DERROTADO
+                </span>
+              </div>
+            </div>
+          `;
+        }
+        return `
           <div class="marker-content flex flex-col items-center select-none pointer-events-none ${visual.scaleClass}">
             <div class="relative flex items-center justify-center">
               <div class="w-14 h-14 ${visual.pingBg} rounded-full animate-ping absolute pointer-events-none"></div>
@@ -2196,6 +2207,16 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             </div>
           </div>
         `;
+      };
+
+      let marker = monsterMarkersRef.current.get(monsterKey);
+      if (!marker) {
+        const el = document.createElement('div');
+        el.className = 'map-marker-anchor marker-monster monster-map-marker';
+        el.setAttribute('data-entity', 'monster');
+        el.setAttribute('data-defeated', isDefeated ? 'true' : 'false');
+        el.style.pointerEvents = 'none';
+        el.innerHTML = renderMonsterContent(isDefeated);
 
         marker = new maplibregl.Marker({
           element: el,
@@ -2212,6 +2233,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           el.className = 'map-marker-anchor marker-monster monster-map-marker';
           el.setAttribute('data-entity', 'monster');
           el.style.pointerEvents = 'none';
+
+          const wasDefeated = el.getAttribute('data-defeated') === 'true';
+          if (wasDefeated !== isDefeated) {
+            el.setAttribute('data-defeated', isDefeated ? 'true' : 'false');
+            el.innerHTML = renderMonsterContent(isDefeated);
+          }
         }
         const hpBar = document.getElementById(`monster-hp-bar-${monsterKey}`);
         if (hpBar) {
@@ -2222,7 +2249,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           badge.textContent = m.name;
         }
 
-        if (m.state === 'dead' || m.hp <= 0) {
+        if (isDefeated) {
           if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
           kin.isMoving = false;
           kin.stopTimeout = null;
@@ -2447,13 +2474,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           }
         }
 
-        if (isCriticallyWounded || !p.isAlive) {
+        if (!p.isAlive) {
           if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
           kin.isMoving = false;
           kin.stopTimeout = null;
           updateKinematicsDOM(`player-bounce-${p.id}`, `player-facing-${p.id}`, false, 'right');
         } else {
-          // Cinemática del jugador
+          // Cinemática del jugador (activo o en estado herido/crítico camino al hospital)
           const mov = computeEntityMovement(lat, lng, kin.anchorLat, kin.anchorLng);
           if (mov.isMoving) {
             kin.isMoving = true;
@@ -2720,13 +2747,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           )}
         </button>
       </div>
-
-      {/* AVISO TAP-TO-MOVE (Ubicado debajo del widget del cofre para evitar colisiones) */}
-      {movementMode === 'manual' && myPlayer.isAlive && (
-        <div className="absolute top-[118px] sm:top-52 left-3 sm:left-4 z-20 bg-hud-dark/75 border border-hud-cyan/30 backdrop-blur-sm px-2 py-0.5 rounded text-[10px] font-mono text-hud-cyan/90 shadow pointer-events-none">
-          👆 Toca el mapa para moverte ({PLAYER_SPEED_MPS[playerSpeed].toFixed(1)} m/s)
-        </div>
-      )}
     </div>
   );
 };

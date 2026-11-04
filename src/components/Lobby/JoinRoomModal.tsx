@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import type { PlayerRole } from '../../types/game';
 import { supabase, ensureAnonymousAuth } from '../../lib/supabase';
 import { soundEffects } from '../../services/soundEffects';
-import { Shield, HeartPulse, Eye, Crosshair, LogIn, RefreshCw, Lock, ShieldAlert } from 'lucide-react';
+import { LogIn, RefreshCw, Lock, ShieldAlert } from 'lucide-react';
+import { RoleSelectorGrid } from './RoleSelectionModal';
 
 interface JoinRoomModalProps {
   initialCode?: string;
@@ -83,37 +84,6 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
       setExistingNickname(null);
     }
   }, [code]);
-
-  const roleOptions: { id: PlayerRole; label: string; desc: string; icon: React.ReactNode; color: string }[] = [
-    {
-      id: 'medic',
-      label: 'Médico',
-      desc: 'Reanima en 10s (vs 20s) y doble radio de auxilio',
-      icon: <HeartPulse className="w-5 h-5" />,
-      color: 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300',
-    },
-    {
-      id: 'tank',
-      label: 'Tanque',
-      desc: '+50% HP (150 HP) y atrae la atención del monstruo',
-      icon: <Shield className="w-5 h-5" />,
-      color: 'border-blue-500/50 bg-blue-500/10 text-blue-300',
-    },
-    {
-      id: 'scout',
-      label: 'Explorador',
-      desc: 'Visión extendida (105m) y Radar Táctico de 10s',
-      icon: <Eye className="w-5 h-5" />,
-      color: 'border-amber-500/50 bg-amber-500/10 text-amber-300',
-    },
-    {
-      id: 'marksman',
-      label: 'Tirador',
-      desc: '+35% de daño a distancia y mayor alcance de tiro',
-      icon: <Crosshair className="w-5 h-5" />,
-      color: 'border-red-500/50 bg-red-500/10 text-red-300',
-    },
-  ];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -283,29 +253,7 @@ export const JoinRoomModal: React.FC<JoinRoomModalProps> = ({
             <label className="block text-xs font-mono text-hud-muted mb-2">
               {isExistingMember ? 'Clase Asignada (Confirmar)' : 'Selecciona tu Clase de Combate'}
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {roleOptions.map((r) => (
-                <div
-                  key={r.id}
-                  onClick={() => setRole(r.id)}
-                  className={`p-2.5 rounded-xl border cursor-pointer transition-all flex items-start gap-2.5 ${
-                    role === r.id
-                      ? `${r.color} ring-1 ring-current scale-[1.01]`
-                      : 'border-hud-border bg-hud-panel/60 text-hud-muted hover:border-hud-border/80'
-                  }`}
-                >
-                  <div className="mt-0.5">{r.icon}</div>
-                  <div className="flex flex-col">
-                    <span className="text-xs font-mono font-black uppercase">
-                      {r.label}
-                    </span>
-                    <span className="text-[10px] font-mono opacity-80 leading-tight mt-0.5">
-                      {r.desc}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <RoleSelectorGrid selectedRole={role} onSelectRole={setRole} />
           </div>
 
           {/* BOTÓN ENTRAR */}

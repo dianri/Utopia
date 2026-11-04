@@ -141,7 +141,7 @@ export interface Player {
   pets?: Pet[];
 }
 
-export type MonsterState = 'patrol' | 'chase' | 'enraged' | 'dead' | 'defend_chest';
+export type MonsterState = 'patrol' | 'chase' | 'enraged' | 'dead' | 'defend_chest' | 'defeated' | 'wounded';
 
 export type MonsterType = 'stalker' | 'alpha' | 'colossus';
 
@@ -167,6 +167,8 @@ export const isMonsterAlive = (monster?: Monster | null): boolean => {
   return (
     monster.hp > 0 &&
     monster.state !== 'dead' &&
+    monster.state !== 'defeated' &&
+    monster.state !== 'wounded' &&
     !monster.isRespawning &&
     !(monster.respawnTimeRemaining && monster.respawnTimeRemaining > 0)
   );

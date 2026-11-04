@@ -448,6 +448,26 @@ export const getMonsterVisualConfig = (monster?: Monster | null): MonsterVisualC
 /**
  * Genera el monstruo asociado a un cofre secuencial (1, 2 o 3)
  */
+/**
+ * Genera coordenadas de custodia para monstruos ancladas alrededor del cofre del tesoro (15m a 35m)
+ */
+export const spawnNearTreasure = (
+  treasureLat: number,
+  treasureLng: number,
+  offsetMeters: number = 15 + Math.random() * 20
+): Coordinates => {
+  const angle = Math.random() * 2 * Math.PI;
+  const latOffset = (offsetMeters * Math.cos(angle)) / 111139;
+  const lngOffset = (offsetMeters * Math.sin(angle)) / (111139 * Math.cos((treasureLat * Math.PI) / 180));
+  return {
+    lat: treasureLat + latOffset,
+    lng: treasureLng + lngOffset,
+  };
+};
+
+/**
+ * Crea una criatura adaptada a la fase secuencial del cofre, anclada en su custodia
+ */
 export function createSequentialMonster(
   chestIndex: number,
   center: Coordinates,
@@ -455,7 +475,9 @@ export function createSequentialMonster(
 ): Monster {
   const safeIndex = Math.min(Math.max(chestIndex - 1, 0), SEQUENTIAL_MONSTER_CONFIGS.length - 1);
   const config = SEQUENTIAL_MONSTER_CONFIGS[safeIndex];
-  const spawnPoint = getRandomPointInCircle(center, playAreaRadius * 0.75);
+  // Anclado obligatoriamente en el tesoro o en un radio de custodia de 15 a 35 metros alrededor de sus coordenadas
+  const offsetMeters = 15 + Math.random() * 20;
+  const spawnPoint = spawnNearTreasure(center.lat, center.lng, offsetMeters);
 
   return {
     id: config.id,

@@ -3,6 +3,8 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import type { PvPAttackPayload } from '../types/game';
 
+export const PVP_TRIGGER_RADIUS_METERS = 28;
+
 export interface PvPPetAttackPayload {
   attackerId: string;
   petId: string;
