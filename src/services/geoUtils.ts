@@ -77,6 +77,10 @@ export function createGeoJsonCircle(
     const point = getDestinationPoint(center, radiusMeters, angle);
     coordinates.push([point.lng, point.lat]);
   }
+  // Cierre estricto del polígono GeoJSON (el último vértice debe coincidir idénticamente con el primero)
+  if (coordinates.length > 0) {
+    coordinates[coordinates.length - 1] = [coordinates[0][0], coordinates[0][1]];
+  }
 
   return {
     type: 'Feature',
