@@ -1,4 +1,16 @@
-import type { Pet, PetType, WildPet, Coordinates, SupplyCrate, CrateType, Weapon, Monster, DroppedItem } from '../types/game';
+import type {
+  Pet,
+  PetType,
+  WildPet,
+  Coordinates,
+  SupplyCrate,
+  CrateType,
+  Weapon,
+  Monster,
+  DroppedItem,
+  MapStructure,
+  Player,
+} from '../types/game';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getRandomPointInCircle, getDistanceMeters, getBearing, getDestinationPoint } from './geoUtils';
 import { WEAPON_REGISTRY } from './combatEngine';
@@ -643,4 +655,130 @@ export function generateNextChestLocation(
   return bestPoint;
 }
 
-export { updateHospitalGuidelineSync, createCircleFeature } from '../components/GameMap';
+/**
+ * Coordenadas de contingencia táctica predeterminadas para el Hospital de Campaña en Las Meriendas
+ */
+export const DEFAULT_HOSPITAL_COORDINATES: Coordinates = {
+  lat: 37.401,
+  lng: -2.1558,
+};
+
+/**
+ * Evalúa de forma unificada e inclusiva si un jugador se encuentra en estado herido, crítico o incapacitado.
+ * Salvaguarda contra discrepancias de nomenclatura, diferencias mayúsculas/minúsculas y umbrales de salud.
+ */
+export function isPlayerWoundedOrCritical(player?: Partial<Player> | null): boolean {
+  if (!player) return false;
+
+  // 1. Flag booleano explícito
+  if (player.isCriticallyWounded === true) return true;
+
+  // 2. Normalización de enumerados y cadenas de estado (insensible a mayúsculas/minúsculas)
+  const statusStr = String(player.status || '').toLowerCase().trim();
+  const criticalStatuses = [
+    'critically_wounded',
+    'wounded',
+    'downed',
+    'incapacitated',
+    'dead',
+    'herido',
+    'herido de muerte',
+    'crítico',
+    'critico',
+    'inmovilizado',
+  ];
+  if (criticalStatuses.includes(statusStr) || criticalStatuses.some((st) => statusStr.includes(st))) {
+    return true;
+  }
+
+  // 3. Vitalidad por debajo del umbral crítico o cero (en Utopia, 0 o 1 HP activa estado herido)
+  if (typeof player.hp === 'number' && !isNaN(player.hp)) {
+    if (player.hp <= 1) {
+      return true;
+    }
+    if (typeof player.maxHp === 'number' && player.maxHp > 0) {
+      if (player.hp / player.maxHp <= 0.05) {
+        return true;
+      }
+    }
+  }
+
+  // 4. Flags de compatibilidad adicionales
+  if ((player as any).isWounded === true || (player as any).downed === true || (player as any).incapacitated === true) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Localiza de forma defensiva y resiliente las coordenadas del Hospital de Campaña.
+ * Nunca retorna null: recurre a estructuras activas, cálculo determinista o coordenadas tácticas de contingencia.
+ */
+export function resolveHospitalCoordinates(
+  structures?: MapStructure[] | null,
+  center?: Coordinates | null,
+  playAreaRadius?: number | null,
+  treasureLocation?: Coordinates | null
+): Coordinates {
+  // 1. Búsqueda defensiva insensible a mayúsculas en estructuras activas
+  if (Array.isArray(structures) && structures.length > 0) {
+    const hospital = structures.find((s) => {
+      const typeStr = String(s.type || '').toLowerCase().trim();
+      const idStr = String(s.id || '').toLowerCase().trim();
+      const nameStr = String(s.name || '').toLowerCase().trim();
+      return typeStr === 'hospital' || idStr.includes('hospital') || nameStr.includes('hospital');
+    });
+
+    if (
+      hospital &&
+      typeof hospital.lat === 'number' &&
+      typeof hospital.lng === 'number' &&
+      !isNaN(hospital.lat) &&
+      !isNaN(hospital.lng) &&
+      (hospital.lat !== 0 || hospital.lng !== 0)
+    ) {
+      return { lat: hospital.lat, lng: hospital.lng };
+    }
+  }
+
+  // 2. Fallback determinista computado a partir del centro y cofre (mismo vector matemático que mapStructures.ts)
+  if (
+    center &&
+    typeof center.lat === 'number' &&
+    typeof center.lng === 'number' &&
+    !isNaN(center.lat) &&
+    !isNaN(center.lng) &&
+    (center.lat !== 0 || center.lng !== 0)
+  ) {
+    const effectiveRadius = playAreaRadius && playAreaRadius > 0 ? playAreaRadius : 100;
+    const effectiveTreasure =
+      treasureLocation &&
+      typeof treasureLocation.lat === 'number' &&
+      typeof treasureLocation.lng === 'number' &&
+      !isNaN(treasureLocation.lat) &&
+      !isNaN(treasureLocation.lng) &&
+      (treasureLocation.lat !== 0 || treasureLocation.lng !== 0)
+        ? treasureLocation
+        : center;
+
+    const treasureBearing = getBearing(center, effectiveTreasure) || 0;
+    const hospitalBearing = (treasureBearing + 180) % 360;
+    const hospitalDistance = Math.max(30, Math.min(effectiveRadius * 0.6, effectiveRadius - 20));
+    const computedHospital = getDestinationPoint(center, hospitalDistance, hospitalBearing);
+
+    if (
+      computedHospital &&
+      typeof computedHospital.lat === 'number' &&
+      typeof computedHospital.lng === 'number' &&
+      !isNaN(computedHospital.lat) &&
+      !isNaN(computedHospital.lng) &&
+      (computedHospital.lat !== 0 || computedHospital.lng !== 0)
+    ) {
+      return computedHospital;
+    }
+  }
+
+  // 3. Contingencia fija de alta fiabilidad en Las Meriendas (garantiza destino válido)
+  return { ...DEFAULT_HOSPITAL_COORDINATES };
+}
