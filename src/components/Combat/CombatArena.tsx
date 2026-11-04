@@ -504,42 +504,6 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
       {/* 2. CARTA CENTRAL DEL MONSTRUO (ESTILO POKÉMON / TÁCTICO) */}
       <div className="w-full max-w-sm flex-1 flex flex-col items-center justify-center my-auto z-20 relative">
-        {/* Números de daño flotantes */}
-        <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-30">
-          {damageNumbers.map((num) => (
-            <div
-              key={num.id}
-              className="floating-combat-effect absolute flex items-center gap-1.5 animate-floatUp px-3 py-1 rounded-full bg-slate-950/85 border border-slate-700/60 shadow-2xl backdrop-blur-sm"
-            >
-              {num.icon && (
-                <img
-                  src={num.icon.replace(/^\/+/, '/')}
-                  alt=""
-                  className="h-6 w-6 object-contain drop-shadow-[0_0_6px_rgba(251,191,36,0.6)] select-none"
-                  onError={(e) => {
-                    e.currentTarget.style.display = 'none';
-                  }}
-                />
-              )}
-              <span
-                className={`font-mono font-black text-sm sm:text-base tracking-wide whitespace-nowrap ${
-                  num.label === '¡FALLO!' || num.text === '¡FALLO!'
-                    ? 'text-slate-400 drop-shadow-[0_0_8px_rgba(148,163,184,0.8)]'
-                    : num.isIncoming
-                    ? 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]'
-                    : num.isPet
-                    ? 'text-amber-300 drop-shadow-[0_0_12px_rgba(251,191,36,0.9)]'
-                    : num.isCrit
-                    ? 'text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,0.9)]'
-                    : 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]'
-                }`}
-              >
-                {num.label || num.text}
-              </span>
-            </div>
-          ))}
-        </div>
-
         <div
           className={`w-full max-w-[320px] rounded-2xl bg-gradient-to-b ${visual.cardBgGradient} border-2 transition-transform duration-100 shadow-2xl relative overflow-hidden ${
             cardHitAnim
@@ -570,6 +534,64 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
             {/* Retícula de radar de fondo decorativa */}
             <div className={`absolute inset-0 ${visual.avatarRadialGlow} opacity-40 pointer-events-none`} />
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(239,68,68,0.08)_0,transparent_70%)] pointer-events-none" />
+
+            {/* Avisos tácticos de ataque/apoyo de mascotas en el flanco superior (despejado del centro) */}
+            <div className="absolute top-2.5 right-2.5 z-30 pointer-events-none flex flex-col items-end gap-1 max-w-[190px]">
+              {damageNumbers
+                .filter((n) => n.isPet)
+                .map((num) => (
+                  <div
+                    key={num.id}
+                    className="floating-pet-notice pointer-events-none flex items-center gap-1.5 animate-floatNotice px-2.5 py-0.5 rounded-full bg-slate-950/85 border border-amber-500/40 shadow-xl backdrop-blur-md"
+                  >
+                    {num.icon && (
+                      <img
+                        src={num.icon.replace(/^\/+/, '/')}
+                        alt=""
+                        className="h-3.5 w-3.5 object-contain pointer-events-none select-none drop-shadow-[0_0_4px_rgba(251,191,36,0.6)]"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                        }}
+                      />
+                    )}
+                    <span
+                      className={`font-mono font-bold text-[10px] sm:text-[11px] pointer-events-none truncate max-w-[150px] ${
+                        num.isIncoming
+                          ? 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]'
+                          : 'text-amber-300 drop-shadow-[0_0_8px_rgba(251,191,36,0.8)]'
+                      }`}
+                    >
+                      {num.label || num.text}
+                    </span>
+                  </div>
+                ))}
+            </div>
+
+            {/* Números de daño directo de disparo del jugador en el centro */}
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-30">
+              {damageNumbers
+                .filter((n) => !n.isPet)
+                .map((num) => (
+                  <div
+                    key={num.id}
+                    className="floating-direct-hit pointer-events-none absolute flex items-center gap-1 animate-floatUp px-2.5 py-0.5 rounded-full bg-slate-950/85 border border-slate-700/60 shadow-2xl backdrop-blur-sm"
+                  >
+                    <span
+                      className={`font-mono font-black text-sm sm:text-base tracking-wide whitespace-nowrap pointer-events-none ${
+                        num.label === '¡FALLO!' || num.text === '¡FALLO!'
+                          ? 'text-slate-400 drop-shadow-[0_0_8px_rgba(148,163,184,0.8)]'
+                          : num.isIncoming
+                          ? 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]'
+                          : num.isCrit
+                          ? 'text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,0.9)]'
+                          : 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]'
+                      }`}
+                    >
+                      {num.label || num.text}
+                    </span>
+                  </div>
+                ))}
+            </div>
 
             {/* Marcas momentáneas de disparos fallidos */}
             {missMarkers.map((m) => (
@@ -630,10 +652,12 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
             </div>
 
             {/* Indicador táctico interactivo en la base de la carta */}
-            <div className="absolute bottom-2 text-center w-full pointer-events-none z-10">
-              <span className="text-[10px] font-mono font-bold text-red-300 uppercase tracking-widest bg-black/80 px-2.5 py-1 rounded-full border border-red-500/40 shadow-lg flex items-center justify-center gap-1.5 w-max mx-auto animate-pulse">
-                <Target className="w-3.5 h-3.5 text-red-400" />
-                <span>{attackCooldown > 0 ? 'RECARGANDO ARMA...' : '🎯 APUNTA Y DISPARA: TOCA DIRECTAMENTE AL BLANCO'}</span>
+            <div className="absolute bottom-2 inset-x-2 text-center pointer-events-none z-10 flex justify-center">
+              <span className="inline-flex items-center justify-center gap-1.5 px-3 py-1 rounded-full border border-red-500/40 bg-black/85 shadow-lg text-[10px] sm:text-[11px] font-mono font-bold text-red-300 tracking-wider uppercase max-w-full truncate animate-pulse">
+                <Target className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                <span className="truncate">
+                  {attackCooldown > 0 ? 'RECARGANDO ARMA...' : 'TOCA AL BLANCO PARA DISPARAR'}
+                </span>
               </span>
             </div>
           </div>
