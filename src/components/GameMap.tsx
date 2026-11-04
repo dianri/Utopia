@@ -107,6 +107,98 @@ export const isMapStyleLoaded = (
   );
 };
 
+/**
+ * Muta directamente el LineString del trazado hacia el hospital en el hilo de renderizado sin latencia
+ */
+export const updateHospitalGuidelineSync = (
+  map: maplibregl.Map,
+  playerLng: number,
+  playerLat: number,
+  isWounded: boolean,
+  hospitalCoords: { lat: number; lng: number } | null
+) => {
+  if (!map || !isMapStyleLoaded(map)) return;
+
+  const source1 = map.getSource(SOURCE_HOSPITAL_GUIDELINE) as maplibregl.GeoJSONSource | undefined;
+  const source2 = map.getSource('hospital-guideline') as maplibregl.GeoJSONSource | undefined;
+  if (!source1 && !source2) return;
+
+  const shouldRender = Boolean(
+    isWounded &&
+    hospitalCoords &&
+    typeof playerLat === 'number' &&
+    typeof playerLng === 'number' &&
+    !isNaN(playerLat) &&
+    !isNaN(playerLng) &&
+    (playerLat !== 0 || playerLng !== 0) &&
+    typeof hospitalCoords.lat === 'number' &&
+    typeof hospitalCoords.lng === 'number' &&
+    !isNaN(hospitalCoords.lat) &&
+    !isNaN(hospitalCoords.lng)
+  );
+
+  const guidelineData: any =
+    shouldRender && hospitalCoords
+      ? {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [playerLng, playerLat],
+              [hospitalCoords.lng, hospitalCoords.lat],
+            ],
+          },
+          properties: {
+            status: 'emergency',
+          },
+        }
+      : {
+          type: 'FeatureCollection',
+          features: [],
+        };
+
+  if (source1) source1.setData(guidelineData);
+  if (source2) source2.setData(guidelineData);
+
+  const visibility = shouldRender ? 'visible' : 'none';
+  try {
+    if (map.getLayer('hospital-guideline-halo')) {
+      map.setLayoutProperty('hospital-guideline-halo', 'visibility', visibility);
+    }
+    if (map.getLayer('hospital-guideline-line')) {
+      map.setLayoutProperty('hospital-guideline-line', 'visibility', visibility);
+    }
+  } catch {
+    // Ignorar si el estilo se está recargando
+  }
+
+  // Radio perimetral de 12 metros alrededor del jugador herido
+  const perimeterSource = map.getSource('wounded-perimeter') as maplibregl.GeoJSONSource | undefined;
+  if (perimeterSource) {
+    if (shouldRender) {
+      perimeterSource.setData({
+        type: 'FeatureCollection',
+        features: [createGeoJsonCircle({ lat: playerLat, lng: playerLng }, 12)],
+      });
+    } else {
+      perimeterSource.setData({
+        type: 'FeatureCollection',
+        features: [],
+      });
+    }
+  }
+  try {
+    if (map.getLayer('wounded-perimeter-fill')) {
+      map.setLayoutProperty('wounded-perimeter-fill', 'visibility', visibility);
+    }
+    if (map.getLayer('wounded-perimeter-outline')) {
+      map.setLayoutProperty('wounded-perimeter-outline', 'visibility', visibility);
+    }
+  } catch {
+    // Ignorar
+  }
+};
+
 export interface EntityMovementState {
   isMoving: boolean;
   facingMode: 'right' | 'left' | 'scan'; // 'scan' para arriba/abajo
@@ -711,7 +803,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             },
             paint: {
               'fill-color': '#00f2fe',
-              'fill-opacity': 0.07,
+              'fill-opacity': 0.08,
             },
           });
         }
@@ -726,9 +818,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             },
             paint: {
               'line-color': '#00f2fe',
-              'line-width': 1.5,
+              'line-width': 1.6,
               'line-dasharray': [3, 2],
-              'line-opacity': 0.85,
+              'line-opacity': 0.7,
             },
           });
         }
@@ -857,6 +949,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     [isMeWounded]
   );
 
+  const hospital = structures.find((s) => s.type === 'hospital');
+  const hospitalCoords = hospital ? { lat: hospital.lat, lng: hospital.lng } : null;
+
   /**
    * Sincroniza la geometría del límite de la zona de juego con fallbacks robustos
    */
@@ -866,17 +961,25 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!map || !isMapStyleLoaded(map)) return;
 
       try {
-        const centerLat = center?.lat ?? INITIAL_LAT;
-        const centerLng = center?.lng ?? INITIAL_LNG;
-        const radiusMeters = playAreaRadius || 350;
-
-        const boundaryGeo = createGeoJsonCircle({ lat: centerLat, lng: centerLng }, radiusMeters);
-        const boundarySource = (map.getSource(SOURCE_BOUNDARY) || map.getSource('play-area')) as
+        const source = (map.getSource(SOURCE_BOUNDARY) || map.getSource('play-area')) as
           | maplibregl.GeoJSONSource
           | undefined;
-        if (boundarySource) {
-          boundarySource.setData(boundaryGeo);
-        }
+        if (!source) return;
+
+        const centerLng = center?.lng ?? INITIAL_LNG;
+        const centerLat = center?.lat ?? INITIAL_LAT;
+        const radius = playAreaRadius || 350;
+
+        const boundaryFeature = createCircleFeature([centerLng, centerLat], radius, {
+          color: '#00f2fe',
+          fillOpacity: 0.03,
+          id: 'game-boundary',
+        });
+
+        source.setData({
+          type: 'FeatureCollection',
+          features: [boundaryFeature],
+        });
       } catch (err) {
         console.warn('[GameMap] Error al sincronizar límite de juego:', err);
       }
@@ -893,47 +996,47 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!map || !isMapStyleLoaded(map)) return;
 
       try {
-        const myLat = myPlayer.lat ?? center?.lat ?? INITIAL_LAT;
-        const myLng = myPlayer.lng ?? center?.lng ?? INITIAL_LNG;
+        const source = (map.getSource(SOURCE_PLAYER_VISION) || map.getSource('player-vision')) as
+          | maplibregl.GeoJSONSource
+          | undefined;
+        if (!source) return;
+
+        const playerLat = myPlayer?.lat ?? center?.lat ?? INITIAL_LAT;
+        const playerLng = myPlayer?.lng ?? center?.lng ?? INITIAL_LNG;
 
         if (
-          typeof myLat !== 'number' ||
-          typeof myLng !== 'number' ||
-          isNaN(myLat) ||
-          isNaN(myLng)
+          typeof playerLat !== 'number' ||
+          typeof playerLng !== 'number' ||
+          isNaN(playerLat) ||
+          isNaN(playerLng)
         ) {
           return;
         }
 
         const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
         const calcRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
-        const playerVisionRadius = (myPlayer as any)?.visionRadius || calcRadius || 25;
-        const maxRadius = playAreaRadius || 350;
-        const finalRadius = Math.min(playerVisionRadius, maxRadius);
+        const radius = (myPlayer as any)?.visionRadius || (myPlayer as any)?.interactionRadius || calcRadius || 25;
 
-        const visionCircle = createCircleFeature([myLng, myLat], finalRadius, {
+        const visionCircle = createCircleFeature([playerLng, playerLat], radius, {
           color: '#00f2fe',
-          id: 'my-vision-range',
+          id: 'player-vision-circle',
         });
         const visionFC: GeoJSON.FeatureCollection = {
           type: 'FeatureCollection',
           features: [visionCircle],
         };
 
-        const visionSource = map.getSource(SOURCE_PLAYER_VISION) as maplibregl.GeoJSONSource | undefined;
-        if (visionSource) {
-          visionSource.setData(visionFC);
-        }
+        source.setData(visionFC);
 
         const legacyVisionSource = map.getSource('player-vision') as maplibregl.GeoJSONSource | undefined;
-        if (legacyVisionSource) {
-          legacyVisionSource.setData(createGeoJsonCircle({ lat: myLat, lng: myLng }, finalRadius));
+        if (legacyVisionSource && legacyVisionSource !== source) {
+          legacyVisionSource.setData(visionFC);
         }
       } catch (err) {
         console.warn('[GameMap] Error al sincronizar radio de visión:', err);
       }
     },
-    [myPlayer.lat, myPlayer.lng, myPlayer.role, myPlayer.pets, (myPlayer as any)?.visionRadius, center?.lat, center?.lng, playAreaRadius, isRadarActive]
+    [myPlayer?.lat, myPlayer?.lng, myPlayer?.role, myPlayer?.pets, (myPlayer as any)?.visionRadius, (myPlayer as any)?.interactionRadius, center?.lat, center?.lng, playAreaRadius, isRadarActive]
   );
 
   /**
@@ -942,87 +1045,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
    */
   const updateHospitalGuidelineDirect = useCallback(
     (targetMap: maplibregl.Map, currentLng: number, currentLat: number, isWounded: boolean) => {
-      if (!isMapStyleLoaded(targetMap)) return;
-
-      try {
-        const hospital = structures.find((s) => s.type === 'hospital');
-        const hasValidHospitalCoords =
-          !!hospital &&
-          typeof hospital.lat === 'number' &&
-          typeof hospital.lng === 'number' &&
-          !isNaN(hospital.lat) &&
-          !isNaN(hospital.lng);
-
-        const shouldRender = Boolean(
-          isWounded &&
-          hasValidHospitalCoords &&
-          typeof currentLat === 'number' &&
-          typeof currentLng === 'number' &&
-          !isNaN(currentLat) &&
-          !isNaN(currentLng) &&
-          (currentLat !== 0 || currentLng !== 0)
-        );
-
-        const lineData: GeoJSON.FeatureCollection = {
-          type: 'FeatureCollection',
-          features:
-            shouldRender && hospital
-              ? [
-                  {
-                    type: 'Feature',
-                    properties: { status: 'emergency' },
-                    geometry: {
-                      type: 'LineString',
-                      coordinates: [
-                        [currentLng, currentLat],
-                        [hospital.lng, hospital.lat],
-                      ],
-                    },
-                  },
-                ]
-              : [],
-        };
-
-        const srcGuideline1 = targetMap.getSource(SOURCE_HOSPITAL_GUIDELINE) as maplibregl.GeoJSONSource | undefined;
-        if (srcGuideline1) srcGuideline1.setData(lineData);
-
-        const srcGuideline2 = targetMap.getSource('hospital-guideline') as maplibregl.GeoJSONSource | undefined;
-        if (srcGuideline2) srcGuideline2.setData(lineData);
-
-        const visibility = shouldRender ? 'visible' : 'none';
-        if (targetMap.getLayer('hospital-guideline-halo')) {
-          targetMap.setLayoutProperty('hospital-guideline-halo', 'visibility', visibility);
-        }
-        if (targetMap.getLayer('hospital-guideline-line')) {
-          targetMap.setLayoutProperty('hospital-guideline-line', 'visibility', visibility);
-        }
-
-        // Perímetro perimetral de 12 metros alrededor del jugador herido
-        const perimeterSource = targetMap.getSource('wounded-perimeter') as maplibregl.GeoJSONSource | undefined;
-        if (perimeterSource) {
-          if (shouldRender) {
-            perimeterSource.setData({
-              type: 'FeatureCollection',
-              features: [createGeoJsonCircle({ lat: currentLat, lng: currentLng }, 12)],
-            });
-          } else {
-            perimeterSource.setData({
-              type: 'FeatureCollection',
-              features: [],
-            });
-          }
-        }
-        if (targetMap.getLayer('wounded-perimeter-fill')) {
-          targetMap.setLayoutProperty('wounded-perimeter-fill', 'visibility', visibility);
-        }
-        if (targetMap.getLayer('wounded-perimeter-outline')) {
-          targetMap.setLayoutProperty('wounded-perimeter-outline', 'visibility', visibility);
-        }
-      } catch (err) {
-        console.warn('[GameMap] Error al actualizar línea directa del hospital:', err);
-      }
+      updateHospitalGuidelineSync(targetMap, currentLng, currentLat, isWounded, hospitalCoords);
     },
-    [structures]
+    [hospitalCoords]
   );
 
   /**
@@ -1225,109 +1250,14 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       }
 
       try {
-        const hospital = structures.find((s) => s.type === 'hospital');
-        const myLat = myPlayer.lat ?? center.lat;
-        const myLng = myPlayer.lng ?? center.lng;
-
-        const hasValidPlayerCoords =
-          typeof myLat === 'number' &&
-          typeof myLng === 'number' &&
-          !isNaN(myLat) &&
-          !isNaN(myLng) &&
-          (myLat !== 0 || myLng !== 0);
-
-        const hasValidHospitalCoords =
-          !!hospital &&
-          typeof hospital.lat === 'number' &&
-          typeof hospital.lng === 'number' &&
-          !isNaN(hospital.lat) &&
-          !isNaN(hospital.lng);
-
-        // 1. Línea directa hacia el hospital
-        const guidelineSource1 = map.getSource(SOURCE_HOSPITAL_GUIDELINE) as maplibregl.GeoJSONSource | undefined;
-        const guidelineSource2 = map.getSource('hospital-guideline') as maplibregl.GeoJSONSource | undefined;
-        const shouldRenderHospitalGuide = Boolean(isMeWounded && hasValidPlayerCoords && hasValidHospitalCoords);
-
-        const guidelineData: GeoJSON.FeatureCollection = {
-          type: 'FeatureCollection',
-          features:
-            shouldRenderHospitalGuide && hospital
-              ? [
-                  {
-                    type: 'Feature',
-                    properties: { status: 'emergency' },
-                    geometry: {
-                      type: 'LineString',
-                      coordinates: [
-                        [myLng, myLat],
-                        [hospital.lng, hospital.lat],
-                      ],
-                    },
-                  },
-                ]
-              : [],
-        };
-
-        if (guidelineSource1) guidelineSource1.setData(guidelineData);
-        if (guidelineSource2) guidelineSource2.setData(guidelineData);
-
-        const guideVisibility = shouldRenderHospitalGuide ? 'visible' : 'none';
-        try {
-          if (map.getLayer('hospital-guideline-halo')) {
-            map.setLayoutProperty('hospital-guideline-halo', 'visibility', guideVisibility);
-          }
-        } catch (err) {
-          console.warn('[GameMap] Aviso al consultar capa hospital-guideline-halo:', err);
-        }
-
-        try {
-          if (map.getLayer('hospital-guideline-line')) {
-            map.setLayoutProperty('hospital-guideline-line', 'visibility', guideVisibility);
-          }
-        } catch (err) {
-          console.warn('[GameMap] Aviso al consultar capa hospital-guideline-line:', err);
-        }
-
-        // 2. Radio perimetral de 12 metros alrededor del jugador herido
-        const perimeterSource = map.getSource('wounded-perimeter') as maplibregl.GeoJSONSource | undefined;
-        const shouldRenderPerimeter = Boolean(isMeWounded && hasValidPlayerCoords);
-
-        if (perimeterSource) {
-          if (shouldRenderPerimeter) {
-            const perimeterCircle = createGeoJsonCircle({ lat: myLat, lng: myLng }, 12);
-            perimeterSource.setData({
-              type: 'FeatureCollection',
-              features: [perimeterCircle],
-            });
-          } else {
-            perimeterSource.setData({
-              type: 'FeatureCollection',
-              features: [],
-            });
-          }
-        }
-
-        const perimeterVisibility = shouldRenderPerimeter ? 'visible' : 'none';
-        try {
-          if (map.getLayer('wounded-perimeter-fill')) {
-            map.setLayoutProperty('wounded-perimeter-fill', 'visibility', perimeterVisibility);
-          }
-        } catch (err) {
-          console.warn('[GameMap] Aviso al consultar capa wounded-perimeter-fill:', err);
-        }
-
-        try {
-          if (map.getLayer('wounded-perimeter-outline')) {
-            map.setLayoutProperty('wounded-perimeter-outline', 'visibility', perimeterVisibility);
-          }
-        } catch (err) {
-          console.warn('[GameMap] Aviso al consultar capa wounded-perimeter-outline:', err);
-        }
+        const myLat = myPlayer.lat ?? center?.lat ?? INITIAL_LAT;
+        const myLng = myPlayer.lng ?? center?.lng ?? INITIAL_LNG;
+        updateHospitalGuidelineSync(map, myLng, myLat, isMeWounded, hospitalCoords);
       } catch (err) {
         console.warn('[GameMap] Error al actualizar overlays de emergencia:', err);
       }
     },
-    [structures, myPlayer.lat, myPlayer.lng, center.lat, center.lng, isMeWounded]
+    [hospitalCoords, myPlayer.lat, myPlayer.lng, center?.lat, center?.lng, isMeWounded]
   );
   updateEmergencyOverlaysRef.current = updateEmergencyOverlays;
 
@@ -1371,13 +1301,25 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   ]);
 
   // ==========================================
-  // 4. DISPARO REACTIVO INMEDIATO EN HOOKS ANTE CAMBIOS DE ENTIDADES
+  // HOOK MAESTRO REACTIVO: EJECUTA EN REPOSO ABSOLUTO E INICIALIZACIÓN
+  // Sincroniza el perímetro global, todos los radios de interacción y el rango de visión
+  // Desvinculado por completo de banderas de movimiento físico o zancadas
   // ==========================================
   useEffect(() => {
-    if (!mapLoaded) return;
-    syncAllInteractionCircles();
+    const map = mapRef.current;
+    if (!map || !isMapStyleLoaded(map)) return;
+
+    // 1. Perímetro global del área operativa
+    syncGameBoundary(map);
+
+    // 2. Todos los radios de interacción (estructuras, cofres, cajas, mascotas)
+    syncAllInteractionCircles(map);
+
+    // 3. Rango de visión y actuación bajo el avatar
+    syncPlayerVision(map);
   }, [
     mapLoaded,
+    styleVersion,
     structures,
     treasureLocation.lat,
     treasureLocation.lng,
@@ -1388,29 +1330,19 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     wildPets,
     crates,
     droppedItems,
-    isMeWounded,
-    syncAllInteractionCircles,
-  ]);
-
-  useEffect(() => {
-    if (!mapLoaded) return;
-    syncGameBoundary();
-  }, [mapLoaded, center?.lat, center?.lng, playAreaRadius, syncGameBoundary]);
-
-  useEffect(() => {
-    if (!mapLoaded) return;
-    syncPlayerVision();
-  }, [
-    mapLoaded,
-    myPlayer.lat,
-    myPlayer.lng,
-    myPlayer.role,
-    myPlayer.pets,
-    (myPlayer as any)?.visionRadius,
     center?.lat,
     center?.lng,
     playAreaRadius,
+    myPlayer?.lat,
+    myPlayer?.lng,
+    (myPlayer as any)?.visionRadius,
+    (myPlayer as any)?.interactionRadius,
+    myPlayer?.role,
+    myPlayer?.pets,
     isRadarActive,
+    isMeWounded,
+    syncGameBoundary,
+    syncAllInteractionCircles,
     syncPlayerVision,
   ]);
 
@@ -1598,51 +1530,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     };
   }, []);
 
-  // ==========================================
-  // 2. ACTUALIZACIÓN AISLADA DE CAPAS ESTÁTICAS (Área de Juego y Zona del Tesoro)
-  // ==========================================
-  useEffect(() => {
-    syncGameBoundary();
-    syncAllInteractionCircles();
-  }, [center.lat, center.lng, playAreaRadius, treasureLocation.lat, treasureLocation.lng, styleVersion, syncGameBoundary, syncAllInteractionCircles]);
-
-  // ==========================================
-  // 3. ACTUALIZACIÓN EFICIENTE DEL RADIO DE VISIÓN (Throttled por desplazamiento)
-  // ==========================================
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !isMapStyleLoaded(map)) return;
-
-    try {
-      const myLat = myPlayer.lat ?? center.lat;
-      const myLng = myPlayer.lng ?? center.lng;
-
-      // Evitar recalcular geometría GeoJSON si la posición apenas varió menos de 0.8 metros
-      if (lastVisionPosRef.current) {
-        const dist = getDistanceMeters(lastVisionPosRef.current, { lat: myLat, lng: myLng });
-        if (dist < 0.8 && !isRadarActive) return;
-      }
-      lastVisionPosRef.current = { lat: myLat, lng: myLng };
-
-      const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
-      const visionRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
-      const visionSource = map.getSource('player-vision') as maplibregl.GeoJSONSource | undefined;
-      if (visionSource) {
-        visionSource.setData(createGeoJsonCircle({ lat: myLat, lng: myLng }, Math.min(visionRadius, playAreaRadius)));
-      }
-    } catch (err) {
-      console.warn('[GameMap] Error al actualizar radio de visión:', err);
-    }
-  }, [
-    myPlayer.lat,
-    myPlayer.lng,
-    myPlayer.role,
-    isRadarActive,
-    playAreaRadius,
-    center.lat,
-    center.lng,
-    styleVersion,
-  ]);
 
   // ==========================================
   // 4. SEGUIMIENTO DE CÁMARA (Aislado, 60 FPS sin interrumpir arrastre)
