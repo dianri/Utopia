@@ -18,8 +18,44 @@ import type {
 import { PLAYER_SPEED_MPS, isMonsterAlive } from '../types/game';
 import { createGeoJsonCircle, getDistanceMeters } from '../services/geoUtils';
 import { getVisionRadius, getCrateVisualInfo } from '../services/combatEngine';
-import { MAX_PETS_PER_PLAYER, getMonsterVisualConfig } from '../services/mapEntities';
+import {
+  MAX_PETS_PER_PLAYER,
+  getMonsterVisualConfig,
+  isWildPetActive,
+  isSupplyCrateActive,
+  isDroppedItemActive,
+} from '../services/mapEntities';
 import { soundEffects } from '../services/soundEffects';
+
+// Identificadores únicos de fuentes y capas GeoJSON
+export const SOURCE_CIRCLES = 'tactical-interaction-circles-source';
+export const LAYER_CIRCLES_FILL = 'tactical-interaction-circles-fill';
+export const LAYER_CIRCLES_LINE = 'tactical-interaction-circles-line';
+
+export const SOURCE_BOUNDARY = 'tactical-game-boundary-source';
+export const LAYER_BOUNDARY_FILL = 'tactical-game-boundary-fill';
+export const LAYER_BOUNDARY_LINE = 'tactical-game-boundary-line';
+
+/**
+ * Crea una Feature GeoJSON de tipo Polygon circular enriquecida con propiedades tácticas
+ */
+export function createCircleFeature(
+  coords: [number, number] | Coordinates,
+  radiusMeters: number,
+  properties: Record<string, any> = {}
+): GeoJSON.Feature {
+  const centerCoord: Coordinates = Array.isArray(coords)
+    ? { lng: coords[0], lat: coords[1] }
+    : coords;
+  const circle = createGeoJsonCircle(centerCoord, radiusMeters);
+  return {
+    ...circle,
+    properties: {
+      ...circle.properties,
+      ...properties,
+    },
+  };
+}
 
 export const MAP_STYLES = {
   tactical: 'https://tiles.openfreemap.org/styles/dark',
@@ -492,693 +528,518 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const isMeWounded = myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded';
 
   // ==========================================
-  // INYECCIÓN ROBUSTA DE CAPAS TÁCTICAS Y FUENTES GEOJSON
+  // GESTIÓN ROBUSTA DE FUENTES Y CAPAS GEOJSON RESILIENTES
   // ==========================================
-  const injectTacticalOverlays = useCallback(
-    (map: maplibregl.Map) => {
-      if (!isMapStyleLoaded(map)) {
-        const onStyleLoad = () => {
-          if (mapRef.current === map) {
-            injectTacticalOverlaysRef.current?.(map);
-          }
-        };
-        map.once('style.load', onStyleLoad);
-        return;
-      }
 
+  /**
+   * Limpia capas o fuentes dinámicas huérfanas en el estilo de MapLibre
+   */
+  const cleanOrphanSourcesAndLayers = useCallback(
+    (
+      map: maplibregl.Map,
+      currentCrates: SupplyCrate[],
+      currentWildPets: WildPet[],
+      currentDroppedItems: DroppedItem[]
+    ) => {
       try {
-        // 1. Capa estática: Área de juego (Perímetro exterior de alto contraste sobre fotografía aérea)
-      if (!map.getSource('play-area')) {
-        const playAreaGeo = createGeoJsonCircle(center, playAreaRadius);
-        map.addSource('play-area', {
-          type: 'geojson',
-          data: playAreaGeo,
-        });
+        const style = map.getStyle();
+        if (!style) return;
+        const activeEntityIds = new Set([
+          ...currentCrates.filter((c) => isSupplyCrateActive(c)).map((c) => c.id),
+          ...currentWildPets.filter((wp) => isWildPetActive(wp)).map((wp) => wp.id),
+          ...currentDroppedItems.filter((d) => isDroppedItemActive(d)).map((d) => d.id),
+        ]);
 
-        map.addLayer({
-          id: 'play-area-fill',
-          type: 'fill',
-          source: 'play-area',
-          paint: {
-            'fill-color': '#00f0ff',
-            'fill-opacity': 0.08,
-          },
-        });
-
-        map.addLayer({
-          id: 'play-area-outline',
-          type: 'line',
-          source: 'play-area',
-          paint: {
-            'line-color': '#00f2fe',
-            'line-width': 2.8,
-            'line-opacity': 0.9,
-            'line-dasharray': [3, 2],
-          },
-        });
-      }
-
-      // 2. Capa estática: Zona del cofre del tesoro (20m)
-      if (!map.getSource('treasure-zone')) {
-        const treasureGeo = createGeoJsonCircle(treasureLocation, 20);
-        map.addSource('treasure-zone', {
-          type: 'geojson',
-          data: treasureGeo,
-        });
-
-        map.addLayer({
-          id: 'treasure-zone-fill',
-          type: 'fill',
-          source: 'treasure-zone',
-          paint: {
-            'fill-color': '#ffaa00',
-            'fill-opacity': 0.28,
-          },
-        });
-
-        map.addLayer({
-          id: 'treasure-zone-outline',
-          type: 'line',
-          source: 'treasure-zone',
-          paint: {
-            'line-color': '#ffd000',
-            'line-width': 2.5,
-            'line-opacity': 1,
-          },
-        });
-      }
-
-      // 3. Capa dinámica: Radio de visión del jugador
-      if (!map.getSource('player-vision')) {
-        const myCoords = { lat: myPlayer.lat ?? center.lat, lng: myPlayer.lng ?? center.lng };
-        const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
-        const visionRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
-        const visionGeo = createGeoJsonCircle(myCoords, Math.min(visionRadius, playAreaRadius));
-
-        map.addSource('player-vision', {
-          type: 'geojson',
-          data: visionGeo,
-        });
-
-        map.addLayer({
-          id: 'player-vision-outline',
-          type: 'line',
-          source: 'player-vision',
-          layout: {
-            visibility: isMeWounded ? 'none' : 'visible',
-          },
-          paint: {
-            'line-color': '#00ff88',
-            'line-width': 2,
-            'line-opacity': 0.75,
-            'line-dasharray': [2, 2],
-          },
-        });
-      }
-
-      // 4. Capas dinámicas: Radio de interacción de suministros (40m)
-      if (!map.getSource('crates-zones')) {
-        const initialCrateFeatures = isMeWounded
-          ? []
-          : crates
-              .filter(
-                (c) =>
-                  !c.opened &&
-                  typeof c.lat === 'number' &&
-                  typeof c.lng === 'number' &&
-                  !isNaN(c.lat) &&
-                  !isNaN(c.lng) &&
-                  (c.lat !== 0 || c.lng !== 0)
-              )
-              .map((c) => createGeoJsonCircle({ lat: c.lat, lng: c.lng }, 40));
-
-        map.addSource('crates-zones', {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: initialCrateFeatures },
-        });
-
-        map.addLayer({
-          id: 'crates-zones-fill',
-          type: 'fill',
-          source: 'crates-zones',
-          paint: {
-            'fill-color': '#10b981',
-            'fill-opacity': 0.16,
-          },
-        });
-
-        map.addLayer({
-          id: 'crates-zones-outline',
-          type: 'line',
-          source: 'crates-zones',
-          paint: {
-            'line-color': '#34d399',
-            'line-width': 2,
-            'line-opacity': 0.85,
-            'line-dasharray': [2, 2],
-          },
-        });
-      }
-
-      // 5. Capas tácticas: Zonas de estructuras (Hospital y Refugios)
-      if (!map.getSource('structures-zones')) {
-        const visibleStructures = isMeWounded
-          ? structures.filter((s) => s.type === 'hospital')
-          : structures;
-        const initialStructureFeatures = visibleStructures
-          .filter(
-            (s) =>
-              typeof s.lat === 'number' &&
-              typeof s.lng === 'number' &&
-              !isNaN(s.lat) &&
-              !isNaN(s.lng) &&
-              (s.lat !== 0 || s.lng !== 0)
-          )
-          .map((s) => {
-            const circle = createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius);
-            return {
-              ...circle,
-              properties: {
-                ...circle.properties,
-                type: s.type,
-                id: s.id,
-              },
-            };
+        if (style.layers) {
+          style.layers.forEach((layer) => {
+            if (
+              layer.id.startsWith('circle-layer-') ||
+              layer.id.startsWith('entity-radius-') ||
+              layer.id.startsWith('pet-circle-layer-') ||
+              layer.id.startsWith('crate-circle-layer-')
+            ) {
+              const entityId = layer.id
+                .replace('circle-layer-', '')
+                .replace('entity-radius-', '')
+                .replace('pet-circle-layer-', '')
+                .replace('crate-circle-layer-', '');
+              if (!activeEntityIds.has(entityId)) {
+                if (map.getLayer(layer.id)) map.removeLayer(layer.id);
+                if (map.getSource(layer.id)) map.removeSource(layer.id);
+              }
+            }
           });
+        }
 
-        map.addSource('structures-zones', {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: initialStructureFeatures },
-        });
-
-        map.addLayer({
-          id: 'structures-zones-fill',
-          type: 'fill',
-          source: 'structures-zones',
-          paint: {
-            'fill-color': ['match', ['get', 'type'], 'hospital', '#10b981', '#06b6d4'],
-            'fill-opacity': 0.22,
-          },
-        });
-
-        map.addLayer({
-          id: 'structures-zones-outline',
-          type: 'line',
-          source: 'structures-zones',
-          paint: {
-            'line-color': ['match', ['get', 'type'], 'hospital', '#34d399', '#22d3ee'],
-            'line-width': 2.5,
-            'line-opacity': 0.95,
-            'line-dasharray': [3, 2],
-          },
-        });
+        if (style.sources) {
+          Object.keys(style.sources).forEach((sourceId) => {
+            if (
+              sourceId.startsWith('circle-source-') ||
+              sourceId.startsWith('pet-circle-source-') ||
+              sourceId.startsWith('crate-circle-source-')
+            ) {
+              const entityId = sourceId
+                .replace('circle-source-', '')
+                .replace('pet-circle-source-', '')
+                .replace('crate-circle-source-', '');
+              if (!activeEntityIds.has(entityId)) {
+                if (style.layers) {
+                  style.layers.forEach((l) => {
+                    if ((l as any).source === sourceId && map.getLayer(l.id)) {
+                      map.removeLayer(l.id);
+                    }
+                  });
+                }
+                if (map.getSource(sourceId)) {
+                  map.removeSource(sourceId);
+                }
+              }
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('[GameMap] Aviso al limpiar capas huérfanas:', err);
       }
-
-      // 6. Capas tácticas de influencia de entidades: Armas/Loot y Mascotas Silvestres (25m)
-      if (!map.getSource('interaction-ranges')) {
-        const initialEntityFeatures = isMeWounded
-          ? []
-          : [
-              ...droppedItems
-                .filter(
-                  (d) =>
-                    typeof d.lat === 'number' &&
-                    typeof d.lng === 'number' &&
-                    !isNaN(d.lat) &&
-                    !isNaN(d.lng) &&
-                    (d.lat !== 0 || d.lng !== 0)
-                )
-                .map((d) => ({
-                  ...createGeoJsonCircle({ lat: d.lat, lng: d.lng }, 25),
-                  properties: { type: 'loot', id: d.id },
-                })),
-              ...wildPets
-                .filter(
-                  (wp) =>
-                    typeof wp.lat === 'number' &&
-                    typeof wp.lng === 'number' &&
-                    !isNaN(wp.lat) &&
-                    !isNaN(wp.lng) &&
-                    (wp.lat !== 0 || wp.lng !== 0)
-                )
-                .map((wp) => ({
-                  ...createGeoJsonCircle({ lat: wp.lat, lng: wp.lng }, 25),
-                  properties: { type: 'pet', id: wp.id },
-                })),
-            ];
-
-        map.addSource('interaction-ranges', {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: initialEntityFeatures },
-        });
-
-        map.addLayer({
-          id: 'interaction-ranges-fill',
-          type: 'fill',
-          source: 'interaction-ranges',
-          paint: {
-            'fill-color': ['match', ['get', 'type'], 'pet', '#10b981', '#06b6d4'],
-            'fill-opacity': 0.12,
-          },
-        });
-
-        map.addLayer({
-          id: 'interaction-ranges-outline',
-          type: 'line',
-          source: 'interaction-ranges',
-          paint: {
-            'line-color': ['match', ['get', 'type'], 'pet', '#34d399', '#22d3ee'],
-            'line-width': 2.2,
-            'line-opacity': 0.9,
-            'line-dasharray': [2, 2],
-          },
-        });
-      }
-
-      // 7. Capa táctica: Línea directa de evacuación hacia el Hospital (Estado Herido de Muerte)
-      if (!map.getSource('hospital-guideline')) {
-        map.addSource('hospital-guideline', {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: [] },
-        });
-      }
-
-      // Halo oscuro de contraste fotográfico sobre satélite y modo táctico
-      if (!map.getLayer('hospital-guideline-halo')) {
-        map.addLayer({
-          id: 'hospital-guideline-halo',
-          type: 'line',
-          source: 'hospital-guideline',
-          layout: {
-            visibility: isMeWounded ? 'visible' : 'none',
-            'line-join': 'round',
-            'line-cap': 'round',
-          },
-          paint: {
-            'line-color': '#000000',
-            'line-width': 5.5,
-            'line-opacity': 0.75,
-          },
-        });
-      }
-
-      // Línea principal de alta visibilidad cian con patrón discontinuo
-      if (!map.getLayer('hospital-guideline-line')) {
-        map.addLayer({
-          id: 'hospital-guideline-line',
-          type: 'line',
-          source: 'hospital-guideline',
-          layout: {
-            visibility: isMeWounded ? 'visible' : 'none',
-            'line-join': 'round',
-            'line-cap': 'round',
-          },
-          paint: {
-            'line-color': '#22d3ee',
-            'line-width': 3.5,
-            'line-opacity': 1,
-            'line-dasharray': [2, 2],
-          },
-        });
-      }
-
-      // 8. Capa táctica: Radio perimetral del jugador herido de muerte (12 metros)
-      if (!map.getSource('wounded-perimeter')) {
-        map.addSource('wounded-perimeter', {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: [] },
-        });
-      }
-
-      // Relleno carmesí translúcido
-      if (!map.getLayer('wounded-perimeter-fill')) {
-        map.addLayer({
-          id: 'wounded-perimeter-fill',
-          type: 'fill',
-          source: 'wounded-perimeter',
-          layout: {
-            visibility: isMeWounded ? 'visible' : 'none',
-          },
-          paint: {
-            'fill-color': '#ef4444',
-            'fill-opacity': 0.15,
-          },
-        });
-      }
-
-      // Contorno carmesí discontinuo
-      if (!map.getLayer('wounded-perimeter-outline')) {
-        map.addLayer({
-          id: 'wounded-perimeter-outline',
-          type: 'line',
-          source: 'wounded-perimeter',
-          layout: {
-            visibility: isMeWounded ? 'visible' : 'none',
-            'line-join': 'round',
-            'line-cap': 'round',
-          },
-          paint: {
-            'line-color': '#ef4444',
-            'line-width': 2.5,
-            'line-dasharray': [2, 2],
-            'line-opacity': 0.9,
-          },
-        });
-      }
-
-      // Sincronizar inmediatamente datos de emergencia si corresponde
-      updateEmergencyOverlaysRef.current?.(map);
-    } catch (err) {
-      console.warn('[GameMap] Error al inyectar overlays tácticos:', err);
-    }
-  },
-    [
-      center,
-      playAreaRadius,
-      treasureLocation,
-      myPlayer.lat,
-      myPlayer.lng,
-      myPlayer.role,
-      myPlayer.pets,
-      isRadarActive,
-      crates,
-      structures,
-      isMeWounded,
-      droppedItems,
-      wildPets,
-    ]
+    },
+    []
   );
 
-  const injectTacticalOverlaysRef = useRef<(map: maplibregl.Map) => void>(injectTacticalOverlays);
-  injectTacticalOverlaysRef.current = injectTacticalOverlays;
-
-  // ==========================================
-  // SINCRONIZACIÓN REACTIVA DE CÍRCULOS GEOJSON DE INTERACCIÓN
-  // ==========================================
-  const updateInteractionCircles = useCallback(
-    (targetMap?: maplibregl.Map) => {
-      const map = targetMap || mapRef.current;
-      if (!map) return;
-
-      if (!isMapStyleLoaded(map)) {
-        const onStyleLoad = () => {
-          if (mapRef.current === map) {
-            updateInteractionCirclesRef.current?.(map);
-          }
-        };
-        map.once('style.load', onStyleLoad);
-        return;
-      }
+  /**
+   * 1. CONFIGURACIÓN MODULAR DE FUENTES Y CAPAS GEOJSON
+   * Encapsula la creación resiliente de fuentes y capas tras style.load
+   */
+  const setupMapLayersAndSources = useCallback(
+    (map: maplibregl.Map) => {
+      if (!isMapStyleLoaded(map)) return;
 
       try {
-        // 1. Cajas de suministros / Airdrops (40m)
-        const cratesSource = map.getSource('crates-zones') as maplibregl.GeoJSONSource | undefined;
-        if (cratesSource) {
-          const activeCrates = isMeWounded
-            ? []
-            : crates.filter(
-                (c) =>
-                  !c.opened &&
-                  !c.isCollected &&
-                  !c.looted &&
-                  typeof c.lat === 'number' &&
-                  typeof c.lng === 'number' &&
-                  !isNaN(c.lat) &&
-                  !isNaN(c.lng) &&
-                  (c.lat !== 0 || c.lng !== 0)
-              );
-          const crateFeatures = activeCrates.map((c) =>
-            createGeoJsonCircle({ lat: c.lat, lng: c.lng }, c.radius || 40)
-          );
-          cratesSource.setData({
-            type: 'FeatureCollection',
-            features: crateFeatures,
+        // 1. FUENTE Y CAPAS DE LA ZONA DE JUEGO (Límite operacional)
+        if (!map.getSource(SOURCE_BOUNDARY)) {
+          map.addSource(SOURCE_BOUNDARY, {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          });
+
+          if (!map.getLayer(LAYER_BOUNDARY_FILL)) {
+            map.addLayer({
+              id: LAYER_BOUNDARY_FILL,
+              type: 'fill',
+              source: SOURCE_BOUNDARY,
+              paint: {
+                'fill-color': '#00f0ff',
+                'fill-opacity': 0.08,
+              },
+            });
+          }
+
+          if (!map.getLayer(LAYER_BOUNDARY_LINE)) {
+            map.addLayer({
+              id: LAYER_BOUNDARY_LINE,
+              type: 'line',
+              source: SOURCE_BOUNDARY,
+              paint: {
+                'line-color': '#00f2fe',
+                'line-width': 2.5,
+                'line-dasharray': [3, 2],
+                'line-opacity': 0.85,
+              },
+            });
+          }
+        }
+
+        // 2. FUENTE Y CAPAS DE RADIOS DE INFLUENCIA (Armas, Cajas, Mascotas, Refugios, Hospital, Tesoro)
+        if (!map.getSource(SOURCE_CIRCLES)) {
+          map.addSource(SOURCE_CIRCLES, {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          });
+
+          // Relleno translúcido
+          if (!map.getLayer(LAYER_CIRCLES_FILL)) {
+            map.addLayer({
+              id: LAYER_CIRCLES_FILL,
+              type: 'fill',
+              source: SOURCE_CIRCLES,
+              paint: {
+                'fill-color': ['get', 'color'],
+                'fill-opacity': ['get', 'fillOpacity'],
+              },
+            });
+          }
+
+          // Borde perimetral punteado
+          if (!map.getLayer(LAYER_CIRCLES_LINE)) {
+            map.addLayer({
+              id: LAYER_CIRCLES_LINE,
+              type: 'line',
+              source: SOURCE_CIRCLES,
+              paint: {
+                'line-color': ['get', 'color'],
+                'line-width': 1.8,
+                'line-dasharray': [2, 2],
+                'line-opacity': 0.9,
+              },
+            });
+          }
+        }
+
+        // 3. CAPA DINÁMICA: RADIO DE VISIÓN DEL JUGADOR
+        if (!map.getSource('player-vision')) {
+          map.addSource('player-vision', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          });
+
+          if (!map.getLayer('player-vision-outline')) {
+            map.addLayer({
+              id: 'player-vision-outline',
+              type: 'line',
+              source: 'player-vision',
+              layout: {
+                visibility: isMeWounded ? 'none' : 'visible',
+              },
+              paint: {
+                'line-color': '#00ff88',
+                'line-width': 2,
+                'line-opacity': 0.75,
+                'line-dasharray': [2, 2],
+              },
+            });
+          }
+        }
+
+        // 4. OVERLAYS DE EMERGENCIA (Hospital Guideline y Wounded Perimeter)
+        if (!map.getSource('hospital-guideline')) {
+          map.addSource('hospital-guideline', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
           });
         }
 
-        // 2. Entidades sobre el terreno: Armas/Loot y Mascotas Silvestres (25m)
-        const rangesSource = map.getSource('interaction-ranges') as maplibregl.GeoJSONSource | undefined;
-        if (rangesSource) {
-          const activeLoot = isMeWounded
-            ? []
-            : droppedItems
-                .filter(
-                  (d) =>
-                    !d.isCollected &&
-                    typeof d.lat === 'number' &&
-                    typeof d.lng === 'number' &&
-                    !isNaN(d.lat) &&
-                    !isNaN(d.lng) &&
-                    (d.lat !== 0 || d.lng !== 0)
-                )
-                .map((d) => ({
-                  ...createGeoJsonCircle({ lat: d.lat, lng: d.lng }, 25),
-                  properties: { type: 'loot', id: d.id },
-                }));
-
-          const activePets = isMeWounded
-            ? []
-            : wildPets
-                .filter(
-                  (wp) =>
-                    !wp.isTamed &&
-                    !wp.isCollected &&
-                    typeof wp.lat === 'number' &&
-                    typeof wp.lng === 'number' &&
-                    !isNaN(wp.lat) &&
-                    !isNaN(wp.lng) &&
-                    (wp.lat !== 0 || wp.lng !== 0)
-                )
-                .map((wp) => ({
-                  ...createGeoJsonCircle({ lat: wp.lat, lng: wp.lng }, wp.interactionRadius || 25),
-                  properties: { type: 'pet', id: wp.id },
-                }));
-
-          rangesSource.setData({
-            type: 'FeatureCollection',
-            features: [...activeLoot, ...activePets],
+        if (!map.getLayer('hospital-guideline-halo')) {
+          map.addLayer({
+            id: 'hospital-guideline-halo',
+            type: 'line',
+            source: 'hospital-guideline',
+            layout: {
+              visibility: isMeWounded ? 'visible' : 'none',
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': '#000000',
+              'line-width': 5.5,
+              'line-opacity': 0.75,
+            },
           });
         }
 
-        // 2b. Fuente unificada alternativa de interacción (interaction-radii-source / interaction-circles-source)
-        const unifiedSource = (map.getSource('interaction-radii-source') ||
+        if (!map.getLayer('hospital-guideline-line')) {
+          map.addLayer({
+            id: 'hospital-guideline-line',
+            type: 'line',
+            source: 'hospital-guideline',
+            layout: {
+              visibility: isMeWounded ? 'visible' : 'none',
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': '#22d3ee',
+              'line-width': 3.5,
+              'line-opacity': 1,
+              'line-dasharray': [2, 2],
+            },
+          });
+        }
+
+        if (!map.getSource('wounded-perimeter')) {
+          map.addSource('wounded-perimeter', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: [] },
+          });
+        }
+
+        if (!map.getLayer('wounded-perimeter-fill')) {
+          map.addLayer({
+            id: 'wounded-perimeter-fill',
+            type: 'fill',
+            source: 'wounded-perimeter',
+            layout: {
+              visibility: isMeWounded ? 'visible' : 'none',
+            },
+            paint: {
+              'fill-color': '#ef4444',
+              'fill-opacity': 0.15,
+            },
+          });
+        }
+
+        if (!map.getLayer('wounded-perimeter-outline')) {
+          map.addLayer({
+            id: 'wounded-perimeter-outline',
+            type: 'line',
+            source: 'wounded-perimeter',
+            layout: {
+              visibility: isMeWounded ? 'visible' : 'none',
+              'line-join': 'round',
+              'line-cap': 'round',
+            },
+            paint: {
+              'line-color': '#ef4444',
+              'line-width': 2.5,
+              'line-dasharray': [2, 2],
+              'line-opacity': 0.9,
+            },
+          });
+        }
+      } catch (err) {
+        console.warn('[GameMap] Error al configurar capas y fuentes de mapa:', err);
+      }
+    },
+    [isMeWounded]
+  );
+
+  /**
+   * Sincroniza la geometría del límite de la zona de juego
+   */
+  const syncGameBoundary = useCallback(
+    (targetMap?: maplibregl.Map) => {
+      const map = targetMap || mapRef.current;
+      if (!map || !isMapStyleLoaded(map)) return;
+
+      try {
+        const boundaryGeo = createGeoJsonCircle(center, playAreaRadius);
+        const boundarySource = (map.getSource(SOURCE_BOUNDARY) || map.getSource('play-area')) as
+          | maplibregl.GeoJSONSource
+          | undefined;
+        if (boundarySource) {
+          boundarySource.setData(boundaryGeo);
+        }
+      } catch (err) {
+        console.warn('[GameMap] Error al sincronizar límite de juego:', err);
+      }
+    },
+    [center, playAreaRadius]
+  );
+
+  /**
+   * Sincroniza el radio de visión del jugador sobre el mapa
+   */
+  const syncPlayerVision = useCallback(
+    (targetMap?: maplibregl.Map) => {
+      const map = targetMap || mapRef.current;
+      if (!map || !isMapStyleLoaded(map)) return;
+
+      try {
+        const myLat = myPlayer.lat ?? center.lat;
+        const myLng = myPlayer.lng ?? center.lng;
+
+        if (
+          typeof myLat !== 'number' ||
+          typeof myLng !== 'number' ||
+          isNaN(myLat) ||
+          isNaN(myLng)
+        ) {
+          return;
+        }
+
+        const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
+        const visionRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
+        const visionSource = map.getSource('player-vision') as maplibregl.GeoJSONSource | undefined;
+        if (visionSource) {
+          visionSource.setData(createGeoJsonCircle({ lat: myLat, lng: myLng }, Math.min(visionRadius, playAreaRadius)));
+        }
+      } catch (err) {
+        console.warn('[GameMap] Error al sincronizar radio de visión:', err);
+      }
+    },
+    [myPlayer.lat, myPlayer.lng, myPlayer.role, myPlayer.pets, center.lat, center.lng, playAreaRadius, isRadarActive]
+  );
+
+  /**
+   * 3. SINCRONIZACIÓN REACTIVA ESTRICTA DE ENTIDADES ACTIVAS
+   * Solo las entidades presentes y no consumidas generan geometrías poligonales
+   */
+  const syncAllInteractionCircles = useCallback(
+    (targetMap?: maplibregl.Map) => {
+      const map = targetMap || mapRef.current;
+      if (!map || !isMapStyleLoaded(map)) return;
+
+      try {
+        const source = (map.getSource(SOURCE_CIRCLES) ||
+          map.getSource('interaction-ranges') ||
           map.getSource('interaction-circles-source')) as maplibregl.GeoJSONSource | undefined;
-        if (unifiedSource) {
-          const unifiedCrates = isMeWounded
-            ? []
-            : crates
-                .filter(
-                  (c) =>
-                    !c.opened &&
-                    !c.isCollected &&
-                    !c.looted &&
-                    typeof c.lat === 'number' &&
-                    typeof c.lng === 'number' &&
-                    !isNaN(c.lat) &&
-                    !isNaN(c.lng) &&
-                    (c.lat !== 0 || c.lng !== 0)
-                )
-                .map((c) => ({
-                  ...createGeoJsonCircle({ lat: c.lat, lng: c.lng }, c.radius || 40),
-                  properties: { type: 'crate', id: c.id },
-                }));
+        if (!source) return;
 
-          const unifiedPets = isMeWounded
-            ? []
-            : wildPets
-                .filter(
-                  (wp) =>
-                    !wp.isTamed &&
-                    !wp.isCollected &&
-                    typeof wp.lat === 'number' &&
-                    typeof wp.lng === 'number' &&
-                    !isNaN(wp.lat) &&
-                    !isNaN(wp.lng) &&
-                    (wp.lat !== 0 || wp.lng !== 0)
-                )
-                .map((wp) => ({
-                  ...createGeoJsonCircle({ lat: wp.lat, lng: wp.lng }, wp.interactionRadius || 25),
-                  properties: { type: 'pet', id: wp.id },
-                }));
+        const activeFeatures: GeoJSON.Feature[] = [];
+        const safeZones = structures || [];
 
-          const unifiedLoot = isMeWounded
-            ? []
-            : droppedItems
-                .filter(
-                  (d) =>
-                    !d.isCollected &&
-                    typeof d.lat === 'number' &&
-                    typeof d.lng === 'number' &&
-                    !isNaN(d.lat) &&
-                    !isNaN(d.lng) &&
-                    (d.lat !== 0 || d.lng !== 0)
-                )
-                .map((d) => ({
-                  ...createGeoJsonCircle({ lat: d.lat, lng: d.lng }, 25),
-                  properties: { type: 'loot', id: d.id },
-                }));
-
-          unifiedSource.setData({
-            type: 'FeatureCollection',
-            features: [...unifiedCrates, ...unifiedPets, ...unifiedLoot],
+        // A. ESTRUCTURAS PERMANENTES (Hospital y Refugios)
+        safeZones
+          .filter((zone) => !isMeWounded || zone.type === 'hospital')
+          .filter(
+            (zone) =>
+              typeof zone.lat === 'number' &&
+              typeof zone.lng === 'number' &&
+              !isNaN(zone.lat) &&
+              !isNaN(zone.lng) &&
+              (zone.lat !== 0 || zone.lng !== 0)
+          )
+          .forEach((zone) => {
+            activeFeatures.push(
+              createCircleFeature([zone.lng, zone.lat], zone.radius || (zone.type === 'hospital' ? 20 : 18), {
+                color: zone.type === 'hospital' ? '#10b981' : '#06b6d4', // Verde esmeralda médico o cian refugio
+                fillOpacity: 0.12,
+                id: zone.id,
+                type: zone.type,
+              })
+            );
           });
+
+        // B. COFRE DEL TESORO (Desaparece si está abierto, saqueado, en transición o victoria)
+        const isChestActive = !isChestOpened && !isChestTransitioning && !isVictory && !isMeWounded;
+        const hasValidChestCoords =
+          treasureLocation &&
+          typeof treasureLocation.lat === 'number' &&
+          typeof treasureLocation.lng === 'number' &&
+          !isNaN(treasureLocation.lat) &&
+          !isNaN(treasureLocation.lng) &&
+          (treasureLocation.lat !== 0 || treasureLocation.lng !== 0);
+
+        if (isChestActive && hasValidChestCoords) {
+          activeFeatures.push(
+            createCircleFeature([treasureLocation.lng, treasureLocation.lat], 25, {
+              color: isChestGuarded ? '#ef4444' : '#f59e0b', // Rojo peligro si hay monstruo guardián, ámbar si está libre
+              fillOpacity: 0.18,
+              id: 'active-chest',
+              type: 'chest',
+            })
+          );
         }
 
-        // 3. Soporte defensivo para fuentes o capas dinámicas individuales huérfanas
-        const style = map.getStyle();
-        if (style) {
-          const activeEntityIds = new Set([
-            ...crates.filter((c) => !c.opened && !c.isCollected && !c.looted).map((c) => c.id),
-            ...wildPets.filter((wp) => !wp.isTamed && !wp.isCollected).map((wp) => wp.id),
-            ...droppedItems.filter((d) => !d.isCollected).map((d) => d.id),
-          ]);
-
-          if (style.layers) {
-            style.layers.forEach((layer) => {
-              if (
-                layer.id.startsWith('circle-layer-') ||
-                layer.id.startsWith('entity-radius-') ||
-                layer.id.startsWith('pet-circle-layer-') ||
-                layer.id.startsWith('crate-circle-layer-')
-              ) {
-                const entityId = layer.id
-                  .replace('circle-layer-', '')
-                  .replace('entity-radius-', '')
-                  .replace('pet-circle-layer-', '')
-                  .replace('crate-circle-layer-', '');
-                if (!activeEntityIds.has(entityId)) {
-                  if (map.getLayer(layer.id)) map.removeLayer(layer.id);
-                  if (map.getSource(layer.id)) map.removeSource(layer.id);
-                }
-              }
+        // C. MASCOTAS SILVESTRES (Desaparecen si ya han sido domesticadas/recogidas)
+        if (!isMeWounded) {
+          (wildPets || [])
+            .filter((pet) => isWildPetActive(pet))
+            .filter(
+              (pet) =>
+                typeof pet.lat === 'number' &&
+                typeof pet.lng === 'number' &&
+                !isNaN(pet.lat) &&
+                !isNaN(pet.lng) &&
+                (pet.lat !== 0 || pet.lng !== 0)
+            )
+            .forEach((pet) => {
+              activeFeatures.push(
+                createCircleFeature([pet.lng, pet.lat], pet.interactionRadius || 12, {
+                  color: '#00f2fe', // Cian táctico
+                  fillOpacity: 0.14,
+                  id: pet.id,
+                  type: 'pet',
+                })
+              );
             });
-          }
-
-          if (style.sources) {
-            Object.keys(style.sources).forEach((sourceId) => {
-              if (
-                sourceId.startsWith('circle-source-') ||
-                sourceId.startsWith('pet-circle-source-') ||
-                sourceId.startsWith('crate-circle-source-')
-              ) {
-                const entityId = sourceId
-                  .replace('circle-source-', '')
-                  .replace('pet-circle-source-', '')
-                  .replace('crate-circle-source-', '');
-                if (!activeEntityIds.has(entityId)) {
-                  if (style.layers) {
-                    style.layers.forEach((l) => {
-                      if ((l as any).source === sourceId && map.getLayer(l.id)) {
-                        map.removeLayer(l.id);
-                      }
-                    });
-                  }
-                  if (map.getSource(sourceId)) {
-                    map.removeSource(sourceId);
-                  }
-                }
-              }
-            });
-          }
         }
+
+        // D. CAJAS DE SUMINISTROS Y AIRDROPS (Desaparecen si se han recogido o abierto)
+        if (!isMeWounded) {
+          (crates || [])
+            .filter((crate) => isSupplyCrateActive(crate))
+            .filter(
+              (crate) =>
+                typeof crate.lat === 'number' &&
+                typeof crate.lng === 'number' &&
+                !isNaN(crate.lat) &&
+                !isNaN(crate.lng) &&
+                (crate.lat !== 0 || crate.lng !== 0)
+            )
+            .forEach((crate) => {
+              const crateType = (crate as any).crateType || (crate as any).type;
+              activeFeatures.push(
+                createCircleFeature([crate.lng, crate.lat], crate.radius || 14, {
+                  color: crateType === 'explosives' ? '#ef4444' : '#00f2fe',
+                  fillOpacity: 0.14,
+                  id: crate.id,
+                  type: 'crate',
+                })
+              );
+            });
+        }
+
+        // E. ARMAS Y BOTÍN SUELTO EN EL SUELO (Desaparecen en el momento de la recogida)
+        if (!isMeWounded) {
+          (droppedItems || [])
+            .filter((item) => isDroppedItemActive(item))
+            .filter(
+              (item) =>
+                typeof item.lat === 'number' &&
+                typeof item.lng === 'number' &&
+                !isNaN(item.lat) &&
+                !isNaN(item.lng) &&
+                (item.lat !== 0 || item.lng !== 0)
+            )
+            .forEach((item) => {
+              activeFeatures.push(
+                createCircleFeature([item.lng, item.lat], 10, {
+                  color: '#a855f7', // Púrpura botín
+                  fillOpacity: 0.15,
+                  id: item.id,
+                  type: 'loot',
+                })
+              );
+            });
+        }
+
+        // Sobrescribir de forma atómica la fuente GeoJSON
+        source.setData({
+          type: 'FeatureCollection',
+          features: activeFeatures,
+        });
+
+        // Limpieza defensiva de capas huérfanas
+        cleanOrphanSourcesAndLayers(map, crates || [], wildPets || [], droppedItems || []);
       } catch (err) {
         console.warn('[GameMap] Error al sincronizar círculos GeoJSON de interacción:', err);
       }
     },
-    [crates, wildPets, droppedItems, isMeWounded]
-  );
-
-  const updateInteractionCirclesRef = useRef<(targetMap?: maplibregl.Map) => void>(updateInteractionCircles);
-  updateInteractionCirclesRef.current = updateInteractionCircles;
-
-  useEffect(() => {
-    updateInteractionCircles();
-  }, [crates, wildPets, droppedItems, isMeWounded, mapLoaded, styleVersion, updateInteractionCircles]);
-
-  // Actualización de fuentes GeoJSON tácticas
-  const updateEntityInfluenceSources = useCallback(
-    (map: maplibregl.Map) => {
-      if (!isMapStyleLoaded(map)) {
-        const onStyleLoad = () => {
-          if (mapRef.current === map) {
-            updateEntityInfluenceSourcesRef.current?.(map);
-          }
-        };
-        map.once('style.load', onStyleLoad);
-        return;
-      }
-
-      try {
-        // 1. Actualizar play-area si procede
-      const playAreaSource = map.getSource('play-area') as maplibregl.GeoJSONSource | undefined;
-      if (playAreaSource) {
-        playAreaSource.setData(createGeoJsonCircle(center, playAreaRadius));
-      }
-
-      // 2. Actualizar treasure-zone
-      const treasureSource = map.getSource('treasure-zone') as maplibregl.GeoJSONSource | undefined;
-      if (treasureSource) {
-        treasureSource.setData(createGeoJsonCircle(treasureLocation, 20));
-      }
-
-      // 3. Actualizar player-vision
-      const visionSource = map.getSource('player-vision') as maplibregl.GeoJSONSource | undefined;
-      if (visionSource) {
-        const myCoords = { lat: myPlayer.lat ?? center.lat, lng: myPlayer.lng ?? center.lng };
-        const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
-        const visionRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
-        visionSource.setData(createGeoJsonCircle(myCoords, Math.min(visionRadius, playAreaRadius)));
-      }
-
-      // 4. Actualizar círculos de interacción GeoJSON (suministros, loot y mascotas)
-      updateInteractionCirclesRef.current?.(map);
-
-      // 5. Actualizar structures-zones
-      const structuresSource = map.getSource('structures-zones') as maplibregl.GeoJSONSource | undefined;
-      if (structuresSource) {
-        const visibleStructures = isMeWounded
-          ? structures.filter((s) => s.type === 'hospital')
-          : structures;
-        const structureFeatures = visibleStructures
-          .filter(
-            (s) =>
-              typeof s.lat === 'number' &&
-              typeof s.lng === 'number' &&
-              !isNaN(s.lat) &&
-              !isNaN(s.lng) &&
-              (s.lat !== 0 || s.lng !== 0)
-          )
-          .map((s) => ({
-            ...createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius),
-            properties: { type: s.type, id: s.id },
-          }));
-        structuresSource.setData({ type: 'FeatureCollection', features: structureFeatures });
-      }
-    } catch (err) {
-      console.warn('[GameMap] Error al actualizar fuentes de entidades:', err);
-    }
-  },
     [
-      center,
-      playAreaRadius,
-      treasureLocation,
-      myPlayer.lat,
-      myPlayer.lng,
-      myPlayer.role,
-      myPlayer.pets,
-      isRadarActive,
-      crates,
       structures,
-      isMeWounded,
-      droppedItems,
+      treasureLocation.lat,
+      treasureLocation.lng,
+      isChestOpened,
+      isChestTransitioning,
+      isVictory,
+      isChestGuarded,
       wildPets,
+      crates,
+      droppedItems,
+      isMeWounded,
+      cleanOrphanSourcesAndLayers,
     ]
   );
 
+  // Referencias para interoperabilidad y callbacks directos
+  const updateInteractionCircles = syncAllInteractionCircles;
+  const updateInteractionCirclesRef = useRef<(targetMap?: maplibregl.Map) => void>(syncAllInteractionCircles);
+  updateInteractionCirclesRef.current = syncAllInteractionCircles;
+
+  const updateEntityInfluenceSources = useCallback(
+    (map: maplibregl.Map) => {
+      syncGameBoundary(map);
+      syncAllInteractionCircles(map);
+      syncPlayerVision(map);
+    },
+    [syncGameBoundary, syncAllInteractionCircles, syncPlayerVision]
+  );
   const updateEntityInfluenceSourcesRef = useRef<(map: maplibregl.Map) => void>(
     updateEntityInfluenceSources
   );
   updateEntityInfluenceSourcesRef.current = updateEntityInfluenceSources;
+
+  const injectTacticalOverlays = setupMapLayersAndSources;
+  const injectTacticalOverlaysRef = useRef<(map: maplibregl.Map) => void>(setupMapLayersAndSources);
+  injectTacticalOverlaysRef.current = setupMapLayersAndSources;
 
   // ==========================================
   // ACTUALIZACIÓN DE OVERLAYS DE EMERGENCIA (Hospital y Perímetro Herido)
@@ -1305,6 +1166,69 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   updateEmergencyOverlaysRef.current = updateEmergencyOverlays;
 
   // ==========================================
+  // 2. RE-HIDRATACIÓN AUTOMÁTICA AL CAMBIAR DE MAPA (SATÉLITE ↔ TÁCTICO)
+  // ==========================================
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    const handleStyleLoaded = () => {
+      // 1. Recrear las fuentes y capas que map.setStyle destruyó
+      setupMapLayersAndSources(map);
+      // 2. Reinyectar inmediatamente los datos geométricos actualizados
+      syncAllInteractionCircles(map);
+      syncGameBoundary(map);
+      syncPlayerVision(map);
+      updateEmergencyOverlays(map);
+      setStyleVersion((v) => v + 1);
+      isStyleChangingRef.current = false;
+    };
+
+    // Escuchar el evento de carga del nuevo estilo
+    map.on('style.load', handleStyleLoaded);
+
+    // Si ya estaba cargado, forzar inicialización
+    if (map.isStyleLoaded()) {
+      handleStyleLoaded();
+    }
+
+    return () => {
+      map.off('style.load', handleStyleLoaded);
+    };
+  }, [
+    isSatelliteView,
+    setupMapLayersAndSources,
+    syncAllInteractionCircles,
+    syncGameBoundary,
+    syncPlayerVision,
+    updateEmergencyOverlays,
+  ]);
+
+  // ==========================================
+  // 4. DISPARO REACTIVO INMEDIATO EN HOOKS ANTE CAMBIOS DE ENTIDADES
+  // ==========================================
+  useEffect(() => {
+    syncAllInteractionCircles();
+  }, [
+    structures,
+    treasureLocation.lat,
+    treasureLocation.lng,
+    isChestOpened,
+    isChestTransitioning,
+    isVictory,
+    isChestGuarded,
+    wildPets,
+    crates,
+    droppedItems,
+    isMeWounded,
+    syncAllInteractionCircles,
+  ]);
+
+  useEffect(() => {
+    syncGameBoundary();
+  }, [center.lat, center.lng, playAreaRadius, syncGameBoundary]);
+
+  // ==========================================
   // CONMUTACIÓN DINÁMICA DE ESTILO (TÁCTICO VS SATÉLITE)
   // ==========================================
   const handleToggleSatelliteView = useCallback(() => {
@@ -1321,16 +1245,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     const newStyle = nextIsSatellite ? MAP_STYLES.satellite : MAP_STYLES.tactical;
     map.setStyle(newStyle as any);
-
-    map.once('style.load', () => {
-      if (mapRef.current === map) {
-        injectTacticalOverlaysRef.current?.(map);
-        updateEntityInfluenceSourcesRef.current?.(map);
-        updateEmergencyOverlaysRef.current?.(map);
-        setStyleVersion((v) => v + 1);
-      }
-      isStyleChangingRef.current = false;
-    });
 
     // Timeout de seguridad en caso de red lenta
     setTimeout(() => {
@@ -1502,23 +1416,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // 2. ACTUALIZACIÓN AISLADA DE CAPAS ESTÁTICAS (Área de Juego y Zona del Tesoro)
   // ==========================================
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !isMapStyleLoaded(map)) return;
-
-    try {
-      const playAreaSource = map.getSource('play-area') as maplibregl.GeoJSONSource | undefined;
-      if (playAreaSource) {
-        playAreaSource.setData(createGeoJsonCircle(center, playAreaRadius));
-      }
-
-      const treasureSource = map.getSource('treasure-zone') as maplibregl.GeoJSONSource | undefined;
-      if (treasureSource) {
-        treasureSource.setData(createGeoJsonCircle(treasureLocation, 20));
-      }
-    } catch (err) {
-      console.warn('[GameMap] Error al actualizar capas estáticas:', err);
-    }
-  }, [center.lat, center.lng, playAreaRadius, treasureLocation.lat, treasureLocation.lng, styleVersion]);
+    syncGameBoundary();
+    syncAllInteractionCircles();
+  }, [center.lat, center.lng, playAreaRadius, treasureLocation.lat, treasureLocation.lng, styleVersion, syncGameBoundary, syncAllInteractionCircles]);
 
   // ==========================================
   // 3. ACTUALIZACIÓN EFICIENTE DEL RADIO DE VISIÓN (Throttled por desplazamiento)
@@ -2864,6 +2764,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!isMapStyleLoaded(map)) return;
 
       const areaLayers = [
+        LAYER_CIRCLES_FILL,
+        LAYER_CIRCLES_LINE,
+        LAYER_BOUNDARY_FILL,
+        LAYER_BOUNDARY_LINE,
         'treasure-zone-fill',
         'treasure-zone-outline',
         'crates-zones-fill',
@@ -2875,7 +2779,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       areaLayers.forEach((layerId) => {
         try {
           if (map.getLayer(layerId)) {
-            map.setLayoutProperty(layerId, 'visibility', isMeWounded ? 'none' : 'visible');
+            const isPlayerVision = layerId === 'player-vision-outline';
+            const isLegacyNonHospital = layerId.startsWith('crates-') || layerId.startsWith('interaction-') || layerId.startsWith('treasure-');
+            const shouldHide = isMeWounded && (isPlayerVision || isLegacyNonHospital);
+            map.setLayoutProperty(layerId, 'visibility', shouldHide ? 'none' : 'visible');
           }
         } catch (err) {
           console.warn(`[GameMap] Aviso al consultar capa ${layerId}:`, err);
