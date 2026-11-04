@@ -334,6 +334,14 @@ export function useMonsterAI({
             'warning'
           );
         }
+
+        if (result.justRespawned) {
+          soundEffects.playMonsterRoar();
+          onLogRef.current?.(
+            `¡ALERTA TÁCTICA! ${m.name || 'El monstruo'} se ha reanimado completamente con salud al 100%. ¡Reanudando hostilidad!`,
+            'warning'
+          );
+        }
       }
 
       onMonstersUpdatedRef.current?.(updatedMonsters);

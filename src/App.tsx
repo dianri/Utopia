@@ -1025,6 +1025,24 @@ export const App: React.FC = () => {
       },
       onMonstersUpdate: (updatedMonsters) => {
         setLastExternalMonsterTick(Date.now());
+
+        // Detección de reanimación para feedback sensorial y auditivo en clientes remotos
+        const prevMonsters = monstersRef.current;
+        const justRevivedMonster = updatedMonsters.find((m) => {
+          const prev = prevMonsters.find((p) => p.id === m.id);
+          const wasWounded = prev && (prev.hp <= 0 || prev.status === 'wounded' || prev.status === 'defeated');
+          const isNowAlive = m.hp > 0 && m.status !== 'wounded' && m.status !== 'defeated';
+          return wasWounded && isNowAlive;
+        });
+
+        if (justRevivedMonster) {
+          soundEffects.playMonsterRoar();
+          addLog(
+            `¡ALERTA TÁCTICA! ${justRevivedMonster.name || 'El monstruo'} se ha reanimado completamente con salud al 100%. ¡Reanudando hostilidad!`,
+            'warning'
+          );
+        }
+
         setMonsters(updatedMonsters);
         if (activeCombatMonsterIdRef.current) {
           const duelMonster = updatedMonsters.find((m) => m.id === activeCombatMonsterIdRef.current);
@@ -1054,11 +1072,11 @@ export const App: React.FC = () => {
               return {
                 ...m,
                 status: status as any,
-                state: status as any,
+                state: (isWounded ? 'wounded' : 'patrol') as any,
                 hp,
-                defeatedAt: Date.now(),
-                defeatedBy: defeatedBy || m.defeatedBy,
-                isGuardingChest: false,
+                defeatedAt: isWounded ? (m.defeatedAt || Date.now()) : undefined,
+                defeatedBy: isWounded ? (defeatedBy || m.defeatedBy) : undefined,
+                isGuardingChest: !isWounded,
               };
             }
             return m;
@@ -1069,11 +1087,11 @@ export const App: React.FC = () => {
             return {
               ...prev,
               status: status as any,
-              state: status as any,
+              state: (isWounded ? 'wounded' : 'patrol') as any,
               hp,
-              defeatedAt: Date.now(),
-              defeatedBy: defeatedBy || prev.defeatedBy,
-              isGuardingChest: false,
+              defeatedAt: isWounded ? (prev.defeatedAt || Date.now()) : undefined,
+              defeatedBy: isWounded ? (defeatedBy || prev.defeatedBy) : undefined,
+              isGuardingChest: !isWounded,
             };
           }
           return prev;
@@ -1084,6 +1102,9 @@ export const App: React.FC = () => {
             setIsCombatArenaOpen(false);
             activeCombatMonsterIdRef.current = null;
           }
+        } else {
+          soundEffects.playMonsterRoar();
+          addLog(`¡El monstruo se ha reanimado completamente con salud al 100%! Reanudando hostilidad.`, 'warning');
         }
       },
       onChestTransition: (payload) => {
