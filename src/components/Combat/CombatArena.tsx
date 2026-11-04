@@ -48,6 +48,16 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   const [cardHitAnim, setCardHitAnim] = useState<boolean>(false);
   const [attackCooldown, setAttackCooldown] = useState<number>(0);
   const [damagedPetId, setDamagedPetId] = useState<string | null>(null);
+  const screenShakeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (screenShakeTimeoutRef.current) {
+        clearTimeout(screenShakeTimeoutRef.current);
+        screenShakeTimeoutRef.current = null;
+      }
+    };
+  }, []);
   const [damageNumbers, setDamageNumbers] = useState<CombatDamageItem[]>([]);
   const [missMarkers, setMissMarkers] = useState<{ id: number; x: number; y: number }[]>([]);
 
@@ -416,13 +426,31 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         }
         soundEffects.triggerDamageHaptics();
 
+        // Evaluar anticipadamente si el impacto es letal para anular demoras y sacudidas de pantalla
+        const estimatedRemainingHp = myPlayer.hp - currentDamage;
+        const isLethal = estimatedRemainingHp <= 1 || myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded';
+
         // Infligir daño continuo al jugador local (la mitigación de rol se aplica en el manejador central)
         onPlayerDamagedRef.current(currentDamage);
         onAddLogRef.current?.(`¡${curMonster.name || 'El monstruo'} te ha golpeado directamente! (-${currentDamage} HP)`, 'combat');
 
-        setTimeout(() => {
+        if (screenShakeTimeoutRef.current) {
+          clearTimeout(screenShakeTimeoutRef.current);
+          screenShakeTimeoutRef.current = null;
+        }
+
+        if (isLethal) {
+          // Neutralización crítica: salida inmediata a 0 ms sin shake ni timers artificiales
           setIsMonsterAttacking(false);
           setScreenShake(false);
+          onClose();
+          return;
+        }
+
+        screenShakeTimeoutRef.current = setTimeout(() => {
+          setIsMonsterAttacking(false);
+          setScreenShake(false);
+          screenShakeTimeoutRef.current = null;
         }, 400);
       }
     }, attackCadenceMs);
@@ -430,11 +458,17 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
     return () => {
       clearInterval(attackInterval);
     };
-  }, [isOpen, isMonsterActive, monster.isEnraged, isPlayerCriticallyWounded]);
+  }, [isOpen, isMonsterActive, monster.isEnraged, isPlayerCriticallyWounded, onClose, myPlayer.hp, myPlayer.isCriticallyWounded, myPlayer.status]);
 
-  // Si los HP del jugador caen a 0 o entra en estado crítico, cerrar inmediatamente la arena
+  // Si los HP del jugador caen a 0 o entra en estado crítico, cerrar inmediatamente la arena sin demoras
   useEffect(() => {
     if (isOpen && (myPlayer.hp <= 1 || myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded')) {
+      if (screenShakeTimeoutRef.current) {
+        clearTimeout(screenShakeTimeoutRef.current);
+        screenShakeTimeoutRef.current = null;
+      }
+      setIsMonsterAttacking(false);
+      setScreenShake(false);
       onClose();
     }
   }, [isOpen, myPlayer.hp, myPlayer.isCriticallyWounded, myPlayer.status, onClose]);
