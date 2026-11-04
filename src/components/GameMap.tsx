@@ -40,6 +40,7 @@ export const LAYER_CIRCLES_LINE = 'tactical-interaction-circles-line';
 
 export const SOURCE_BOUNDARY = 'tactical-game-boundary-source';
 export const LAYER_BOUNDARY_FILL = 'tactical-game-boundary-fill';
+export const LAYER_BOUNDARY_HALO = 'tactical-game-boundary-halo';
 export const LAYER_BOUNDARY_LINE = 'tactical-game-boundary-line';
 
 export const SOURCE_PLAYER_VISION = 'player-vision-source';
@@ -60,8 +61,10 @@ export function createCircleFeature(
 ): GeoJSON.Feature<GeoJSON.Polygon> {
   const rawLng = Array.isArray(center) ? center[0] : center?.lng;
   const rawLat = Array.isArray(center) ? center[1] : center?.lat;
-  let lng = typeof rawLng === 'number' && !isNaN(rawLng) && rawLng !== 0 ? rawLng : INITIAL_LNG;
-  let lat = typeof rawLat === 'number' && !isNaN(rawLat) && rawLat !== 0 ? rawLat : INITIAL_LAT;
+  let lng =
+    typeof rawLng === 'number' && !isNaN(rawLng) && Math.abs(rawLng) > 0.0001 ? rawLng : INITIAL_LNG;
+  let lat =
+    typeof rawLat === 'number' && !isNaN(rawLat) && Math.abs(rawLat) > 0.0001 ? rawLat : INITIAL_LAT;
 
   // Sanitización defensiva contra inversión accidental [lat, lng]
   if (lng > 0 && lat < 0) {
@@ -846,7 +849,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!isMapStyleLoaded(map)) return;
 
       try {
-        // 1. FUENTE Y CAPAS DE LA ZONA DE JUEGO (Límite operacional)
+        // 1. FUENTE Y CAPAS DE LA ZONA DE JUEGO (Límite operacional con técnica de doble capa de alto contraste)
         if (!map.getSource(SOURCE_BOUNDARY)) {
           map.addSource(SOURCE_BOUNDARY, {
             type: 'geojson',
@@ -859,21 +862,24 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             id: LAYER_BOUNDARY_FILL,
             type: 'fill',
             source: SOURCE_BOUNDARY,
+            filter: ['==', '$type', 'Polygon'],
             layout: {
               visibility: 'visible',
             },
             paint: {
               'fill-color': '#00f2fe',
-              'fill-opacity': 0.05,
+              'fill-opacity': 0.12,
             },
           });
         }
 
-        if (!map.getLayer(LAYER_BOUNDARY_LINE)) {
+        // Capa de halo/brillo base sólida (sin guiones) para contraste incuestionable sobre satélite
+        if (!map.getLayer(LAYER_BOUNDARY_HALO)) {
           map.addLayer({
-            id: LAYER_BOUNDARY_LINE,
+            id: LAYER_BOUNDARY_HALO,
             type: 'line',
             source: SOURCE_BOUNDARY,
+            filter: ['==', '$type', 'LineString'],
             layout: {
               visibility: 'visible',
               'line-join': 'round',
@@ -881,7 +887,28 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             },
             paint: {
               'line-color': '#00f2fe',
-              'line-width': 4.0,
+              'line-width': 6.0,
+              'line-opacity': 0.55,
+              'line-blur': 1.5,
+            },
+          });
+        }
+
+        // Capa superior discontinua con line-cap 'butt' para estabilidad absoluta del shader lineSDF en vértices cerrados
+        if (!map.getLayer(LAYER_BOUNDARY_LINE)) {
+          map.addLayer({
+            id: LAYER_BOUNDARY_LINE,
+            type: 'line',
+            source: SOURCE_BOUNDARY,
+            filter: ['==', '$type', 'LineString'],
+            layout: {
+              visibility: 'visible',
+              'line-join': 'round',
+              'line-cap': 'butt',
+            },
+            paint: {
+              'line-color': '#00f2fe',
+              'line-width': 3.2,
               'line-dasharray': [3, 2],
               'line-opacity': 1.0,
             },
@@ -1085,6 +1112,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         // 5. GARANTÍA DE ORDEN Z EN WEBGL: Elevar las capas vectoriales por encima de las capas raster (satélite)
         const vectorLayersElevated = [
           LAYER_BOUNDARY_FILL,
+          LAYER_BOUNDARY_HALO,
           LAYER_BOUNDARY_LINE,
           LAYER_CIRCLES_FILL,
           LAYER_CIRCLES_LINE,
@@ -3309,7 +3337,15 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const targetM = activeMonstersList.find((m, idx) => (m.id || `monster_${idx}`) === id);
         if (targetM) {
           const dist = getDistanceMeters(myCoords, targetM);
-          const isVisible = (dist <= visionRadius || isRadarActive) && targetM.state !== 'dead' && targetM.hp > 0;
+          const isDefeated =
+            targetM.status === 'wounded' ||
+            targetM.status === 'defeated' ||
+            targetM.state === 'dead' ||
+            targetM.state === 'defeated' ||
+            targetM.state === 'wounded' ||
+            targetM.hp <= 0;
+          const isVisible =
+            dist <= Math.max(visionRadius, isDefeated ? 90 : visionRadius) || isRadarActive;
           el.style.display = !isMeWounded && isVisible ? 'block' : 'none';
         }
       }

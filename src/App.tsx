@@ -981,11 +981,21 @@ export const App: React.FC = () => {
         }
         if (payload.monsters && payload.monsters.length > 0) {
           setMonsters(payload.monsters);
+          monstersRef.current = payload.monsters;
         } else if (payload.newMonster) {
           setMonsters((prev) => {
             const exists = prev.some((m) => m.id === payload.newMonster!.id);
-            return exists ? prev : [...prev, payload.newMonster!];
+            const nextList = exists
+              ? prev.map((m) => (m.id === payload.newMonster!.id ? payload.newMonster! : m))
+              : [...prev, payload.newMonster!];
+            monstersRef.current = nextList;
+            return nextList;
           });
+        }
+        if (payload.newMonster) {
+          setMonster(payload.newMonster);
+          monsterRef.current = payload.newMonster;
+          activeCombatMonsterIdRef.current = payload.newMonster.id || null;
         }
         soundEffects.playMonsterRoar();
         addLog(
@@ -3431,9 +3441,15 @@ export const App: React.FC = () => {
       );
 
       // 6. Invocar/desplegar el monstruo secuencial de la siguiente fase (anclado en el nuevo cofre)
+      // Preservando intactos todos los monstruos de fases previas con sus coordenadas y estados de baja
       const newMonster = createSequentialMonster(nextChestIdx, nextCoords, gameRadius);
-      const updatedMonsters = [...monstersRef.current, newMonster];
+      const existingMonsters = monstersRef.current && monstersRef.current.length > 0 ? monstersRef.current : [monsterRef.current];
+      const filteredPrevious = existingMonsters.filter((m) => m.id !== newMonster.id);
+      const updatedMonsters = [...filteredPrevious, newMonster];
+      monstersRef.current = updatedMonsters;
       setMonsters(updatedMonsters);
+      setMonster(newMonster);
+      monsterRef.current = newMonster;
       activeCombatMonsterIdRef.current = newMonster.id || null;
 
       // 7. Actualizar de forma inmediata y sincrónica roomRef.current y estado local
@@ -5150,7 +5166,16 @@ export const App: React.FC = () => {
   const outOfAreaMeters = room ? Math.round(distToCenter - room.playAreaRadius) : 0;
 
   const mapCenter = useMemo(
-    () => ({ lat: room?.centerLat ?? 0, lng: room?.centerLng ?? 0 }),
+    () => ({
+      lat:
+        typeof room?.centerLat === 'number' && !isNaN(room.centerLat) && Math.abs(room.centerLat) > 0.0001
+          ? room.centerLat
+          : 37.4018,
+      lng:
+        typeof room?.centerLng === 'number' && !isNaN(room.centerLng) && Math.abs(room.centerLng) > 0.0001
+          ? room.centerLng
+          : -2.1565,
+    }),
     [room?.centerLat, room?.centerLng]
   );
   const mapTreasureLocation = useMemo(

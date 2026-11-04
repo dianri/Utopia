@@ -71,10 +71,25 @@ export function createGeoJsonCircle(
   radiusMeters: number,
   points: number = 64
 ): Feature<Polygon> {
+  const validCenter: Coordinates = {
+    lat:
+      typeof center?.lat === 'number' && !isNaN(center.lat) && Math.abs(center.lat) > 0.0001
+        ? center.lat
+        : 37.4018,
+    lng:
+      typeof center?.lng === 'number' && !isNaN(center.lng) && Math.abs(center.lng) > 0.0001
+        ? center.lng
+        : -2.1565,
+  };
+  const validRadius =
+    typeof radiusMeters === 'number' && !isNaN(radiusMeters) && radiusMeters > 0
+      ? radiusMeters
+      : 350;
+
   const coordinates: [number, number][] = [];
   for (let i = 0; i <= points; i++) {
     const angle = (i * 360) / points;
-    const point = getDestinationPoint(center, radiusMeters, angle);
+    const point = getDestinationPoint(validCenter, validRadius, angle);
     coordinates.push([point.lng, point.lat]);
   }
   // Cierre estricto del polígono GeoJSON (el último vértice debe coincidir idénticamente con el primero)
@@ -84,7 +99,7 @@ export function createGeoJsonCircle(
 
   return {
     type: 'Feature',
-    properties: { radius: radiusMeters },
+    properties: { radius: validRadius },
     geometry: {
       type: 'Polygon',
       coordinates: [coordinates],
