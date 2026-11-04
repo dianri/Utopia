@@ -1151,6 +1151,57 @@ export const App: React.FC = () => {
           );
         }
       },
+      onEntitySpawned: ({ type, entity }) => {
+        console.log(`📦 [App] Nueva entidad recibida en tiempo real [${type}]:`, entity);
+        if (!entity || !entity.id) return;
+        if (type === 'crate') {
+          setCrates((prev) => {
+            if (prev.some((c) => c.id === entity.id)) return prev;
+            return [...prev, entity];
+          });
+          soundEffects.playCrateLoot();
+          addLog('🪂 ¡Airdrop táctico detectado! Cayendo en paracaídas', 'loot');
+        } else if (type === 'pet') {
+          setWildPets((prev) => {
+            if (prev.some((p) => p.id === entity.id)) return prev;
+            return [...prev, entity];
+          });
+          addLog(`🐾 Se ha avistado una nueva criatura en el mapa: ${entity.pet?.name || 'Mascota silvestre'}`, 'info');
+        } else if (type === 'dropped_item') {
+          setDroppedItems((prev) => {
+            if (prev.some((i) => i.id === entity.id)) return prev;
+            return [...prev, entity];
+          });
+        }
+      },
+      onEntityCollected: ({ type, entityId }) => {
+        console.log(`🗑️ [App] Entidad retirada/recogida en tiempo real [${type}]:`, entityId);
+        if (!entityId) return;
+        if (type === 'crate') {
+          setCrates((prev) => prev.filter((c) => c.id !== entityId));
+        } else if (type === 'pet') {
+          setWildPets((prev) => prev.filter((p) => p.id !== entityId));
+        } else if (type === 'dropped_item') {
+          setDroppedItems((prev) => prev.filter((i) => i.id !== entityId));
+        }
+      },
+      onNewAirdrop: ({ crate }) => {
+        if (!crate || !crate.id) return;
+        setCrates((prev) => {
+          if (prev.some((c) => c.id === crate.id)) return prev;
+          return [...prev, crate];
+        });
+        soundEffects.playCrateLoot();
+        addLog('🪂 ¡Airdrop táctico detectado! Cayendo en paracaídas', 'loot');
+      },
+      onNewWildPet: ({ wildPet }) => {
+        if (!wildPet || !wildPet.id) return;
+        setWildPets((prev) => {
+          if (prev.some((p) => p.id === wildPet.id)) return prev;
+          return [...prev, wildPet];
+        });
+        addLog(`🐾 Se ha avistado una nueva criatura en el mapa: ${wildPet.pet?.name || 'Mascota silvestre'}`, 'info');
+      },
       onRequestStateSync: () => {
         // Si somos el Host, transmitimos el estado actual del juego al jugador recién incorporado
         if (myPlayerRef.current?.isHost) {
@@ -3422,6 +3473,7 @@ export const App: React.FC = () => {
         });
 
         realtime.broadcastCrateLooted(crate.id, myPlayer.nickname, lootedName);
+        realtime.broadcastEntityCollected('crate', crate.id);
         soundEffects.playCrateLoot();
       }
     });
@@ -3481,6 +3533,7 @@ export const App: React.FC = () => {
 
           // Sincronizar adopción a la sala
           realtime.broadcastPetAdopted(wp.id, prev.nickname, wp.pet);
+          realtime.broadcastEntityCollected('pet', wp.id);
 
           if (prev.lat && prev.lng) {
             realtime.broadcastPlayerMove(
@@ -3551,6 +3604,7 @@ export const App: React.FC = () => {
         });
 
         realtime.broadcastCrateLooted(crate.id, myPlayer.nickname, lootedName);
+        realtime.broadcastEntityCollected('crate', crate.id);
         soundEffects.playCrateLoot();
       }
     });
@@ -3730,6 +3784,7 @@ export const App: React.FC = () => {
         syncRoomEntitiesToSupabase(room.id, { crates: updated });
         return updated;
       });
+      realtimeRef.current.broadcastSpawnEntity('crate', newCrate);
       realtimeRef.current.broadcastNewAirdrop(newCrate);
       soundEffects.playCrateLoot();
       addLog('🪂 ¡Airdrop táctico detectado! Cayendo en paracaídas', 'loot');
@@ -3753,6 +3808,7 @@ export const App: React.FC = () => {
         syncRoomEntitiesToSupabase(room.id, { wildPets: updated });
         return updated;
       });
+      realtimeRef.current.broadcastSpawnEntity('pet', newPet);
       realtimeRef.current.broadcastNewWildPet(newPet);
       addLog(`🐾 Se ha avistado una nueva criatura en el mapa: ${newPet.pet.name}`, 'info');
     };
@@ -4019,6 +4075,7 @@ export const App: React.FC = () => {
 
     setDroppedItems((prev) => [...prev, dropped]);
     realtimeRef.current.broadcastItemDropped(dropped);
+    realtimeRef.current.broadcastSpawnEntity('dropped_item', dropped);
 
     setMyPlayer((prev) => {
       if (!prev) return null;
@@ -4072,6 +4129,7 @@ export const App: React.FC = () => {
       return updated;
     });
     realtimeRef.current.broadcastItemPicked(dropped.id);
+    realtimeRef.current.broadcastEntityCollected('dropped_item', dropped.id);
 
     setMyPlayer((prev) => {
       if (!prev) return null;
@@ -4124,6 +4182,7 @@ export const App: React.FC = () => {
       soundEffects.playCrateLoot();
 
       realtimeRef.current.broadcastPetAdopted(wp.id, prev.nickname, wp.pet);
+      realtimeRef.current.broadcastEntityCollected('pet', wp.id);
 
       if (prev.lat && prev.lng) {
         realtimeRef.current.broadcastPlayerMove(
