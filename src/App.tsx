@@ -799,18 +799,18 @@ export const App: React.FC = () => {
             setMyPlayer((prev) => (prev ? { ...prev, monsterKills: (prev.monsterKills || 0) + 1 } : null));
             if (activeCombatMonsterIdRef.current === monsterId) {
               setIsCombatArenaOpen(false);
-              activeCombatMonsterIdRef.current = null;
             }
+            setActiveCombatMonsterId(null);
+            activeCombatMonsterIdRef.current = null;
           } else {
             addLog(
               `🎯 Impacto a distancia con ${equippedWeapon.name} (${Math.round(dist)}m): -${damage} HP (${liveMonster.name}: ${newHp}/${liveMonster.maxHp} HP)`,
               'combat'
             );
+            // Actualizar objetivo activo solo si el monstruo sigue con vida
+            setActiveCombatMonsterId(monsterId);
+            activeCombatMonsterIdRef.current = monsterId;
           }
-
-          // Actualizar objetivo activo
-          setActiveCombatMonsterId(monsterId);
-          activeCombatMonsterIdRef.current = monsterId;
 
           const updatedMonsterData: Monster = {
             ...liveMonster,
@@ -825,7 +825,10 @@ export const App: React.FC = () => {
                 }
               : {}),
           };
-          setMonster(updatedMonsterData);
+          setMonster((prev) => {
+            if (prev.id !== monsterId) return prev;
+            return updatedMonsterData;
+          });
           monsterRef.current = updatedMonsterData;
 
           setMonsters((prev) =>
@@ -1065,10 +1068,11 @@ export const App: React.FC = () => {
         }
       },
       onMonsterStatusUpdated: ({ monsterId, status, hp, defeatedBy }) => {
+        if (!monsterId) return;
         const isWounded = status === 'wounded' || status === 'defeated' || hp <= 0;
         setMonsters((prev) =>
           prev.map((m) => {
-            if ((monsterId && m.id === monsterId) || (!monsterId && (m.id === prev[0]?.id || prev.length === 1))) {
+            if (m.id === monsterId) {
               return {
                 ...m,
                 status: status as any,
@@ -1083,7 +1087,7 @@ export const App: React.FC = () => {
           })
         );
         setMonster((prev) => {
-          if (!monsterId || prev.id === monsterId) {
+          if (prev.id === monsterId) {
             return {
               ...prev,
               status: status as any,
@@ -1100,6 +1104,7 @@ export const App: React.FC = () => {
           addLog(`¡Monstruo neutralizado! Yace herido en el terreno.${defeatedBy ? ` Abatido por ${defeatedBy}.` : ''}`, 'loot');
           if (activeCombatMonsterIdRef.current === monsterId) {
             setIsCombatArenaOpen(false);
+            setActiveCombatMonsterId(null);
             activeCombatMonsterIdRef.current = null;
           }
         } else {
@@ -1293,6 +1298,8 @@ export const App: React.FC = () => {
             const isWoundedLocal = newHp <= 1;
             if (isWoundedLocal) {
               setIsCombatArenaOpen(false);
+              setActiveCombatMonsterId(null);
+              activeCombatMonsterIdRef.current = null;
             }
             return {
               ...prev,
@@ -1315,10 +1322,11 @@ export const App: React.FC = () => {
         }
       },
       onMonsterDamaged: ({ damage, fromPlayerId, currentHp, monsterId }) => {
+        if (!monsterId) return;
         const isDefeated = currentHp <= 0;
         setMonsters((prev) =>
           prev.map((m) => {
-            if ((monsterId && m.id === monsterId) || (!monsterId && (m.id === prev[0]?.id || prev.length === 1))) {
+            if (m.id === monsterId) {
               return {
                 ...m,
                 hp: currentHp,
@@ -1335,19 +1343,22 @@ export const App: React.FC = () => {
             return m;
           })
         );
-        if (!monsterId || monsterId === activeCombatMonsterIdRef.current || monsterId === monsterRef.current.id) {
-          setMonster((prev) => ({
-            ...prev,
-            hp: currentHp,
-            ...(isDefeated
-              ? {
-                  status: 'wounded',
-                  state: 'wounded',
-                  defeatedAt: Date.now(),
-                  isGuardingChest: false,
-                }
-              : {}),
-          }));
+        if (monsterId === activeCombatMonsterIdRef.current || monsterId === monsterRef.current.id) {
+          setMonster((prev) => {
+            if (prev.id !== monsterId) return prev;
+            return {
+              ...prev,
+              hp: currentHp,
+              ...(isDefeated
+                ? {
+                    status: 'wounded',
+                    state: 'wounded',
+                    defeatedAt: Date.now(),
+                    isGuardingChest: false,
+                  }
+                : {}),
+            };
+          });
         }
         if (currentHp <= 0) {
           addLog('¡Monstruo abatido en combate! La criatura yace herida en el terreno.', 'loot');
@@ -1356,6 +1367,7 @@ export const App: React.FC = () => {
           }
           if (activeCombatMonsterIdRef.current === monsterId) {
             setIsCombatArenaOpen(false);
+            setActiveCombatMonsterId(null);
             activeCombatMonsterIdRef.current = null;
           }
         }
@@ -2392,6 +2404,15 @@ export const App: React.FC = () => {
   }, [monsters, monster, activeCombatMonsterId, myPlayer?.lat, myPlayer?.lng]);
 
   // ==========================================
+  // OBJETIVO EXCLUSIVO Y ESTRICTO DEL DUELO EN ARENA
+  // ==========================================
+  const currentDuelMonster = useMemo(() => {
+    if (!activeCombatMonsterId) return null;
+    const list = monsters && monsters.length > 0 ? monsters : (monster ? [monster] : []);
+    return list.find((m) => m.id === activeCombatMonsterId) || null;
+  }, [monsters, monster, activeCombatMonsterId]);
+
+  // ==========================================
   // BUCLE DE COMBATE CONTINUO EN MOVIMIENTO (MANUAL Y AUTOMÁTICO)
   // ==========================================
   const { isFiringWeapon, manualAttack } = useCombatLoop({
@@ -2401,7 +2422,8 @@ export const App: React.FC = () => {
     roomCenter: room ? { lat: room.centerLat, lng: room.centerLng } : undefined,
     isRoleSkillActive,
     onAttackMonster: (damage, newHp, weapon, now) => {
-      const targetId = activeOrTargetMonster.id || monster.id || 'monster_1';
+      const targetId = activeOrTargetMonster.id || monster.id;
+      if (!targetId) return;
       const isDefeated = newHp <= 0;
       realtimeRef.current.broadcastMonsterDamaged(damage, newHp, targetId);
       if (isDefeated) {
@@ -2412,19 +2434,22 @@ export const App: React.FC = () => {
           myPlayerRef.current?.nickname || 'Cazador'
         );
       }
-      setMonster((prev) => ({
-        ...prev,
-        hp: newHp,
-        ...(isDefeated
-          ? {
-              status: 'wounded',
-              state: 'wounded',
-              defeatedAt: now,
-              defeatedBy: myPlayerRef.current?.nickname || 'Cazador',
-              isGuardingChest: false,
-            }
-          : {}),
-      }));
+      setMonster((prev) => {
+        if (prev.id !== targetId) return prev;
+        return {
+          ...prev,
+          hp: newHp,
+          ...(isDefeated
+            ? {
+                status: 'wounded',
+                state: 'wounded',
+                defeatedAt: now,
+                defeatedBy: myPlayerRef.current?.nickname || 'Cazador',
+                isGuardingChest: false,
+              }
+            : {}),
+        };
+      });
       setMonsters((prev) =>
         prev.map((m) =>
           (m.id || 'default') === targetId
@@ -2449,6 +2474,7 @@ export const App: React.FC = () => {
         setMyPlayer((prev) => (prev ? { ...prev, monsterKills: (prev.monsterKills || 0) + 1 } : null));
         if (activeCombatMonsterIdRef.current === targetId) {
           setIsCombatArenaOpen(false);
+          setActiveCombatMonsterId(null);
           activeCombatMonsterIdRef.current = null;
         }
       }
@@ -2589,8 +2615,17 @@ export const App: React.FC = () => {
 
       // Si actualmente está en combate en la arena (1v1 estricto)
       if (isCombatArenaOpen) {
-        const currentDuelMonster =
-          allMonsters.find((m) => m.id === activeCombatMonsterIdRef.current) || monsterRef.current;
+        const currentDuelMonster = activeCombatMonsterIdRef.current
+          ? allMonsters.find((m) => m.id === activeCombatMonsterIdRef.current) || null
+          : null;
+
+        if (!currentDuelMonster) {
+          setIsCombatArenaOpen(false);
+          setActiveCombatMonsterId(null);
+          activeCombatMonsterIdRef.current = null;
+          return;
+        }
+
         const isCurrentAlive = isMonsterAlive(currentDuelMonster);
         const distToCurrent = getDistanceMeters(playerCoord, currentDuelMonster);
 
@@ -2667,33 +2702,38 @@ export const App: React.FC = () => {
   const handleArenaAttack = useCallback(
     (damage: number, newHp: number, weapon: Weapon) => {
       const now = Date.now();
-      const currentTargetId = activeCombatMonsterIdRef.current || monsterRef.current.id;
+      const currentTargetId = activeCombatMonsterIdRef.current;
+      if (!currentTargetId) return; // Aislamiento estricto de duelo
+
       const isDefeated = newHp <= 0;
       realtimeRef.current.broadcastMonsterDamaged(damage, newHp, currentTargetId);
       if (isDefeated) {
         realtimeRef.current.broadcastMonsterStatusUpdated(
-          currentTargetId || 'monster_1',
+          currentTargetId,
           'wounded',
           0,
           myPlayerRef.current?.nickname || 'Cazador'
         );
       }
-      setMonster((prev) => ({
-        ...prev,
-        hp: newHp,
-        ...(isDefeated
-          ? {
-              status: 'wounded',
-              state: 'wounded',
-              defeatedAt: now,
-              defeatedBy: myPlayerRef.current?.nickname || 'Cazador',
-              isGuardingChest: false,
-            }
-          : {}),
-      }));
+      setMonster((prev) => {
+        if (prev.id !== currentTargetId) return prev;
+        return {
+          ...prev,
+          hp: newHp,
+          ...(isDefeated
+            ? {
+                status: 'wounded',
+                state: 'wounded',
+                defeatedAt: now,
+                defeatedBy: myPlayerRef.current?.nickname || 'Cazador',
+                isGuardingChest: false,
+              }
+            : {}),
+        };
+      });
       setMonsters((prev) =>
         prev.map((m) =>
-          m.id === currentTargetId || (!currentTargetId && m === prev[0])
+          m.id === currentTargetId
             ? {
                 ...m,
                 hp: newHp,
@@ -2716,7 +2756,7 @@ export const App: React.FC = () => {
       }
 
       if (myPlayerRef.current) {
-        const ai = currentTargetId ? monsterAIsRef.current.get(currentTargetId) : monsterAIRef.current;
+        const ai = monsterAIsRef.current.get(currentTargetId);
         if (ai) {
           ai.setAggroTarget(myPlayerRef.current.id);
         }
@@ -2811,6 +2851,8 @@ export const App: React.FC = () => {
 
         if (resultingWounded) {
           setIsCombatArenaOpen(false);
+          setActiveCombatMonsterId(null);
+          activeCombatMonsterIdRef.current = null;
           soundEffects.triggerDamageHaptics();
           soundEffects.playAlarm();
           addLog('¡ATAQUE CRÍTICO EN LA ARENA! Has quedado Herido de Muerte. ¡Huye al Hospital!', 'combat');
@@ -5873,11 +5915,11 @@ export const App: React.FC = () => {
       )}
 
       {/* 4. MODALES DE COMBATE EN TIEMPO REAL Y COFRE TÁCTICO */}
-      {room && myPlayer && isCombatArenaOpen && (
+      {room && myPlayer && isCombatArenaOpen && currentDuelMonster && (
         <CombatArena
           isOpen={isCombatArenaOpen}
           myPlayer={myPlayer}
-          monster={activeOrTargetMonster}
+          monster={currentDuelMonster}
           isRoleSkillActive={isRoleSkillActive}
           onAttack={handleArenaAttack}
           onPlayerDamaged={handleArenaPlayerDamaged}

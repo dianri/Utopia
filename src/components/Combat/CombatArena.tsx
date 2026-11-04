@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { Player, Monster, Weapon, Pet } from '../../types/game';
+import { isMonsterAlive } from '../../types/game';
 import { DEFAULT_WEAPONS_BY_ROLE, getModifiedWeaponStats, getWeaponIcon } from '../../services/combatEngine';
 import { getMonsterVisualConfig } from '../../services/mapEntities';
 import { soundEffects } from '../../services/soundEffects';
@@ -90,7 +91,8 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
   const visual = getMonsterVisualConfig(monster);
 
-  const isMonsterAlive = monster.hp > 0 && monster.state !== 'dead';
+  const isMonsterActive = isMonsterAlive(monster);
+  const isMonsterNeutralized = !isMonsterActive;
   const isPlayerCriticallyWounded =
     myPlayer.status === 'critically_wounded' ||
     myPlayer.isCriticallyWounded ||
@@ -99,19 +101,11 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   const lastAttackTimeRef = useRef<number>(0);
 
   // Motor de Evasión Procedimental del Monstruo (Puntería Activa y Escala Dinámica)
-  const isCombatFinished = !isOpen || !isMonsterAlive || isPlayerCriticallyWounded;
+  const isCombatFinished = !isOpen || !isMonsterActive || isPlayerCriticallyWounded;
   const { targetOffset, targetScale, isHitReaction, evasionSpeedClass, triggerHitReaction } = useEnemyEvasion({
     enemyType: monster.type || monster.id,
     isCombatFinished,
   });
-
-  const isMonsterNeutralized =
-    monster.hp <= 0 ||
-    monster.state === 'dead' ||
-    monster.state === 'defeated' ||
-    monster.state === 'wounded' ||
-    monster.status === 'wounded' ||
-    monster.status === 'defeated';
 
   // ==========================================
   // IMPACTO ACERTADO: DISPARO DIRECTO SOBRE EL BLANCO
@@ -232,7 +226,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   // ATAQUE AUTOMÁTICO DE MASCOTAS ACTIVAS (CADA attackIntervalMs)
   // ==========================================
   useEffect(() => {
-    if (!isOpen || !isMonsterAlive) return;
+    if (!isOpen || !isMonsterActive) return;
 
     const currentPets = (myPlayerRef.current.pets || []).filter((p) => !p.isWounded && p.hp > 0);
     if (currentPets.length === 0) return;
@@ -240,7 +234,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
     const intervals = currentPets.map((pet) => {
       return setInterval(() => {
         const curMonster = monsterRef.current;
-        if (!isOpen || curMonster.hp <= 0 || curMonster.state === 'dead') return;
+        if (!isOpen || !isMonsterAlive(curMonster)) return;
 
         // Si la mascota cayó herida durante el combate, cesar su ataque
         const curPet = (myPlayerRef.current.pets || []).find((p) => p.id === pet.id);
@@ -276,13 +270,13 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
     return () => {
       intervals.forEach(clearInterval);
     };
-  }, [isOpen, isMonsterAlive]);
+  }, [isOpen, isMonsterActive]);
 
   // ==========================================
   // BUCLE PERIÓDICO CONTINUO DE ATAQUE DEL MONSTRUO (2.5S NORMAL / 1.8S EN FURIA)
   // ==========================================
   useEffect(() => {
-    if (!isOpen || !isMonsterAlive || isPlayerCriticallyWounded) {
+    if (!isOpen || !isMonsterActive || isPlayerCriticallyWounded) {
       return;
     }
 
@@ -296,7 +290,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
       const curMonster = monsterRef.current;
       const curPlayer = myPlayerRef.current;
 
-      if (!isOpen || curMonster.hp <= 0 || curMonster.state === 'dead') {
+      if (!isOpen || !isMonsterAlive(curMonster)) {
         return;
       }
 
@@ -397,7 +391,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
         // Registro táctico en el log de combate
         onAddLogRef.current?.(
-          `¡El monstruo atacó a ${targetPet.name}! (-${effectiveMonsterDamage} HP)`,
+          `¡${curMonster.name || 'El monstruo'} atacó a ${targetPet.name}! (-${effectiveMonsterDamage} HP)`,
           'combat'
         );
         if (isWounded) {
@@ -424,7 +418,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
         // Infligir daño continuo al jugador local (la mitigación de rol se aplica en el manejador central)
         onPlayerDamagedRef.current(currentDamage);
-        onAddLogRef.current?.(`¡El monstruo te ha golpeado directamente! (-${currentDamage} HP)`, 'combat');
+        onAddLogRef.current?.(`¡${curMonster.name || 'El monstruo'} te ha golpeado directamente! (-${currentDamage} HP)`, 'combat');
 
         setTimeout(() => {
           setIsMonsterAttacking(false);
@@ -436,7 +430,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
     return () => {
       clearInterval(attackInterval);
     };
-  }, [isOpen, isMonsterAlive, monster.isEnraged, isPlayerCriticallyWounded]);
+  }, [isOpen, isMonsterActive, monster.isEnraged, isPlayerCriticallyWounded]);
 
   // Si los HP del jugador caen a 0 o entra en estado crítico, cerrar inmediatamente la arena
   useEffect(() => {
