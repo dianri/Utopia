@@ -537,6 +537,7 @@ interface GameMapProps {
   onAdoptWildPet?: (wildPet: WildPet) => void;
   onOpenChest?: () => void;
   onPlayerMarkerClick?: (targetPlayerId: string) => void;
+  onMonsterClick?: (monster: Monster) => void;
 }
 
 const GameMapComponent: React.FC<GameMapProps> = ({
@@ -566,6 +567,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   onAdoptWildPet,
   onOpenChest,
   onPlayerMarkerClick,
+  onMonsterClick,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -597,6 +599,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
   const onPlayerMarkerClickRef = useRef(onPlayerMarkerClick);
   onPlayerMarkerClickRef.current = onPlayerMarkerClick;
+
+  const onMonsterClickRef = useRef(onMonsterClick);
+  onMonsterClickRef.current = onMonsterClick;
 
   const onOpenChestRef = useRef(onOpenChest);
   onOpenChestRef.current = onOpenChest;
@@ -1184,6 +1189,39 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             });
         }
 
+        // F. MONSTRUOS (Radio de hostilidad rojo si vivo, o ámbar sutil si herido/neutralizado)
+        if (!isMeWounded) {
+          const list = monsters && monsters.length > 0 ? monsters : (monster ? [monster] : []);
+          list.forEach((m, idx) => {
+            if (
+              typeof m.lat !== 'number' ||
+              typeof m.lng !== 'number' ||
+              isNaN(m.lat) ||
+              isNaN(m.lng) ||
+              (m.lat === 0 && m.lng === 0)
+            ) {
+              return;
+            }
+            const isWounded =
+              !isMonsterAlive(m) ||
+              m.status === 'wounded' ||
+              m.status === 'defeated' ||
+              m.state === 'wounded' ||
+              m.state === 'defeated' ||
+              m.state === 'dead' ||
+              m.hp <= 0;
+
+            activeFeatures.push(
+              createCircleFeature([m.lng, m.lat], isWounded ? 10 : 20, {
+                color: isWounded ? '#f59e0b' : '#ef4444',
+                fillOpacity: isWounded ? 0.08 : 0.14,
+                id: m.id || `monster-${idx}`,
+                type: 'monster',
+              })
+            );
+          });
+        }
+
         // Sobrescribir de forma atómica la fuente GeoJSON
         source.setData({
           type: 'FeatureCollection',
@@ -1208,6 +1246,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       crates,
       droppedItems,
       isMeWounded,
+      monsters,
+      monster,
       cleanOrphanSourcesAndLayers,
     ]
   );
@@ -2308,7 +2348,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       currentMonsterIds.add(monsterKey);
 
       const distToMonster = getDistanceMeters(myCoords, m);
-      const isDefeated = m.state === 'dead' || m.state === 'defeated' || m.state === 'wounded' || m.hp <= 0;
+      const isDefeated = m.status === 'wounded' || m.status === 'defeated' || m.state === 'dead' || m.state === 'defeated' || m.state === 'wounded' || m.hp <= 0;
       const isVisible = (distToMonster <= Math.max(visionRadius, isDefeated ? 90 : visionRadius) || isRadarActive);
 
       let kin = monsterKinematicsRef.current.get(monsterKey);
@@ -2329,23 +2369,28 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const renderMonsterContent = (defeated: boolean) => {
         if (defeated) {
           return `
-            <div class="marker-content flex flex-col items-center select-none pointer-events-none">
-              <div class="defeated-monster relative">
+            <div class="marker-container flex flex-col items-center select-none cursor-pointer">
+              <!-- Icono atenuado con aura pulsante de herido -->
+              <div class="monster-wounded-hazard relative flex items-center justify-center">
                 <img 
-                  src="/assets/icons/monsters/monster-${monsterTypeStr}.png" 
-                  alt="${m.name || 'Monstruo'}"
-                  class="w-12 h-12 object-contain grayscale-[40%] contrast-125 opacity-80"
-                  style="filter: drop-shadow(0 0 12px rgba(239, 68, 68, 0.95)); animation: pulseRedHazard 1.2s infinite ease-in-out;"
+                  src="${visual.icon || `/assets/icons/monsters/monster-${monsterTypeStr}.png`}" 
+                  alt="${m.name || visual.label}"
+                  width="48" 
+                  height="48" 
+                  style="width: 48px !important; height: 48px !important; max-width: 48px !important; max-height: 48px !important; object-fit: contain;" 
+                  class="grayscale-[30%] contrast-125"
                 />
-                <span class="absolute -bottom-2 left-1/2 -translate-x-1/2 px-1.5 py-0.2 rounded bg-red-950/90 border border-red-500/60 text-[9px] font-black text-red-300 uppercase whitespace-nowrap">
-                  ⚠️ HERIDO / DERROTADO
-                </span>
               </div>
+
+              <!-- Etiqueta de advertencia carmesí en lugar de barra de vida normal -->
+              <span class="mt-1 px-2 py-0.5 rounded bg-red-950/90 border border-red-500/80 text-[9px] font-black tracking-wider text-red-200 uppercase whitespace-nowrap shadow-lg backdrop-blur-sm">
+                ⚠️ ${m.name || visual.label} (HERIDO)
+              </span>
             </div>
           `;
         }
         return `
-          <div class="marker-content flex flex-col items-center select-none pointer-events-none ${visual.scaleClass}">
+          <div class="marker-content flex flex-col items-center select-none cursor-pointer ${visual.scaleClass}">
             <div class="relative flex items-center justify-center">
               <div class="w-14 h-14 ${visual.pingBg} rounded-full animate-ping absolute pointer-events-none"></div>
               
@@ -2384,7 +2429,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.className = 'map-marker-anchor marker-monster monster-map-marker';
         el.setAttribute('data-entity', 'monster');
         el.setAttribute('data-defeated', isDefeated ? 'true' : 'false');
-        el.style.pointerEvents = 'none';
+        el.style.pointerEvents = 'auto';
+        el.style.cursor = 'pointer';
+        el.onclick = (e) => {
+          e.stopPropagation();
+          onMonsterClickRef.current?.(m);
+        };
         el.innerHTML = renderMonsterContent(isDefeated);
 
         marker = new maplibregl.Marker({
@@ -2401,7 +2451,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (el) {
           el.className = 'map-marker-anchor marker-monster monster-map-marker';
           el.setAttribute('data-entity', 'monster');
-          el.style.pointerEvents = 'none';
+          el.style.pointerEvents = 'auto';
+          el.style.cursor = 'pointer';
+          el.onclick = (e) => {
+            e.stopPropagation();
+            onMonsterClickRef.current?.(m);
+          };
 
           const wasDefeated = el.getAttribute('data-defeated') === 'true';
           if (wasDefeated !== isDefeated) {

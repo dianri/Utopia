@@ -78,6 +78,7 @@ interface RealtimeCallbacks {
   onPresenceSync?: (activeUserIds: string[], presenceState: Record<string, any[]>) => void;
   onHostMigrated?: (payload: { newHostPlayerId: string; newHostUserId: string; newHostNickname: string }) => void;
   onMonsterAIHeartbeat?: (payload: { timestamp: number; hostId: string }) => void;
+  onMonsterStatusUpdated?: (payload: { monsterId: string; status: string; hp: number; defeatedBy?: string }) => void;
 }
 
 export function useGameRealtime(
@@ -171,6 +172,11 @@ export function useGameRealtime(
     // 4. DAÑO AL MONSTRUO
     channel.on('broadcast', { event: 'monster_damaged' }, ({ payload }) => {
       callbacksRef.current.onMonsterDamaged?.(payload);
+    });
+
+    // 4.1. ACTUALIZACIÓN DE ESTADO DEL MONSTRUO (HERIDO / DERROTADO)
+    channel.on('broadcast', { event: 'monster_status_updated' }, ({ payload }) => {
+      callbacksRef.current.onMonsterStatusUpdated?.(payload);
     });
 
     // 5. PINGS DE FANTASMA
@@ -446,6 +452,18 @@ export function useGameRealtime(
       });
     },
     [myPlayerId]
+  );
+
+  const broadcastMonsterStatusUpdated = useCallback(
+    (monsterId: string, status: string, hp: number, defeatedBy?: string) => {
+      if (!channelRef.current || !isSubscribedRef.current) return;
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'monster_status_updated',
+        payload: { monsterId, status, hp, defeatedBy },
+      });
+    },
+    []
   );
 
   const broadcastGhostPing = useCallback((ping: GhostPing) => {
@@ -794,6 +812,7 @@ export function useGameRealtime(
     broadcastPlayerMove,
     broadcastPlayerHit,
     broadcastMonsterDamaged,
+    broadcastMonsterStatusUpdated,
     broadcastGhostPing,
     broadcastRadarActivated,
     broadcastCrateLooted,

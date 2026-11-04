@@ -61,38 +61,25 @@ export class MonsterAIController {
 
     const now = Date.now();
 
-    // 1. GESTIÓN DE MUERTE TEMPORAL Y REAPARICIÓN SILENCIOSA (60 SEGUNDOS)
-    if (monster.hp <= 0 || monster.state === 'dead' || monster.state === 'defeated' || monster.state === 'wounded') {
-      const remaining = (monster.respawnTimeRemaining ?? 60) - 1;
-      if (remaining <= 0) {
-        // Reaparición silenciosa anclada al tesoro en un radio de custodia (15 a 35 metros)
-        result.justRespawned = true;
-        this.hadEnraged = false;
-        const offset = 15 + Math.random() * 20; // 15 a 35 metros
-        const respawnPos = spawnNearTreasure(this.treasureLocation.lat, this.treasureLocation.lng, offset);
-
-        result.updatedMonster = {
-          ...monster,
-          lat: respawnPos.lat,
-          lng: respawnPos.lng,
-          hp: monster.maxHp,
-          state: 'patrol',
-          targetPlayerId: null,
-          speedMps: monster.speedMps || 2.8,
-          respawnTimeRemaining: undefined,
-          isEnraged: false,
-          isRespawning: false,
-        };
-        // Reaparición silenciosa: sin rugido ni alertas de interrupción
-      } else {
-        result.updatedMonster = {
-          ...monster,
-          state: 'defeated',
-          hp: 0,
-          respawnTimeRemaining: remaining,
-          isRespawning: true,
-        };
-      }
+    // 1. GESTIÓN DE MONSTRUO HERIDO / DERROTADO (INMOVILIZACIÓN Y DESACTIVACIÓN DE AGRO)
+    if (
+      monster.hp <= 0 ||
+      monster.state === 'dead' ||
+      monster.state === 'defeated' ||
+      monster.state === 'wounded' ||
+      monster.status === 'wounded' ||
+      monster.status === 'defeated'
+    ) {
+      result.updatedMonster = {
+        ...monster,
+        hp: 0,
+        status: 'wounded',
+        state: 'wounded',
+        targetPlayerId: null,
+        isGuardingChest: false,
+        isEnraged: false,
+        isRespawning: false,
+      };
       return result;
     }
 
