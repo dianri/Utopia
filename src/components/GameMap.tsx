@@ -2391,7 +2391,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }
       }
     });
-  }, [wildPets, mapLoaded, center.lat, center.lng, isMeWounded, myPlayer.pets?.length]);
+  }, [wildPets, mapLoaded, center?.lat, center?.lng, isMeWounded, myPlayer.pets?.length]);
 
   // ==========================================
   // 6.8. RADIOS DE INTERACCIÓN DE ENTIDADES (LOOT Y MASCOTAS, 25M)

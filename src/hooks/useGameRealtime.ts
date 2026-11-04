@@ -51,6 +51,8 @@ interface RealtimeCallbacks {
   onPetAdopted?: (payload: { wildPetId: string; playerId: string; playerNickname: string; pet: Pet }) => void;
   onNewAirdrop?: (payload: { crate: SupplyCrate }) => void;
   onNewWildPet?: (payload: { wildPet: WildPet }) => void;
+  onEntitySpawned?: (payload: { type: 'crate' | 'pet' | 'dropped_item'; entity: any; timestamp: number }) => void;
+  onEntityCollected?: (payload: { type: 'crate' | 'pet' | 'dropped_item'; entityId: string }) => void;
   onRequestStateSync?: () => void;
   onFullStateSync?: (payload: {
     monster: Monster;
@@ -187,6 +189,9 @@ export function useGameRealtime(
     channel.on('broadcast', { event: 'crate_looted' }, ({ payload }) => {
       soundEffects.playCrateLoot();
       callbacksRef.current.onCrateLooted?.(payload);
+      if (payload?.crateId) {
+        callbacksRef.current.onEntityCollected?.({ type: 'crate', entityId: payload.crateId });
+      }
     });
 
     // 8. JUGADOR REVIVIDO
@@ -212,26 +217,60 @@ export function useGameRealtime(
     // 9.3. DESCARTE DE OBJETOS EN EL MAPA
     channel.on('broadcast', { event: 'item_dropped' }, ({ payload }) => {
       callbacksRef.current.onItemDropped?.(payload.dropped);
+      if (payload?.dropped) {
+        callbacksRef.current.onEntitySpawned?.({ type: 'dropped_item', entity: payload.dropped, timestamp: Date.now() });
+      }
     });
 
     // 9.4. RECOLECCIÓN DE OBJETOS DESCARTADOS
     channel.on('broadcast', { event: 'item_picked' }, ({ payload }) => {
       callbacksRef.current.onItemPicked?.(payload);
+      if (payload?.droppedItemId) {
+        callbacksRef.current.onEntityCollected?.({ type: 'dropped_item', entityId: payload.droppedItemId });
+      }
     });
 
     // 9.5. ADOPCIÓN DE MASCOTA SILVESTRE EN EL MAPA
     channel.on('broadcast', { event: 'pet_adopted' }, ({ payload }) => {
       callbacksRef.current.onPetAdopted?.(payload);
+      if (payload?.wildPetId) {
+        callbacksRef.current.onEntityCollected?.({ type: 'pet', entityId: payload.wildPetId });
+      }
     });
 
     // 9.6. NUEVO AIRDROP DINÁMICO
     channel.on('broadcast', { event: 'new_airdrop' }, ({ payload }) => {
       callbacksRef.current.onNewAirdrop?.(payload);
+      if (payload?.crate) {
+        callbacksRef.current.onEntitySpawned?.({ type: 'crate', entity: payload.crate, timestamp: Date.now() });
+      }
     });
 
     // 9.7. NUEVA MASCOTA SILVESTRE DINÁMICA
     channel.on('broadcast', { event: 'new_wild_pet' }, ({ payload }) => {
       callbacksRef.current.onNewWildPet?.(payload);
+      if (payload?.wildPet) {
+        callbacksRef.current.onEntitySpawned?.({ type: 'pet', entity: payload.wildPet, timestamp: Date.now() });
+      }
+    });
+
+    // 9.8. ENTIDAD ENGÉNDRADA DINÁMICAMENTE (Cajas, Mascotas, Botín)
+    channel.on('broadcast', { event: 'entity_spawned' }, ({ payload }) => {
+      console.log(`📦 [Realtime] Nueva entidad recibida en tiempo real [${payload?.type}]:`, payload?.entity);
+      callbacksRef.current.onEntitySpawned?.(payload);
+      if (payload?.type === 'crate' && payload?.entity) {
+        callbacksRef.current.onNewAirdrop?.({ crate: payload.entity });
+      } else if (payload?.type === 'pet' && payload?.entity) {
+        callbacksRef.current.onNewWildPet?.({ wildPet: payload.entity });
+      } else if (payload?.type === 'dropped_item' && payload?.entity) {
+        callbacksRef.current.onItemDropped?.(payload.entity);
+      }
+    });
+
+    // 9.9. RETIRADA / RECOGIDA DE ENTIDADES EN TIEMPO REAL
+    channel.on('broadcast', { event: 'entity_collected' }, ({ payload }) => {
+      console.log(`🗑️ [Realtime] Entidad retirada/recogida en tiempo real [${payload?.type}]:`, payload?.entityId);
+      callbacksRef.current.onEntityCollected?.(payload);
     });
 
     // 10. PETICIÓN DE SINCRONIZACIÓN DE ESTADO (LATE JOIN)
@@ -434,6 +473,11 @@ export function useGameRealtime(
       event: 'crate_looted',
       payload: { crateId, playerId: myPlayerId, playerNickname, weaponName },
     });
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'entity_collected',
+      payload: { type: 'crate', entityId: crateId },
+    });
   }, [myPlayerId]);
 
   const broadcastPlayerRevived = useCallback((revivedPlayerId: string, reviverNickname: string) => {
@@ -479,6 +523,11 @@ export function useGameRealtime(
       event: 'item_dropped',
       payload: { dropped },
     });
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'entity_spawned',
+      payload: { type: 'dropped_item', entity: dropped, timestamp: Date.now() },
+    });
   }, []);
 
   const broadcastItemPicked = useCallback((droppedItemId: string) => {
@@ -487,6 +536,11 @@ export function useGameRealtime(
       type: 'broadcast',
       event: 'item_picked',
       payload: { droppedItemId, playerId: myPlayerId },
+    });
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'entity_collected',
+      payload: { type: 'dropped_item', entityId: droppedItemId },
     });
   }, [myPlayerId]);
 
@@ -497,6 +551,11 @@ export function useGameRealtime(
       event: 'pet_adopted',
       payload: { wildPetId, playerId: myPlayerId, playerNickname, pet },
     });
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'entity_collected',
+      payload: { type: 'pet', entityId: wildPetId },
+    });
   }, [myPlayerId]);
 
   const broadcastNewAirdrop = useCallback((crate: SupplyCrate) => {
@@ -505,6 +564,11 @@ export function useGameRealtime(
       type: 'broadcast',
       event: 'new_airdrop',
       payload: { crate },
+    });
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'entity_spawned',
+      payload: { type: 'crate', entity: crate, timestamp: Date.now() },
     });
   }, []);
 
@@ -515,7 +579,43 @@ export function useGameRealtime(
       event: 'new_wild_pet',
       payload: { wildPet },
     });
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'entity_spawned',
+      payload: { type: 'pet', entity: wildPet, timestamp: Date.now() },
+    });
   }, []);
+
+  const broadcastSpawnEntity = useCallback(
+    (entityType: 'crate' | 'pet' | 'dropped_item', entityData: any) => {
+      if (!channelRef.current || !isSubscribedRef.current) return;
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'entity_spawned',
+        payload: {
+          type: entityType,
+          entity: entityData,
+          timestamp: Date.now(),
+        },
+      });
+    },
+    []
+  );
+
+  const broadcastEntityCollected = useCallback(
+    (entityType: 'crate' | 'pet' | 'dropped_item', entityId: string) => {
+      if (!channelRef.current || !isSubscribedRef.current) return;
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'entity_collected',
+        payload: {
+          type: entityType,
+          entityId,
+        },
+      });
+    },
+    []
+  );
 
   const broadcastRequestStateSync = useCallback(() => {
     if (!channelRef.current || !isSubscribedRef.current) return;
@@ -685,6 +785,9 @@ export function useGameRealtime(
     isConnected,
     onlineUsers,
     presenceState,
+    channel: channelRef.current,
+    broadcastSpawnEntity,
+    broadcastEntityCollected,
     broadcastMonsterUpdate,
     broadcastMonstersUpdate,
     broadcastChestTransition,

@@ -1,6 +1,54 @@
 import type { Pet, PetType, WildPet, Coordinates, SupplyCrate, CrateType, Weapon, Monster, DroppedItem } from '../types/game';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getRandomPointInCircle, getDistanceMeters, getBearing, getDestinationPoint } from './geoUtils';
 import { WEAPON_REGISTRY } from './combatEngine';
+
+/**
+ * Emite un evento broadcast inmediato al canal de la sala cuando se engendra una entidad (cajas, mascotas o botín)
+ */
+export const broadcastSpawnEntity = async (
+  channel: RealtimeChannel | null | undefined,
+  entityType: 'crate' | 'pet' | 'dropped_item',
+  entityData: any
+) => {
+  if (!channel) return;
+  try {
+    await channel.send({
+      type: 'broadcast',
+      event: 'entity_spawned',
+      payload: {
+        type: entityType,
+        entity: entityData,
+        timestamp: Date.now(),
+      },
+    });
+  } catch (err) {
+    console.warn(`[mapEntities] Error al emitir broadcast entity_spawned (${entityType}):`, err);
+  }
+};
+
+/**
+ * Emite un evento broadcast inmediato al canal de la sala cuando se retira/recoge una entidad
+ */
+export const broadcastCollectEntity = async (
+  channel: RealtimeChannel | null | undefined,
+  entityType: 'crate' | 'pet' | 'dropped_item',
+  entityId: string
+) => {
+  if (!channel) return;
+  try {
+    await channel.send({
+      type: 'broadcast',
+      event: 'entity_collected',
+      payload: {
+        type: entityType,
+        entityId,
+      },
+    });
+  } catch (err) {
+    console.warn(`[mapEntities] Error al emitir broadcast entity_collected (${entityType}):`, err);
+  }
+};
 
 /**
  * Radio de proximidad táctico para adopción/recolección de mascotas silvestres en el mapa (igualado al botín, 25m)
