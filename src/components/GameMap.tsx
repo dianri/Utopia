@@ -47,22 +47,34 @@ export const LAYER_PLAYER_VISION_LINE = 'player-vision-line';
 export const SOURCE_HOSPITAL_GUIDELINE = 'hospital-guideline-source';
 
 /**
- * Crea una Feature GeoJSON de tipo Polygon circular enriquecida con propiedades tácticas
+ * Genera un polígono GeoJSON circular cerrado en proyección [lng, lat]
  */
 export function createCircleFeature(
-  coords: [number, number] | Coordinates,
-  radiusMeters: number,
-  properties: Record<string, any> = {}
-): GeoJSON.Feature {
-  const centerCoord: Coordinates = Array.isArray(coords)
-    ? { lng: coords[0], lat: coords[1] }
-    : coords;
-  const circle = createGeoJsonCircle(centerCoord, radiusMeters);
+  center: [number, number] | Coordinates, // [lng, lat] o Coordinates
+  radiusInMeters: number,
+  properties: Record<string, any> = {},
+  points = 64
+): GeoJSON.Feature<GeoJSON.Polygon> {
+  const [lng, lat] = Array.isArray(center) ? center : [center.lng, center.lat];
+  const coords: [number, number][] = [];
+  const distanceX = radiusInMeters / (111320 * Math.cos((lat * Math.PI) / 180));
+  const distanceY = radiusInMeters / 110540;
+
+  for (let i = 0; i < points; i++) {
+    const theta = (i / points) * (2 * Math.PI);
+    const x = distanceX * Math.cos(theta);
+    const y = distanceY * Math.sin(theta);
+    coords.push([lng + x, lat + y]);
+  }
+  // Cierre estricto del polígono GeoJSON: el último punto debe ser exactamente igual al primero
+  coords.push(coords[0]);
+
   return {
-    ...circle,
-    properties: {
-      ...circle.properties,
-      ...properties,
+    type: 'Feature',
+    properties,
+    geometry: {
+      type: 'Polygon',
+      coordinates: [coords],
     },
   };
 }
@@ -631,8 +643,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const lastVisionPosRef = useRef<{ lat: number; lng: number } | null>(null);
   const updateEmergencyOverlaysRef = useRef<(map: maplibregl.Map) => void>(() => {});
 
-  // Estado del jugador local: Herido de Muerte (visión de emergencia hospitalaria)
-  const isMeWounded = myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded';
+  // Estado del jugador local: Herido / Incapacitado (visión de emergencia hospitalaria)
+  const isMeWounded = Boolean(
+    myPlayer.isCriticallyWounded ||
+    myPlayer.status === 'critically_wounded' ||
+    (myPlayer.status as string) === 'wounded' ||
+    (typeof myPlayer.hp === 'number' && myPlayer.hp <= 0)
+  );
 
   // ==========================================
   // GESTIÓN ROBUSTA DE FUENTES Y CAPAS GEOJSON RESILIENTES
@@ -899,10 +916,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
               'line-cap': 'round',
             },
             paint: {
-              'line-color': '#22d3ee',
+              'line-color': '#ef4444',
               'line-width': 3.5,
-              'line-opacity': 1,
-              'line-dasharray': [2, 2],
+              'line-dasharray': [3, 2],
+              'line-opacity': 0.9,
             },
           });
         }
@@ -1042,6 +1059,21 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       }
     },
     [myPlayer?.lat, myPlayer?.lng, myPlayer?.role, myPlayer?.pets, (myPlayer as any)?.visionRadius, (myPlayer as any)?.interactionRadius, center?.lat, center?.lng, playAreaRadius, isRadarActive]
+  );
+
+  /**
+   * Sincroniza la directriz hacia el hospital de campaña en reposo y en movimiento
+   */
+  const syncHospitalGuideline = useCallback(
+    (targetMap?: maplibregl.Map) => {
+      const map = targetMap || mapRef.current;
+      if (!map || !isMapStyleLoaded(map)) return;
+
+      const playerLat = myPlayer?.lat ?? center?.lat ?? INITIAL_LAT;
+      const playerLng = myPlayer?.lng ?? center?.lng ?? INITIAL_LNG;
+      updateHospitalGuidelineSync(map, playerLng, playerLat, isMeWounded, hospitalCoords);
+    },
+    [myPlayer?.lat, myPlayer?.lng, center?.lat, center?.lng, isMeWounded, hospitalCoords]
   );
 
   /**
@@ -1189,37 +1221,54 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             });
         }
 
-        // F. MONSTRUOS (Radio de hostilidad rojo si vivo, o ámbar sutil si herido/neutralizado)
+        // F. MONSTRUOS: Radios de amenaza/aggro de monstruos en combate
         if (!isMeWounded) {
-          const list = monsters && monsters.length > 0 ? monsters : (monster ? [monster] : []);
-          list.forEach((m, idx) => {
-            if (
-              typeof m.lat !== 'number' ||
-              typeof m.lng !== 'number' ||
-              isNaN(m.lat) ||
-              isNaN(m.lng) ||
-              (m.lat === 0 && m.lng === 0)
-            ) {
-              return;
-            }
-            const isWounded =
-              !isMonsterAlive(m) ||
-              m.status === 'wounded' ||
-              m.status === 'defeated' ||
-              m.state === 'wounded' ||
-              m.state === 'defeated' ||
-              m.state === 'dead' ||
-              m.hp <= 0;
+          const activeMonstersList = monsters && monsters.length > 0 ? monsters : (monster ? [monster] : []);
+          activeMonstersList
+            .filter((m) => m.status !== 'defeated' && m.state !== 'defeated' && m.state !== 'dead' && m.hp > 0)
+            .forEach((m, idx) => {
+              if (
+                typeof m.lat !== 'number' ||
+                typeof m.lng !== 'number' ||
+                isNaN(m.lat) ||
+                isNaN(m.lng) ||
+                (m.lat === 0 && m.lng === 0)
+              ) {
+                return;
+              }
+              activeFeatures.push(
+                createCircleFeature(
+                  [m.lng, m.lat],
+                  (m as any).aggroRadius || 28, // Radio táctico de combate
+                  {
+                    id: `monster-circle-${m.id || idx}`,
+                    color: '#ef4444', // Rojo carmesí de peligro hostil
+                    fillOpacity: 0.12,
+                    type: 'monster',
+                  }
+                )
+              );
+            });
+        }
 
-            activeFeatures.push(
-              createCircleFeature([m.lng, m.lat], isWounded ? 10 : 20, {
-                color: isWounded ? '#f59e0b' : '#ef4444',
-                fillOpacity: isWounded ? 0.08 : 0.14,
-                id: m.id || `monster-${idx}`,
-                type: 'monster',
-              })
-            );
-          });
+        // G. RANGO DE ACCIÓN/VISIÓN DEL JUGADOR LOCAL
+        if (myPlayer?.lng && myPlayer?.lat && !isMeWounded) {
+          const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
+          const calcRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
+          const playerRadius = (myPlayer as any)?.visionRadius || (myPlayer as any)?.interactionRadius || calcRadius || 28;
+
+          activeFeatures.push(
+            createCircleFeature(
+              [myPlayer.lng, myPlayer.lat],
+              playerRadius,
+              {
+                id: 'player-vision-radius',
+                color: '#00f2fe', // Cian táctico
+                fillOpacity: 0.08,
+                type: 'player-vision',
+              }
+            )
+          );
         }
 
         // Sobrescribir de forma atómica la fuente GeoJSON
@@ -1248,6 +1297,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       isMeWounded,
       monsters,
       monster,
+      myPlayer?.lng,
+      myPlayer?.lat,
+      myPlayer?.role,
+      myPlayer?.pets,
+      (myPlayer as any)?.visionRadius,
+      (myPlayer as any)?.interactionRadius,
+      isRadarActive,
       cleanOrphanSourcesAndLayers,
     ]
   );
@@ -1352,11 +1408,14 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     // 1. Perímetro global del área operativa
     syncGameBoundary(map);
 
-    // 2. Todos los radios de interacción (estructuras, cofres, cajas, mascotas)
+    // 2. Todos los radios de interacción (estructuras, cofres, cajas, mascotas, monstruos, jugador)
     syncAllInteractionCircles(map);
 
     // 3. Rango de visión y actuación bajo el avatar
     syncPlayerVision(map);
+
+    // 4. Línea de emergencia al hospital (activa en reposo y ante cambio de estado)
+    syncHospitalGuideline(map);
   }, [
     mapLoaded,
     styleVersion,
@@ -1370,11 +1429,15 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     wildPets,
     crates,
     droppedItems,
+    monsters,
+    monster,
     center?.lat,
     center?.lng,
     playAreaRadius,
     myPlayer?.lat,
     myPlayer?.lng,
+    myPlayer?.hp,
+    myPlayer?.status,
     (myPlayer as any)?.visionRadius,
     (myPlayer as any)?.interactionRadius,
     myPlayer?.role,
@@ -1384,6 +1447,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     syncGameBoundary,
     syncAllInteractionCircles,
     syncPlayerVision,
+    syncHospitalGuideline,
   ]);
 
   // ==========================================
@@ -2653,6 +2717,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
         if (isMe) {
           updateHospitalGuidelineDirect(map, lng, lat, isMeWounded);
+          syncHospitalGuideline(map);
           syncPlayerVision(map);
         }
 
@@ -2664,6 +2729,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker?.setLngLat([lng, lat]);
         if (isMe) {
           updateHospitalGuidelineDirect(map, lng, lat, isMeWounded);
+          syncHospitalGuideline(map);
           syncPlayerVision(map);
         }
         const el = marker?.getElement();
@@ -2760,7 +2826,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }
       }
     });
-  }, [players, myPlayer, mapLoaded, center?.lat, center?.lng, isMeWounded, updateHospitalGuidelineDirect, syncPlayerVision]);
+  }, [players, myPlayer, mapLoaded, center?.lat, center?.lng, isMeWounded, updateHospitalGuidelineDirect, syncHospitalGuideline, syncPlayerVision]);
 
   // ==========================================
   // 8.5. MASCOTAS ACOMPAÑANTES: Integradas directamente en el DOM del jugador
