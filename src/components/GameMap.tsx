@@ -162,17 +162,6 @@ export const updateHospitalGuidelineSync = (
     }
   }
 
-  if (!map.getSource('hospital-guideline')) {
-    try {
-      map.addSource('hospital-guideline', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
-    } catch {
-      // Ignorar
-    }
-  }
-
   if (!map.getLayer('hospital-guideline-halo')) {
     try {
       map.addLayer({
@@ -218,8 +207,7 @@ export const updateHospitalGuidelineSync = (
     }
   }
 
-  const source1 = map.getSource(SOURCE_HOSPITAL_GUIDELINE) as maplibregl.GeoJSONSource | undefined;
-  const source2 = map.getSource('hospital-guideline') as maplibregl.GeoJSONSource | undefined;
+  const source = map.getSource(SOURCE_HOSPITAL_GUIDELINE) as maplibregl.GeoJSONSource | undefined;
 
   // 2. Normalización y sanitización estricta de coordenadas geográficas [longitud, latitud]
   let pLng = typeof playerLng === 'number' && !isNaN(playerLng) ? playerLng : INITIAL_LNG;
@@ -267,21 +255,20 @@ export const updateHospitalGuidelineSync = (
       : [],
   };
 
-  if (source1) source1.setData(guidelineData);
-  if (source2) source2.setData(guidelineData);
+  if (source) source.setData(guidelineData);
 
   const visibility = shouldRender ? 'visible' : 'none';
   try {
     if (map.getLayer('hospital-guideline-halo')) {
-      map.setLayoutProperty('hospital-guideline-halo', 'visibility', visibility);
-      if (shouldRender) {
-        map.moveLayer('hospital-guideline-halo');
+      const curVis = map.getLayoutProperty('hospital-guideline-halo', 'visibility');
+      if (curVis !== visibility) {
+        map.setLayoutProperty('hospital-guideline-halo', 'visibility', visibility);
       }
     }
     if (map.getLayer('hospital-guideline-line')) {
-      map.setLayoutProperty('hospital-guideline-line', 'visibility', visibility);
-      if (shouldRender) {
-        map.moveLayer('hospital-guideline-line');
+      const curVis = map.getLayoutProperty('hospital-guideline-line', 'visibility');
+      if (curVis !== visibility) {
+        map.setLayoutProperty('hospital-guideline-line', 'visibility', visibility);
       }
     }
   } catch {
@@ -305,12 +292,16 @@ export const updateHospitalGuidelineSync = (
   }
   try {
     if (map.getLayer('wounded-perimeter-fill')) {
-      map.setLayoutProperty('wounded-perimeter-fill', 'visibility', visibility);
-      if (shouldRender) map.moveLayer('wounded-perimeter-fill');
+      const curVis = map.getLayoutProperty('wounded-perimeter-fill', 'visibility');
+      if (curVis !== visibility) {
+        map.setLayoutProperty('wounded-perimeter-fill', 'visibility', visibility);
+      }
     }
     if (map.getLayer('wounded-perimeter-outline')) {
-      map.setLayoutProperty('wounded-perimeter-outline', 'visibility', visibility);
-      if (shouldRender) map.moveLayer('wounded-perimeter-outline');
+      const curVis = map.getLayoutProperty('wounded-perimeter-outline', 'visibility');
+      if (curVis !== visibility) {
+        map.setLayoutProperty('wounded-perimeter-outline', 'visibility', visibility);
+      }
     }
   } catch {
     // Ignorar
@@ -667,6 +658,13 @@ interface GameMapProps {
   onOpenChest?: () => void;
   onPlayerMarkerClick?: (targetPlayerId: string) => void;
   onMonsterClick?: (monster: Monster) => void;
+  mapHandleRef?: React.MutableRefObject<GameMapHandle | null>;
+}
+
+export interface GameMapHandle {
+  updateLocalPlayerKinematics: (coords: Coordinates) => void;
+  triggerEmergencyGuideline: (playerCoords?: Coordinates) => void;
+  getMapInstance: () => maplibregl.Map | null;
 }
 
 const GameMapComponent: React.FC<GameMapProps> = ({
@@ -697,6 +695,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   onOpenChest,
   onPlayerMarkerClick,
   onMonsterClick,
+  mapHandleRef,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -765,6 +764,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
   // Estado del jugador local: Herido / Incapacitado (visión de emergencia hospitalaria)
   const isMeWounded = isPlayerWoundedOrCritical(myPlayer);
+  const isMeWoundedRef = useRef<boolean>(isMeWounded);
+  isMeWoundedRef.current = isMeWounded;
 
   // ==========================================
   // GESTIÓN ROBUSTA DE FUENTES Y CAPAS GEOJSON RESILIENTES
@@ -968,7 +969,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             type: 'fill',
             source: SOURCE_PLAYER_VISION,
             layout: {
-              visibility: isMeWounded ? 'none' : 'visible',
+              visibility: isMeWoundedRef.current ? 'none' : 'visible',
             },
             paint: {
               'fill-color': '#00f2fe',
@@ -983,7 +984,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             type: 'line',
             source: SOURCE_PLAYER_VISION,
             layout: {
-              visibility: isMeWounded ? 'none' : 'visible',
+              visibility: isMeWoundedRef.current ? 'none' : 'visible',
             },
             paint: {
               'line-color': '#00f2fe',
@@ -1008,7 +1009,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             type: 'line',
             source: 'player-vision',
             layout: {
-              visibility: isMeWounded ? 'none' : 'visible',
+              visibility: isMeWoundedRef.current ? 'none' : 'visible',
             },
             paint: {
               'line-color': '#00ff88',
@@ -1027,20 +1028,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           });
         }
 
-        if (!map.getSource('hospital-guideline')) {
-          map.addSource('hospital-guideline', {
-            type: 'geojson',
-            data: { type: 'FeatureCollection', features: [] },
-          });
-        }
-
         if (!map.getLayer('hospital-guideline-halo')) {
           map.addLayer({
             id: 'hospital-guideline-halo',
             type: 'line',
             source: SOURCE_HOSPITAL_GUIDELINE,
             layout: {
-              visibility: isMeWounded ? 'visible' : 'none',
+              visibility: isMeWoundedRef.current ? 'visible' : 'none',
               'line-join': 'round',
               'line-cap': 'round',
             },
@@ -1058,7 +1052,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             type: 'line',
             source: SOURCE_HOSPITAL_GUIDELINE,
             layout: {
-              visibility: isMeWounded ? 'visible' : 'none',
+              visibility: isMeWoundedRef.current ? 'visible' : 'none',
               'line-join': 'round',
               'line-cap': 'round',
             },
@@ -1084,7 +1078,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             type: 'fill',
             source: 'wounded-perimeter',
             layout: {
-              visibility: isMeWounded ? 'visible' : 'none',
+              visibility: isMeWoundedRef.current ? 'visible' : 'none',
             },
             paint: {
               'fill-color': '#ef4444',
@@ -1099,7 +1093,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             type: 'line',
             source: 'wounded-perimeter',
             layout: {
-              visibility: isMeWounded ? 'visible' : 'none',
+              visibility: isMeWoundedRef.current ? 'visible' : 'none',
               'line-join': 'round',
               'line-cap': 'round',
             },
@@ -1141,14 +1135,32 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         console.warn('[GameMap] Error al configurar capas y fuentes de mapa:', err);
       }
     },
-    [isMeWounded]
+    []
   );
 
-  // Localización defensiva y garantizada de coordenadas del Hospital de Campaña (nunca retorna null)
-  const hospitalCoords = useMemo(
-    () => resolveHospitalCoordinates(structures, center, playAreaRadius, treasureLocation),
-    [structures, center?.lat, center?.lng, playAreaRadius, treasureLocation?.lat, treasureLocation?.lng]
-  );
+  // Localización defensiva, inmutable y garantizada de coordenadas del Hospital de Campaña (nunca retorna null ni se desancla)
+  const cachedHospitalCoordsRef = useRef<Coordinates | null>(null);
+  const hospitalCoords = useMemo<Coordinates>(() => {
+    const resolved = resolveHospitalCoordinates(structures, center, playAreaRadius);
+    if (!cachedHospitalCoordsRef.current) {
+      cachedHospitalCoordsRef.current = resolved;
+      return resolved;
+    }
+    const hasHospitalInStructures = Array.isArray(structures) && structures.some((s) => {
+      const typeStr = String(s.type || '').toLowerCase().trim();
+      const idStr = String(s.id || '').toLowerCase().trim();
+      const nameStr = String(s.name || '').toLowerCase().trim();
+      return typeStr === 'hospital' || idStr.includes('hospital') || nameStr.includes('hospital');
+    });
+    if (hasHospitalInStructures) {
+      cachedHospitalCoordsRef.current = resolved;
+      return resolved;
+    }
+    return cachedHospitalCoordsRef.current;
+  }, [structures, center?.lat, center?.lng, playAreaRadius]);
+
+  const hospitalCoordsRef = useRef<Coordinates>(hospitalCoords);
+  hospitalCoordsRef.current = hospitalCoords;
 
   /**
    * Sincroniza la geometría del límite de la zona de juego con fallbacks robustos y autosuficiencia
@@ -1348,7 +1360,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
    * Sincroniza el radio de visión del jugador sobre el mapa en capas de radar
    */
   const syncPlayerVision = useCallback(
-    (targetMap?: maplibregl.Map) => {
+    (targetMap?: maplibregl.Map, currentLng?: number, currentLat?: number) => {
       const map = targetMap || mapRef.current;
       if (!map || !isMapStyleLoaded(map)) return;
 
@@ -1358,8 +1370,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           | undefined;
         if (!source) return;
 
-        const playerLat = myPlayer?.lat ?? center?.lat ?? INITIAL_LAT;
-        const playerLng = myPlayer?.lng ?? center?.lng ?? INITIAL_LNG;
+        const playerLat = currentLat ?? myPlayer?.lat ?? center?.lat ?? INITIAL_LAT;
+        const playerLng = currentLng ?? myPlayer?.lng ?? center?.lng ?? INITIAL_LNG;
 
         if (
           typeof playerLat !== 'number' ||
@@ -1397,30 +1409,78 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   );
 
   /**
-   * Sincroniza la directriz hacia el hospital de campaña en reposo y en movimiento
+   * Sincronización atómica única para la directriz hacia el hospital de campaña
+   * Unifica la proyección en reposo y en movimiento cinemático a 60 FPS
    */
   const syncHospitalGuideline = useCallback(
-    (targetMap?: maplibregl.Map) => {
+    (targetMap?: maplibregl.Map, currentLng?: number, currentLat?: number) => {
       const map = targetMap || mapRef.current;
       if (!map || !isMapStyleLoaded(map)) return;
 
-      const playerLat = myPlayer?.lat ?? center?.lat ?? INITIAL_LAT;
-      const playerLng = myPlayer?.lng ?? center?.lng ?? INITIAL_LNG;
-      updateHospitalGuidelineSync(map, playerLng, playerLat, isMeWounded, hospitalCoords);
+      const playerLat = currentLat ?? myPlayer?.lat ?? center?.lat ?? INITIAL_LAT;
+      const playerLng = currentLng ?? myPlayer?.lng ?? center?.lng ?? INITIAL_LNG;
+      updateHospitalGuidelineSync(map, playerLng, playerLat, isMeWoundedRef.current, hospitalCoordsRef.current);
     },
-    [myPlayer?.lat, myPlayer?.lng, center?.lat, center?.lng, isMeWounded, hospitalCoords]
+    [myPlayer?.lat, myPlayer?.lng, center?.lat, center?.lng]
   );
 
-  /**
-   * Sincronización directa y síncrona en cada frame para la línea de emergencia al hospital
-   * Elimina cualquier latencia o lag al mover el marcador del jugador
-   */
-  const updateHospitalGuidelineDirect = useCallback(
-    (targetMap: maplibregl.Map, currentLng: number, currentLat: number, isWounded: boolean) => {
-      updateHospitalGuidelineSync(targetMap, currentLng, currentLat, isWounded, hospitalCoords);
-    },
-    [hospitalCoords]
-  );
+  // Exponer interfaz imperativa de alto rendimiento para cinemática a 60 FPS y emergencia a 0 ms
+  useEffect(() => {
+    if (!mapHandleRef) return;
+    mapHandleRef.current = {
+      updateLocalPlayerKinematics: (coords: Coordinates) => {
+        const map = mapRef.current;
+        if (!map) return;
+        const myId = myPlayerRef.current?.id;
+        if (myId) {
+          const marker = playerMarkersRef.current.get(myId);
+          marker?.setLngLat([coords.lng, coords.lat]);
+
+          // Cinemática procedural (giro y cadencia de paso)
+          const kin = playerKinematicsRef.current.get(myId);
+          if (kin) {
+            const mov = computeEntityMovement(coords.lat, coords.lng, kin.anchorLat, kin.anchorLng);
+            if (mov.isMoving) {
+              kin.isMoving = true;
+              kin.facingMode = mov.facingMode;
+              kin.anchorLat = coords.lat;
+              kin.anchorLng = coords.lng;
+
+              if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
+              kin.stopTimeout = setTimeout(() => {
+                kin.isMoving = false;
+                kin.stopTimeout = null;
+                updateKinematicsDOM(`player-bounce-${myId}`, `player-facing-${myId}`, false, kin.facingMode);
+                updatePlayerPetsKinematicsDOM(myId, myPlayerRef.current?.pets, false, kin.facingMode);
+              }, 500);
+
+              updateKinematicsDOM(`player-bounce-${myId}`, `player-facing-${myId}`, true, kin.facingMode);
+              updatePlayerPetsKinematicsDOM(myId, myPlayerRef.current?.pets, true, kin.facingMode);
+            }
+          }
+        }
+
+        // Sincronizar directriz médica inmediatamente si está herido a 60 FPS
+        if (isMeWoundedRef.current) {
+          updateHospitalGuidelineSync(map, coords.lng, coords.lat, true, hospitalCoordsRef.current);
+        }
+      },
+      triggerEmergencyGuideline: (playerCoords?: Coordinates) => {
+        const map = mapRef.current;
+        if (!map) return;
+        const pLat = playerCoords?.lat ?? myPlayerRef.current?.lat ?? center?.lat ?? INITIAL_LAT;
+        const pLng = playerCoords?.lng ?? myPlayerRef.current?.lng ?? center?.lng ?? INITIAL_LNG;
+        updateHospitalGuidelineSync(map, pLng, pLat, true, hospitalCoordsRef.current);
+      },
+      getMapInstance: () => mapRef.current,
+    };
+
+    return () => {
+      if (mapHandleRef) {
+        mapHandleRef.current = null;
+      }
+    };
+  }, [mapHandleRef, center?.lat, center?.lng]);
 
   /**
    * 3. SINCRONIZACIÓN REACTIVA ESTRICTA DE ENTIDADES ACTIVAS
@@ -3159,8 +3219,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         playerMarkersRef.current.set(p.id, marker);
 
         if (isMe) {
-          updateHospitalGuidelineDirect(map, lng, lat, isMeWounded);
-          syncHospitalGuideline(map);
+          syncHospitalGuideline(map, lng, lat);
           syncPlayerVision(map);
         }
 
@@ -3171,8 +3230,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const marker = playerMarkersRef.current.get(p.id);
         marker?.setLngLat([lng, lat]);
         if (isMe) {
-          updateHospitalGuidelineDirect(map, lng, lat, isMeWounded);
-          syncHospitalGuideline(map);
+          syncHospitalGuideline(map, lng, lat);
           syncPlayerVision(map);
         }
         const el = marker?.getElement();
@@ -3269,7 +3327,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }
       }
     });
-  }, [players, myPlayer, mapLoaded, center?.lat, center?.lng, isMeWounded, updateHospitalGuidelineDirect, syncHospitalGuideline, syncPlayerVision]);
+  }, [players, myPlayer, mapLoaded, center?.lat, center?.lng, isMeWounded, syncHospitalGuideline, syncPlayerVision]);
 
   // ==========================================
   // 8.5. MASCOTAS ACOMPAÑANTES: Integradas directamente en el DOM del jugador
@@ -3422,6 +3480,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     const applyMapLayerVisibility = () => {
       if (!isMapStyleLoaded(map)) return;
 
+      // Overlays tácticos de emergencia (Línea directa al hospital y círculo perimetral) priorizados a 0 ms
+      updateEmergencyOverlays(map);
+
       const areaLayers = [
         LAYER_CIRCLES_FILL,
         LAYER_CIRCLES_LINE,
@@ -3450,15 +3511,16 @@ const GameMapComponent: React.FC<GameMapProps> = ({
               layerId.startsWith('interaction-') ||
               layerId.startsWith('treasure-');
             const shouldHide = isMeWounded && (isPlayerVision || isLegacyNonHospital);
-            map.setLayoutProperty(layerId, 'visibility', shouldHide ? 'none' : 'visible');
+            const targetVis = shouldHide ? 'none' : 'visible';
+            const curVis = map.getLayoutProperty(layerId, 'visibility');
+            if (curVis !== targetVis) {
+              map.setLayoutProperty(layerId, 'visibility', targetVis);
+            }
           }
         } catch (err) {
           console.warn(`[GameMap] Aviso al consultar capa ${layerId}:`, err);
         }
       });
-
-      // Overlays tácticos de emergencia (Línea directa al hospital y círculo perimetral)
-      updateEmergencyOverlays(map);
     };
 
     if (!isMapStyleLoaded(map)) {
