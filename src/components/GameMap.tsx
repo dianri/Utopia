@@ -2562,22 +2562,22 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const renderMonsterContent = (defeated: boolean) => {
         if (defeated) {
           return `
-            <div class="marker-container flex flex-col items-center select-none cursor-pointer">
-              <!-- Icono atenuado con aura pulsante de herido -->
-              <div class="monster-wounded-hazard relative flex items-center justify-center">
+            <div class="marker-container flex flex-col items-center select-none pointer-events-none">
+              <!-- Cadáver táctico: derribado en el suelo, desaturado al 100%, sin brillos ni halos -->
+              <div class="monster-corpse-marker relative flex items-center justify-center pointer-events-none">
                 <img 
                   src="${visual.icon || `/assets/icons/monsters/monster-${monsterTypeStr}.png`}" 
                   alt="${m.name || visual.label}"
-                  width="48" 
-                  height="48" 
-                  style="width: 48px !important; height: 48px !important; max-width: 48px !important; max-height: 48px !important; object-fit: contain;" 
-                  class="grayscale-[30%] contrast-125"
+                  width="44" 
+                  height="44" 
+                  style="width: 44px !important; height: 44px !important; max-width: 44px !important; max-height: 44px !important; object-fit: contain;" 
+                  class="select-none pointer-events-none"
                 />
               </div>
 
-              <!-- Etiqueta de advertencia carmesí en lugar de barra de vida normal -->
-              <span class="mt-1 px-2 py-0.5 rounded bg-red-950/90 border border-red-500/80 text-[9px] font-black tracking-wider text-red-200 uppercase whitespace-nowrap shadow-lg backdrop-blur-sm">
-                ⚠️ ${m.name || visual.label} (HERIDO)
+              <!-- Insignia táctica sobria de baja neutralizada (fondo carbón, texto apagado) -->
+              <span class="mt-1 px-2 py-0.5 rounded bg-slate-900/90 border border-slate-700/80 text-[9px] font-mono font-bold tracking-wider text-slate-400 uppercase whitespace-nowrap shadow-md backdrop-blur-sm pointer-events-none">
+                💀 ${m.name || visual.label} (ABATIDO)
               </span>
             </div>
           `;
@@ -2622,12 +2622,18 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.className = 'map-marker-anchor marker-monster monster-map-marker';
         el.setAttribute('data-entity', 'monster');
         el.setAttribute('data-defeated', isDefeated ? 'true' : 'false');
-        el.style.pointerEvents = 'auto';
-        el.style.cursor = 'pointer';
-        el.onclick = (e) => {
-          e.stopPropagation();
-          onMonsterClickRef.current?.(m);
-        };
+        if (isDefeated) {
+          el.style.pointerEvents = 'none';
+          el.style.cursor = 'default';
+          el.onclick = null;
+        } else {
+          el.style.pointerEvents = 'auto';
+          el.style.cursor = 'pointer';
+          el.onclick = (e) => {
+            e.stopPropagation();
+            onMonsterClickRef.current?.(m);
+          };
+        }
         el.innerHTML = renderMonsterContent(isDefeated);
 
         marker = new maplibregl.Marker({
@@ -2644,12 +2650,18 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (el) {
           el.className = 'map-marker-anchor marker-monster monster-map-marker';
           el.setAttribute('data-entity', 'monster');
-          el.style.pointerEvents = 'auto';
-          el.style.cursor = 'pointer';
-          el.onclick = (e) => {
-            e.stopPropagation();
-            onMonsterClickRef.current?.(m);
-          };
+          if (isDefeated) {
+            el.style.pointerEvents = 'none';
+            el.style.cursor = 'default';
+            el.onclick = null;
+          } else {
+            el.style.pointerEvents = 'auto';
+            el.style.cursor = 'pointer';
+            el.onclick = (e) => {
+              e.stopPropagation();
+              onMonsterClickRef.current?.(m);
+            };
+          }
 
           const wasDefeated = el.getAttribute('data-defeated') === 'true';
           if (wasDefeated !== isDefeated) {

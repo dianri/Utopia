@@ -1713,7 +1713,18 @@ export const App: React.FC = () => {
               ? monstersRef.current
               : (monsterRef.current ? [monsterRef.current] : []);
           const isGuarded = allActiveMonsters.some((m) => {
-            if (!isMonsterAlive(m) || (m as any).isDead) return false;
+            if (
+        !isMonsterAlive(m) ||
+        (m as any).isDead ||
+        m.status === 'defeated' ||
+        m.status === 'wounded' ||
+        (m as any).state === 'defeated' ||
+        (m as any).state === 'wounded' ||
+        (m as any).state === 'dead' ||
+        (m.hp !== undefined && m.hp <= 0)
+      ) {
+        return false;
+      }
             const distMonsterToChest = getDistanceMeters(
               { lat: m.lat, lng: m.lng },
               { lat: targetChestLat, lng: targetChestLng }
@@ -2914,7 +2925,18 @@ export const App: React.FC = () => {
     // COMPROBACIÓN DE MONSTRUO GUARDIÁN EN EL PERÍMETRO DEL COFRE (<= 25m)
     const allActiveMonsters = monsters && monsters.length > 0 ? monsters : (monster ? [monster] : []);
     const isGuarded = allActiveMonsters.some((m) => {
-      if (!isMonsterAlive(m) || (m as any).isDead) return false;
+      if (
+        !isMonsterAlive(m) ||
+        (m as any).isDead ||
+        m.status === 'defeated' ||
+        m.status === 'wounded' ||
+        (m as any).state === 'defeated' ||
+        (m as any).state === 'wounded' ||
+        (m as any).state === 'dead' ||
+        (m.hp !== undefined && m.hp <= 0)
+      ) {
+        return false;
+      }
       const distMonsterToChest = getDistanceMeters(
         { lat: m.lat, lng: m.lng },
         treasureCoord
@@ -2989,7 +3011,18 @@ export const App: React.FC = () => {
       // Comprobar si hay un monstruo hostil defendiendo el perímetro del cofre (<= 25m)
       const allActiveMonsters = monsters && monsters.length > 0 ? monsters : (monster ? [monster] : []);
       const isGuarded = allActiveMonsters.some((m) => {
-        if (!isMonsterAlive(m) || (m as any).isDead) return false;
+        if (
+        !isMonsterAlive(m) ||
+        (m as any).isDead ||
+        m.status === 'defeated' ||
+        m.status === 'wounded' ||
+        (m as any).state === 'defeated' ||
+        (m as any).state === 'wounded' ||
+        (m as any).state === 'dead' ||
+        (m.hp !== undefined && m.hp <= 0)
+      ) {
+        return false;
+      }
         const distMonsterToChest = getDistanceMeters(
           { lat: m.lat, lng: m.lng },
           { lat: activeChestLat, lng: activeChestLng }
@@ -3057,7 +3090,18 @@ export const App: React.FC = () => {
     if (!activeChestLat || !activeChestLng) return false;
     const allActiveMonsters = monsters && monsters.length > 0 ? monsters : (monster ? [monster] : []);
     return allActiveMonsters.some((m) => {
-      if (!isMonsterAlive(m) || (m as any).isDead) return false;
+      if (
+        !isMonsterAlive(m) ||
+        (m as any).isDead ||
+        m.status === 'defeated' ||
+        m.status === 'wounded' ||
+        (m as any).state === 'defeated' ||
+        (m as any).state === 'wounded' ||
+        (m as any).state === 'dead' ||
+        (m.hp !== undefined && m.hp <= 0)
+      ) {
+        return false;
+      }
       const distMonsterToChest = getDistanceMeters(
         { lat: m.lat, lng: m.lng },
         { lat: activeChestLat, lng: activeChestLng }
