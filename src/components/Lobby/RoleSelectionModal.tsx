@@ -19,7 +19,7 @@ export const ROLE_OPTIONS: RoleConfig[] = [
   },
   {
     id: 'medic',
-    label: 'Médico',
+    label: 'Médico de Campo',
     desc: 'Reanima en 10s (vs 20s) y doble radio de auxilio',
     imageSrc: '/assets/icons/roles/role-medic.png',
     color: 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300',
