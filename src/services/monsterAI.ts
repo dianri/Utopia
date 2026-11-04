@@ -234,7 +234,7 @@ export class MonsterAIController {
       const targetCoord: Coordinates = { lat: targetPlayer.lat, lng: targetPlayer.lng };
       const distToTarget = getDistanceMeters(monster, targetCoord);
 
-      // Si está a distancia de ataque (< 15 metros)
+      // Si está a distancia física válida (<= 28m) y en rango cuerpo a cuerpo (<= 15m)
       if (distToTarget <= 15) {
         if (now - this.lastAttackTimestamp >= 1200) {
           this.lastAttackTimestamp = now;

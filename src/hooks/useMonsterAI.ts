@@ -1,6 +1,8 @@
 import { useEffect, useRef, useMemo, useState } from 'react';
 import type { Monster, Player, Coordinates, GameRoom, PlayerStatus } from '../types/game';
+import { isMonsterAlive } from '../types/game';
 import { MonsterAIController } from '../services/monsterAI';
+import { getDistanceMeters } from '../services/geoUtils';
 import { soundEffects } from '../services/soundEffects';
 import { supabase } from '../lib/supabase';
 
@@ -272,15 +274,44 @@ export function useMonsterAI({
           ai.setPlayArea(centerCoords, room.playAreaRadius);
         }
 
+        const isMNeutralized =
+          !isMonsterAlive(m) ||
+          m.hp <= 0 ||
+          m.status === 'wounded' ||
+          m.status === 'defeated' ||
+          m.state === 'dead' ||
+          m.state === 'wounded' ||
+          m.state === 'defeated';
+
         const result = ai.update(m, playersRef.current, isContest);
         updatedMonsters.push(result.updatedMonster);
 
-        // Si el monstruo atacó a un jugador en el mapa
-        if (result.attackedPlayerId && result.attackDamage > 0) {
+        // FILTRO 1 (Estado): Si el monstruo está neutralizado/herido, NUNCA puede infligir daño
+        if (!isMNeutralized && result.attackedPlayerId && result.attackDamage > 0) {
           const victim = playersRef.current.find((p) => p.id === result.attackedPlayerId);
-          if (victim) {
-            // Si el jugador local está en la arena de combate, la arena ya ejecuta su propio bucle de daño periódico
+          if (victim && victim.lat != null && victim.lng != null) {
+            // FILTRO 2 (Distancia física): El monstruo debe estar a una distancia física estrictamente válida (<= 28m)
+            const distToVictim = getDistanceMeters(
+              { lat: m.lat, lng: m.lng },
+              { lat: victim.lat, lng: victim.lng }
+            );
+            if (distToVictim > 28) {
+              continue; // Descartar ataque fantasma fuera de distancia real
+            }
+
+            // FILTRO 3 (Bloqueo por Duelo Activo):
+            // Si el jugador local está en la arena de combate, la arena ya gestiona su propio combate 1v1.
+            // Ningún monstruo exterior puede dañarle mientras esté en la arena.
             if (victim.id === myPlayerRef.current?.id && isCombatArenaOpenRef.current) {
+              continue;
+            }
+
+            // Si el jugador objetivo está herido de muerte o en zona segura, ignorar
+            if (
+              victim.status === 'critically_wounded' ||
+              victim.isCriticallyWounded ||
+              victim.insideBuildingId
+            ) {
               continue;
             }
 
