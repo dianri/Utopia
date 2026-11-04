@@ -143,6 +143,8 @@ export interface Player {
 
 export type MonsterState = 'patrol' | 'chase' | 'enraged' | 'dead' | 'defend_chest' | 'defeated' | 'wounded';
 
+export type MonsterStatus = 'idle' | 'patrolling' | 'chasing' | 'combat' | 'wounded' | 'defeated';
+
 export type MonsterType = 'stalker' | 'alpha' | 'colossus';
 
 export interface Monster {
@@ -154,12 +156,16 @@ export interface Monster {
   hp: number;
   maxHp: number;
   state: MonsterState;
+  status?: MonsterStatus;
   targetPlayerId: string | null;
   speedMps: number;
   respawnTimeRemaining?: number; // 60s countdown
   isEnraged: boolean;
   lastAttackTime?: number;
   isRespawning?: boolean;
+  defeatedAt?: number;
+  defeatedBy?: string; // Nickname o ID del jugador que lo abatió
+  isGuardingChest?: boolean;
 }
 
 export const isMonsterAlive = (monster?: Monster | null): boolean => {
@@ -169,6 +175,8 @@ export const isMonsterAlive = (monster?: Monster | null): boolean => {
     monster.state !== 'dead' &&
     monster.state !== 'defeated' &&
     monster.state !== 'wounded' &&
+    monster.status !== 'wounded' &&
+    monster.status !== 'defeated' &&
     !monster.isRespawning &&
     !(monster.respawnTimeRemaining && monster.respawnTimeRemaining > 0)
   );

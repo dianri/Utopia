@@ -105,11 +105,19 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
     isCombatFinished,
   });
 
+  const isMonsterNeutralized =
+    monster.hp <= 0 ||
+    monster.state === 'dead' ||
+    monster.state === 'defeated' ||
+    monster.state === 'wounded' ||
+    monster.status === 'wounded' ||
+    monster.status === 'defeated';
+
   // ==========================================
   // IMPACTO ACERTADO: DISPARO DIRECTO SOBRE EL BLANCO
   // ==========================================
   const handleDirectTargetStrike = useCallback(() => {
-    if (!isOpen || monster.hp <= 0 || monster.state === 'dead') return;
+    if (!isOpen || isMonsterNeutralized) return;
 
     const now = Date.now();
     const fireInterval = equippedWeapon.cadenceMs || equippedWeapon.fireRateMs || 400;
@@ -164,7 +172,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   // DISPARO FALLIDO: TOQUE EN EL ÁREA VACÍA DE LA ARENA
   // ==========================================
   const handleMissClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isOpen || monster.hp <= 0 || monster.state === 'dead') return;
+    if (!isOpen || isMonsterNeutralized) return;
 
     const now = Date.now();
     const fireInterval = equippedWeapon.cadenceMs || equippedWeapon.fireRateMs || 400;
@@ -439,13 +447,13 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
 
   // Si el monstruo muere durante el combate, cerrar tras breve celebración
   useEffect(() => {
-    if (isOpen && (monster.hp <= 0 || monster.state === 'dead')) {
+    if (isOpen && isMonsterNeutralized) {
       const timer = setTimeout(() => {
         onClose();
       }, 1200);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, monster.hp, monster.state, onClose]);
+  }, [isOpen, isMonsterNeutralized, onClose]);
 
   if (!isOpen) return null;
 
