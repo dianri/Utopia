@@ -70,9 +70,9 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
 
   const lastAttackTimeRef = useRef<number>(0);
 
-  // Motor de Evasión Procedimental del Adversario (PvP)
+  // Motor de Evasión Procedimental del Adversario (PvP - Puntería Activa y Escala Dinámica)
   const isCombatFinished = !isOpen || duelOutcome !== 'ongoing' || opponentHp <= 0;
-  const { targetOffset, isHitReaction, evasionSpeedClass, triggerHitReaction } = useEnemyEvasion({
+  const { targetOffset, targetScale, isHitReaction, evasionSpeedClass, triggerHitReaction } = useEnemyEvasion({
     enemyType: opponentPlayer.role,
     isCombatFinished,
   });
@@ -613,21 +613,23 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
                 </div>
               ))}
 
-              {/* CONTENEDOR DEL OPONENTE EN MOVIMIENTO EVASIVO */}
+              {/* CONTENEDOR DEL OPONENTE EN MOVIMIENTO EVASIVO Y ESCALA DINÁMICA */}
               <div
-                className={`absolute will-change-transform transition-transform ease-out cursor-pointer z-10 ${evasionSpeedClass} ${
-                  isHitReaction ? 'scale-90 brightness-150 animate-hitShake' : 'scale-100'
+                className={`absolute will-change-transform transition-all ease-out cursor-pointer z-10 ${evasionSpeedClass} ${
+                  isHitReaction ? 'brightness-150 animate-hitShake' : ''
                 }`}
                 style={{
-                  transform: `translate3d(${targetOffset.x}px, ${targetOffset.y}px, 0)`,
+                  transform: `translate3d(${targetOffset.x}px, ${targetOffset.y}px, 0) scale(${
+                    isHitReaction ? Number((targetScale * 0.88).toFixed(2)) : targetScale
+                  })`,
                 }}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleDirectTargetStrike();
                 }}
               >
-                {/* Halo de blanco / Retícula hostil sobre la figura */}
-                <div className="relative group p-3 flex items-center justify-center">
+                {/* Halo de blanco / Retícula hostil compacta sobre la figura */}
+                <div className="relative group p-2 flex items-center justify-center">
                   {/* Círculo indicador de impacto giratorio */}
                   <div className="absolute inset-0 rounded-full border-2 border-dashed border-red-500/40 animate-spinSlow group-hover:border-red-400 pointer-events-none" />
 
@@ -638,7 +640,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
                   <img
                     src={getRoleAvatar(opponentPlayer.role)}
                     alt={opponentPlayer.nickname}
-                    className="w-28 h-28 sm:w-32 sm:h-32 object-contain drop-shadow-[0_0_16px_rgba(239,68,68,0.8)] pointer-events-auto select-none"
+                    className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-[0_0_16px_rgba(239,68,68,0.8)] pointer-events-auto select-none"
                     draggable={false}
                   />
 
