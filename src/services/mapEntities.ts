@@ -1,4 +1,4 @@
-import type { Pet, PetType, WildPet, Coordinates, SupplyCrate, CrateType, Weapon, Monster } from '../types/game';
+import type { Pet, PetType, WildPet, Coordinates, SupplyCrate, CrateType, Weapon, Monster, DroppedItem } from '../types/game';
 import { getRandomPointInCircle, getDistanceMeters, getBearing, getDestinationPoint } from './geoUtils';
 import { WEAPON_REGISTRY } from './combatEngine';
 
@@ -21,6 +21,30 @@ export const MAX_UNCLAIMED_LOOT = 3;
  * Límite máximo de mascotas silvestres libres simultáneamente en el mapa (control de densidad)
  */
 export const MAX_UNCLAIMED_WILD_PETS = 3;
+
+/**
+ * Determina si una mascota silvestre está activa en el terreno y disponible para adopción
+ */
+export function isWildPetActive(pet: WildPet | null | undefined): boolean {
+  if (!pet) return false;
+  return !pet.isTamed && !pet.isCollected;
+}
+
+/**
+ * Determina si una caja de suministros o airdrop está activa en el mapa y no ha sido abierta o saqueada
+ */
+export function isSupplyCrateActive(crate: SupplyCrate | null | undefined): boolean {
+  if (!crate) return false;
+  return !crate.opened && !crate.isCollected && !crate.looted;
+}
+
+/**
+ * Determina si un objeto/arma descartada en el suelo está activo y no ha sido recogido
+ */
+export function isDroppedItemActive(item: DroppedItem | null | undefined): boolean {
+  if (!item) return false;
+  return !item.isCollected;
+}
 
 export interface PetConfig {
   type: PetType;
