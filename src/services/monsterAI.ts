@@ -61,7 +61,7 @@ export class MonsterAIController {
 
     const now = Date.now();
 
-    // 1. GESTIÓN DE MONSTRUO HERIDO / DERROTADO (INMOVILIZACIÓN Y DESACTIVACIÓN DE AGRO)
+    // 1. GESTIÓN DE MONSTRUO HERIDO Y TEMPORIZADOR DE REANIMACIÓN TÁCTICA (35s)
     if (
       monster.hp <= 0 ||
       monster.state === 'dead' ||
@@ -70,11 +70,41 @@ export class MonsterAIController {
       monster.status === 'wounded' ||
       monster.status === 'defeated'
     ) {
+      const REVIVAL_COOLDOWN_MS = 35000; // 35 segundos de convalecencia táctica
+      const defeatedTimestamp = monster.defeatedAt || now;
+      const elapsedSinceDefeat = now - defeatedTimestamp;
+
+      // Si ha transcurrido el tiempo de convalecencia: ¡REANIMACIÓN COMPLETA!
+      if (elapsedSinceDefeat >= REVIVAL_COOLDOWN_MS) {
+        result.justRespawned = true;
+        this.hadEnraged = false;
+        this.forcedTargetPlayerId = null;
+
+        result.updatedMonster = {
+          ...monster,
+          hp: monster.maxHp,
+          status: 'patrolling',
+          state: 'patrol',
+          defeatedAt: undefined,
+          defeatedBy: undefined,
+          respawnTimeRemaining: 0,
+          targetPlayerId: null,
+          isGuardingChest: true,
+          isEnraged: false,
+          isRespawning: false,
+        };
+        return result;
+      }
+
+      // Convalecencia activa: Inmovilizado, sin agresividad y con cuenta regresiva
+      const remainingSec = Math.max(1, Math.ceil((REVIVAL_COOLDOWN_MS - elapsedSinceDefeat) / 1000));
       result.updatedMonster = {
         ...monster,
         hp: 0,
         status: 'wounded',
         state: 'wounded',
+        defeatedAt: defeatedTimestamp,
+        respawnTimeRemaining: remainingSec,
         targetPlayerId: null,
         isGuardingChest: false,
         isEnraged: false,

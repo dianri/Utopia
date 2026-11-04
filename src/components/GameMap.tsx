@@ -2851,11 +2851,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (defeated) {
           return `
             <div class="marker-container flex flex-col items-center select-none pointer-events-none">
-              <!-- Cuerpo caído con alerta pulsante de reanimación inminente -->
+              <!-- Cuerpo convaleciente con alerta pulsante de reanimación inminente -->
               <div class="monster-corpse-marker relative flex items-center justify-center pointer-events-none">
                 <img 
                   src="${visual.icon || `/assets/icons/monsters/monster-${monsterTypeStr}.png`}" 
-                  alt="💀 ABATIDO"
+                  alt="⚠️ HERIDO"
                   width="46" 
                   height="46" 
                   style="width: 46px !important; height: 46px !important; max-width: 46px !important; max-height: 46px !important; object-fit: contain;" 
@@ -2863,9 +2863,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                 />
               </div>
 
-              <!-- Insignia táctica compacta de baja neutralizada -->
-              <span class="mt-1 px-2 py-0.5 rounded-md bg-slate-950/90 border border-red-500/70 text-[9px] font-mono font-black tracking-wider text-red-200 uppercase whitespace-nowrap shadow-lg shadow-red-950/50 backdrop-blur-sm pointer-events-none">
-                💀 ABATIDO
+              <!-- Insignia táctica compacta de monstruo herido (reanimación inminente) -->
+              <span class="mt-1 px-2 py-0.5 rounded-md bg-slate-950/90 border border-red-500/80 text-[9px] font-mono font-black tracking-wider text-red-200 uppercase whitespace-nowrap shadow-lg shadow-red-950/60 backdrop-blur-sm pointer-events-none flex items-center gap-1">
+                ⚠️ HERIDO
               </span>
             </div>
           `;
