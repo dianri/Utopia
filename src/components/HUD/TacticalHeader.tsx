@@ -40,7 +40,7 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
   onLeaveGame,
 }) => {
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
-  const hpPercent = Math.max(0, Math.min(100, (myPlayer.hp / myPlayer.maxHp) * 100));
+  const hpPercent = Math.max(0, Math.min(100, (myPlayer.hp / (myPlayer.maxHp || 300)) * 100));
   const alivePlayers = players.filter((p) => p.isAlive).length;
 
   const roleLabels: Record<PlayerRole, string> = {
@@ -128,7 +128,7 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
           <div className="flex items-center gap-1.5 min-w-[70px]">
             <Activity className={`w-4 h-4 ${myPlayer.isAlive ? (hpPercent < 30 ? 'text-hud-red animate-pulse' : 'text-hud-green') : 'text-hud-muted'}`} />
             <span className="text-xs font-mono font-bold">
-              {myPlayer.isAlive ? `${myPlayer.hp}/${myPlayer.maxHp}` : 'CAÍDO'}
+              {myPlayer.isAlive ? `${myPlayer.hp}/${myPlayer.maxHp || 300}` : 'CAÍDO'}
             </span>
           </div>
 

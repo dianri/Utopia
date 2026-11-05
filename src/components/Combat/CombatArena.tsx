@@ -87,7 +87,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
   const effectiveDamage = isMarksmanBoosted ? Math.round(weaponStats.damage * 1.25) : weaponStats.damage;
 
   const monsterHpPercent = Math.max(0, Math.min(100, Math.round((monster.hp / monster.maxHp) * 100)));
-  const playerHpPercent = Math.max(0, Math.min(100, Math.round((myPlayer.hp / myPlayer.maxHp) * 100)));
+  const playerHpPercent = Math.max(0, Math.min(100, Math.round((myPlayer.hp / (myPlayer.maxHp || 300)) * 100)));
 
   const visual = getMonsterVisualConfig(monster);
 
@@ -702,7 +702,7 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
               TU ESTADO ({myPlayer.nickname})
             </span>
             <span className={`font-black ${myPlayer.hp <= 30 ? 'text-red-400 animate-pulse' : 'text-emerald-400'}`}>
-              {myPlayer.hp} / {myPlayer.maxHp} HP
+              {myPlayer.hp} / {myPlayer.maxHp || 300} HP
             </span>
           </div>
           <div className="w-full h-2.5 rounded-full bg-slate-800 overflow-hidden border border-slate-700">

@@ -1,10 +1,12 @@
-import type {
-  Weapon,
-  PlayerRole,
-  SupplyCrate,
-  CrateType,
-  WeaponType,
-  InventoryItem,
+import {
+  type Weapon,
+  type PlayerRole,
+  type SupplyCrate,
+  type CrateType,
+  type WeaponType,
+  type InventoryItem,
+  PLAYER_BASE_HP,
+  TANK_MAX_HP,
 } from '../types/game';
 
 export const WEAPON_TIER_CONFIG: Record<WeaponType, Omit<InventoryItem, 'id'>> = {
@@ -241,13 +243,13 @@ export function getModifiedWeaponStats(weapon: Weapon, role: PlayerRole): { dama
 }
 
 /**
- * Retorna la vida máxima base según el rol
+ * Retorna la vida máxima base según el rol (Tanque: +50% HP base, 450 HP; Otros: 300 HP base)
  */
 export function getMaxHpForRole(role: PlayerRole): number {
   if (role === 'tank') {
-    return 150; // Tanque: +50% HP base
+    return TANK_MAX_HP; // Tanque: +50% HP base (450 HP)
   }
-  return 100;
+  return PLAYER_BASE_HP; // Estándar: 300 HP base
 }
 
 /**

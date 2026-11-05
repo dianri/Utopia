@@ -46,8 +46,8 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
   onFlee,
   onClose,
 }) => {
-  const [opponentHp, setOpponentHp] = useState<number>(opponentPlayer.hp || 100);
-  const [myHp, setMyHp] = useState<number>(myPlayer.hp || 100);
+  const [opponentHp, setOpponentHp] = useState<number>(opponentPlayer.hp ?? (opponentPlayer.maxHp || 300));
+  const [myHp, setMyHp] = useState<number>(myPlayer.hp ?? (myPlayer.maxHp || 300));
   const [isAttacking, setIsAttacking] = useState<boolean>(false);
   const [screenShake, setScreenShake] = useState<boolean>(false);
   const [cardHitAnim, setCardHitAnim] = useState<boolean>(false);
@@ -68,6 +68,9 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
   const myHpRef = useRef<number>(myHp);
   myHpRef.current = myHp;
 
+  const duelOutcomeRef = useRef<'ongoing' | 'victory' | 'defeat' | 'fled'>('ongoing');
+  duelOutcomeRef.current = duelOutcome;
+
   const lastAttackTimeRef = useRef<number>(0);
 
   // Motor de Evasión Procedimental del Adversario (PvP - Puntería Activa y Escala Dinámica)
@@ -87,11 +90,16 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
     if (isOpen) {
       soundEffects.playAlarm();
       soundEffects.vibrate([100, 50, 100]);
-      setOpponentHp(opponentPlayer.hp || 100);
-      setMyHp(myPlayer.hp || 100);
+      const initialOpponentHp = opponentPlayer.hp ?? (opponentPlayer.maxHp || 300);
+      const initialMyHp = myPlayer.hp ?? (myPlayer.maxHp || 300);
+      setOpponentHp(initialOpponentHp);
+      setMyHp(initialMyHp);
+      opponentHpRef.current = initialOpponentHp;
+      myHpRef.current = initialMyHp;
+      duelOutcomeRef.current = 'ongoing';
       setDuelOutcome('ongoing');
     }
-  }, [isOpen, opponentPlayer.hp, myPlayer.hp]);
+  }, [isOpen, opponentPlayer.hp, opponentPlayer.maxHp, myPlayer.hp, myPlayer.maxHp]);
 
   // Hook de combate PvP sincronizado
   const { sendAttack, sendPetAttack, sendHpSync, sendDefeat, sendFlee, isConnected } = usePvPCombat({
@@ -99,7 +107,16 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
     myPlayerId: myPlayer.id,
     isOpen,
     onReceiveAttack: (payload) => {
-      if (duelOutcome !== 'ongoing') return;
+      // Mitigación estricta de bajas simultáneas / doble KO:
+      // Si el duelo ya concluyó o el oponente/nosotros ya estamos a 0 HP, cancelar cualquier daño póstumo
+      if (
+        !isOpen ||
+        duelOutcomeRef.current !== 'ongoing' ||
+        opponentHpRef.current <= 0 ||
+        myHpRef.current <= 0
+      ) {
+        return;
+      }
       const dmg = payload.damage;
       const nextHp = Math.max(0, myHpRef.current - dmg);
       setMyHp(nextHp);
@@ -126,6 +143,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
       onPlayerDamaged(nextHp, opponentPlayerRef.current.nickname);
 
       if (nextHp <= 0) {
+        duelOutcomeRef.current = 'defeat';
         setDuelOutcome('defeat');
         const winnerId = opponentPlayerRef.current.id;
         const loserId = myPlayerRef.current.id;
@@ -147,7 +165,15 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
       }
     },
     onReceivePetAttack: (payload) => {
-      if (duelOutcome !== 'ongoing') return;
+      // Mitigación estricta de bajas simultáneas / doble KO en ataques de mascotas
+      if (
+        !isOpen ||
+        duelOutcomeRef.current !== 'ongoing' ||
+        opponentHpRef.current <= 0 ||
+        myHpRef.current <= 0
+      ) {
+        return;
+      }
       const dmg = payload.damage;
       const nextHp = Math.max(0, myHpRef.current - dmg);
       setMyHp(nextHp);
@@ -176,6 +202,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
       onPlayerDamaged(nextHp, opponentPlayerRef.current.nickname);
 
       if (nextHp <= 0) {
+        duelOutcomeRef.current = 'defeat';
         setDuelOutcome('defeat');
         const winnerId = opponentPlayerRef.current.id;
         const loserId = myPlayerRef.current.id;
@@ -199,7 +226,8 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
       if (payload.playerId === opponentPlayerRef.current.id) {
         setOpponentHp(payload.hp);
         opponentHpRef.current = payload.hp;
-        if (payload.hp <= 0 && duelOutcome === 'ongoing') {
+        if (payload.hp <= 0 && duelOutcomeRef.current === 'ongoing') {
+          duelOutcomeRef.current = 'victory';
           setDuelOutcome('victory');
           soundEffects.playVictoryFanfare();
           setTimeout(() => {
@@ -212,20 +240,26 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
       if (payload.winnerId === myPlayerRef.current.id) {
         setOpponentHp(0);
         opponentHpRef.current = 0;
-        setDuelOutcome('victory');
-        soundEffects.playVictoryFanfare();
-        soundEffects.vibrate([150, 100, 200]);
-        setTimeout(() => {
-          onPvPVictory(opponentPlayerRef.current);
-        }, 1800);
+        if (duelOutcomeRef.current === 'ongoing') {
+          duelOutcomeRef.current = 'victory';
+          setDuelOutcome('victory');
+          soundEffects.playVictoryFanfare();
+          soundEffects.vibrate([150, 100, 200]);
+          setTimeout(() => {
+            onPvPVictory(opponentPlayerRef.current);
+          }, 1800);
+        }
       }
     },
     onOpponentFlee: () => {
-      setDuelOutcome('victory');
-      soundEffects.playRadarPing();
-      setTimeout(() => {
-        onClose();
-      }, 1500);
+      if (duelOutcomeRef.current === 'ongoing') {
+        duelOutcomeRef.current = 'victory';
+        setDuelOutcome('victory');
+        soundEffects.playRadarPing();
+        setTimeout(() => {
+          onClose();
+        }, 1500);
+      }
     },
   });
 
@@ -250,7 +284,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
   // IMPACTO ACERTADO: DISPARO DIRECTO SOBRE EL RIVAL
   // ==========================================
   const handleDirectTargetStrike = useCallback(() => {
-    if (!isOpen || duelOutcome !== 'ongoing' || opponentHpRef.current <= 0) return;
+    if (!isOpen || duelOutcomeRef.current !== 'ongoing' || opponentHpRef.current <= 0 || myHpRef.current <= 0) return;
 
     const now = Date.now();
     const fireInterval = equippedWeapon.cadenceMs || equippedWeapon.fireRateMs || 400;
@@ -299,6 +333,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
     onOpponentDamaged?.(nextOpponentHp);
 
     if (nextOpponentHp <= 0) {
+      duelOutcomeRef.current = 'victory';
       setDuelOutcome('victory');
       const winnerId = myPlayerRef.current.id;
       const loserId = opponentPlayerRef.current.id;
@@ -325,13 +360,13 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
       setIsAttacking(false);
       setCardHitAnim(false);
     }, 200);
-  }, [isOpen, duelOutcome, equippedWeapon, effectiveDamage, triggerHitReaction, sendAttack, onOpponentDamaged, sendDefeat, onPvPVictory]);
+  }, [isOpen, equippedWeapon, effectiveDamage, triggerHitReaction, sendAttack, onOpponentDamaged, sendDefeat, onPvPVictory]);
 
   // ==========================================
   // DISPARO FALLIDO: TOQUE EN EL ÁREA VACÍA DE LA ARENA PVP
   // ==========================================
   const handleMissClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isOpen || duelOutcome !== 'ongoing' || opponentHpRef.current <= 0) return;
+    if (!isOpen || duelOutcomeRef.current !== 'ongoing' || opponentHpRef.current <= 0 || myHpRef.current <= 0) return;
 
     const now = Date.now();
     const fireInterval = equippedWeapon.cadenceMs || equippedWeapon.fireRateMs || 400;
@@ -387,14 +422,14 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
 
   // Ataque automático de mascotas activas
   useEffect(() => {
-    if (!isOpen || duelOutcome !== 'ongoing' || opponentHpRef.current <= 0) return;
+    if (!isOpen || duelOutcomeRef.current !== 'ongoing' || opponentHpRef.current <= 0 || myHpRef.current <= 0) return;
 
     const activePets = (myPlayer.pets || []).filter((p) => !p.isWounded && p.hp > 0);
     if (activePets.length === 0) return;
 
     const intervals = activePets.map((pet) => {
       return setInterval(() => {
-        if (!isOpen || opponentHpRef.current <= 0) return;
+        if (!isOpen || duelOutcomeRef.current !== 'ongoing' || opponentHpRef.current <= 0 || myHpRef.current <= 0) return;
         const dmg = pet.damage;
         const nextOpponentHp = Math.max(0, opponentHpRef.current - dmg);
         setOpponentHp(nextOpponentHp);
@@ -423,6 +458,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
         onOpponentDamaged?.(nextOpponentHp);
 
         if (nextOpponentHp <= 0) {
+          duelOutcomeRef.current = 'victory';
           setDuelOutcome('victory');
           const winnerId = myPlayerRef.current.id;
           const loserId = opponentPlayerRef.current.id;
@@ -448,7 +484,7 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
     return () => {
       intervals.forEach((id) => clearInterval(id));
     };
-  }, [isOpen, duelOutcome, myPlayer.pets, sendPetAttack, onOpponentDamaged, sendDefeat, onPvPVictory]);
+  }, [isOpen, myPlayer.pets, sendPetAttack, onOpponentDamaged, sendDefeat, onPvPVictory]);
 
   const handleFlee = () => {
     sendFlee();
@@ -461,9 +497,9 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
 
   if (!isOpen) return null;
 
-  const opponentMaxHp = opponentPlayer.maxHp || 100;
+  const opponentMaxHp = opponentPlayer.maxHp || 300;
   const opponentHpPct = Math.max(0, Math.min(100, Math.round((opponentHp / opponentMaxHp) * 100)));
-  const myMaxHp = myPlayer.maxHp || 100;
+  const myMaxHp = myPlayer.maxHp || 300;
   const myHpPct = Math.max(0, Math.min(100, Math.round((myHp / myMaxHp) * 100)));
 
   return (
