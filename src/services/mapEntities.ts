@@ -720,9 +720,48 @@ export function isPlayerWoundedOrCritical(player?: Partial<Player> | null): bool
 }
 
 /**
+ * Encuentra el Hospital de Campaña más próximo a una coordenada determinada dentro de una colección de estructuras.
+ */
+export function resolveNearestHospital(
+  structures: MapStructure[] | undefined | null,
+  playerPos: Coordinates | undefined | null
+): MapStructure | null {
+  if (!structures || structures.length === 0) return null;
+  const hospitals = structures.filter((s) => {
+    const typeStr = String(s.type || '').toLowerCase().trim();
+    const idStr = String(s.id || '').toLowerCase().trim();
+    const nameStr = String(s.name || '').toLowerCase().trim();
+    return (
+      (typeStr === 'hospital' || idStr.includes('hospital') || nameStr.includes('hospital')) &&
+      typeof s.lat === 'number' &&
+      typeof s.lng === 'number' &&
+      !isNaN(s.lat) &&
+      !isNaN(s.lng) &&
+      (s.lat !== 0 || s.lng !== 0)
+    );
+  });
+
+  if (hospitals.length === 0) return null;
+  if (!playerPos || typeof playerPos.lat !== 'number' || typeof playerPos.lng !== 'number') {
+    return hospitals[0];
+  }
+
+  let nearest = hospitals[0];
+  let minDist = Infinity;
+  for (const h of hospitals) {
+    const d = getDistanceMeters(playerPos, { lat: h.lat, lng: h.lng });
+    if (d < minDist) {
+      minDist = d;
+      nearest = h;
+    }
+  }
+  return nearest;
+}
+
+/**
  * Localiza de forma defensiva y resiliente las coordenadas del Hospital de Campaña.
  * Garantiza inmutabilidad geográfica: nunca varía ante transiciones de fase de cofres del tesoro.
- * 1. Búsqueda directa en estructuras activas.
+ * 1. Búsqueda directa en estructuras activas (seleccionando el más cercano si se provee posición).
  * 2. Si el centro corresponde a Las Meriendas o estructuras no cargadas, retorna coordenadas maestras fijas.
  * 3. Fallback determinista anclado al centro operativo.
  */
@@ -730,26 +769,14 @@ export function resolveHospitalCoordinates(
   structures?: MapStructure[] | null,
   center?: Coordinates | null,
   playAreaRadius?: number | null,
-  treasureLocation?: Coordinates | null
+  treasureLocation?: Coordinates | null,
+  playerPos?: Coordinates | null
 ): Coordinates {
-  // 1. Búsqueda defensiva insensible a mayúsculas en estructuras activas
+  // 1. Búsqueda defensiva en estructuras activas (seleccionando el más cercano si hay coordenadas del jugador)
   if (Array.isArray(structures) && structures.length > 0) {
-    const hospital = structures.find((s) => {
-      const typeStr = String(s.type || '').toLowerCase().trim();
-      const idStr = String(s.id || '').toLowerCase().trim();
-      const nameStr = String(s.name || '').toLowerCase().trim();
-      return typeStr === 'hospital' || idStr.includes('hospital') || nameStr.includes('hospital');
-    });
-
-    if (
-      hospital &&
-      typeof hospital.lat === 'number' &&
-      typeof hospital.lng === 'number' &&
-      !isNaN(hospital.lat) &&
-      !isNaN(hospital.lng) &&
-      (hospital.lat !== 0 || hospital.lng !== 0)
-    ) {
-      return { lat: hospital.lat, lng: hospital.lng };
+    const nearest = resolveNearestHospital(structures, playerPos);
+    if (nearest) {
+      return { lat: nearest.lat, lng: nearest.lng };
     }
   }
 

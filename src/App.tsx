@@ -56,6 +56,7 @@ import {
   generateInitialCrates,
   createSequentialMonster,
   generateNextChestLocation,
+  resolveNearestHospital,
   PET_ADOPTION_RADIUS_METERS,
   MAX_PETS_PER_PLAYER,
   MAX_UNCLAIMED_LOOT,
@@ -558,6 +559,15 @@ export const App: React.FC = () => {
   );
   const hospitalStructureRef = useRef<MapStructure | null>(hospitalStructure);
   hospitalStructureRef.current = hospitalStructure;
+
+  const nearestHospital = useMemo(() => {
+    const allHospitals = structures.filter((s) => s.type === 'hospital');
+    if (allHospitals.length === 0) return null;
+    const pLat = myPlayer?.lat ?? room?.centerLat;
+    const pLng = myPlayer?.lng ?? room?.centerLng;
+    if (pLat == null || pLng == null) return allHospitals[0];
+    return resolveNearestHospital(allHospitals, { lat: pLat, lng: pLng });
+  }, [structures, myPlayer?.lat, myPlayer?.lng, room?.centerLat, room?.centerLng]);
 
   const currentBuilding = useMemo(
     () => structures.find((s) => s.id === myPlayer?.insideBuildingId) || null,
@@ -1877,7 +1887,7 @@ export const App: React.FC = () => {
                 cancelMovementRef.current();
               }
               setIsHospitalModalOpen(true);
-              addLog('Has entrado al Hospital de Campaña. Iniciando regeneración táctica.', 'info');
+              addLog(`Has entrado a ${st?.name || 'un Hospital de Campaña'}. Iniciando regeneración táctica.`, 'info');
             }
             // Si la escuadra está al 100% no se emite toast flotante redundante;
             // el banner fijo superior IndoorStatusBanner muestra "Todos los signos vitales se encuentran al 100%"
@@ -3915,20 +3925,26 @@ export const App: React.FC = () => {
 
     const interval = setInterval(() => {
       const player = myPlayerRef.current;
-      const hospital = hospitalStructureRef.current;
-      if (!player || !hospital) return;
+      if (!player) return;
 
       const pCoord: Coordinates = {
         lat: player.lat ?? room.centerLat,
         lng: player.lng ?? room.centerLng,
       };
-      const hospitalCoord: Coordinates = {
-        lat: hospital.lat,
-        lng: hospital.lng,
-      };
 
-      const hospitalDistance = getDistanceMeters(pCoord, hospitalCoord);
-      const hospitalRadius = hospital.radius || 40;
+      const allHospitals = structuresRef.current.filter((s) => s.type === 'hospital');
+      if (allHospitals.length === 0) return;
+
+      // Buscar si el jugador se encuentra dentro del radio de CUALQUIER Hospital de Campaña
+      let activeHospital: MapStructure | null = null;
+      for (const h of allHospitals) {
+        const dist = getDistanceMeters(pCoord, { lat: h.lat, lng: h.lng });
+        const radius = h.radius || 40;
+        if (dist <= radius) {
+          activeHospital = h;
+          break;
+        }
+      }
 
       const playerNeedsHealing =
         player.hp < (player.maxHp || 100) ||
@@ -3941,21 +3957,21 @@ export const App: React.FC = () => {
 
       const needsHealing = playerNeedsHealing || petsNeedHealing;
 
-      if (hospitalDistance <= hospitalRadius) {
+      if (activeHospital) {
         if (needsHealing && !isHospitalModalOpenRef.current) {
           hasShownFullHealthNoticeRef.current = false;
           // Detener movimiento y abrir de inmediato la interfaz táctica del hospital
           cancelMovementRef.current();
           setIsHospitalModalOpen(true);
           isHospitalModalOpenRef.current = true;
-          addLogRef.current?.('Has entrado al Hospital de Campaña. Iniciando regeneración táctica.', 'info');
+          addLogRef.current?.(`Has entrado a ${activeHospital.name || 'un Hospital de Campaña'}. Iniciando regeneración táctica.`, 'info');
         } else if (!needsHealing) {
           // Si toda la escuadra está sana (100% HP y sin mascotas heridas),
           // NO emitir toasts repetitivos ni mensajes parpadeantes; el banner fijo permanente se encarga.
           hasShownFullHealthNoticeRef.current = true;
         }
       } else {
-        // Al alejarse más allá del radio de la instalación
+        // Al alejarse más allá del radio de cualquier instalación médica
         hasShownFullHealthNoticeRef.current = false;
         if (isHospitalModalOpenRef.current) {
           setIsHospitalModalOpen(false);
@@ -5415,21 +5431,29 @@ export const App: React.FC = () => {
   const handleMapClick = useCallback((coords: Coordinates) => {
     if (!room || isCombatArenaOpen || isHospitalModalOpen) return;
 
-    // IMÁN TÁCTICO AL HOSPITAL (SNAP-TO-CENTER):
-    // Si el clic se produce dentro o en las inmediaciones del Hospital de Campaña (<= 45 metros),
+    // IMÁN TÁCTICO A CUALQUIER HOSPITAL (SNAP-TO-CENTER):
+    // Si el clic se produce dentro o en las inmediaciones de CUALQUIER Hospital de Campaña (<= 45 metros),
     // o el jugador está herido/incapacitado y toca en la zona, forzar que las coordenadas de destino
-    // se fijen exactamente en el centro geográfico del hospital para garantizar la entrada y curación al 100%.
+    // se fijen exactamente en el centro geográfico del hospital correspondiente para garantizar la entrada y curación al 100%.
     let targetCoords = coords;
-    const hospital = hospitalStructureRef.current;
-    if (hospital) {
-      const distToHospital = getDistanceMeters(coords, { lat: hospital.lat, lng: hospital.lng });
+    const allHospitals = structuresRef.current.filter((s) => s.type === 'hospital');
+    if (allHospitals.length > 0) {
+      let nearestHosp: MapStructure | null = null;
+      let minHospDist = Infinity;
+      for (const h of allHospitals) {
+        const d = getDistanceMeters(coords, { lat: h.lat, lng: h.lng });
+        if (d < minHospDist) {
+          minHospDist = d;
+          nearestHosp = h;
+        }
+      }
       const isWounded = Boolean(
         myPlayer?.isCriticallyWounded ||
         myPlayer?.status === 'critically_wounded' ||
         (myPlayer?.hp ?? 100) < 100
       );
-      if (distToHospital <= 45 || (isWounded && distToHospital <= 50)) {
-        targetCoords = { lat: hospital.lat, lng: hospital.lng };
+      if (nearestHosp && (minHospDist <= 45 || (isWounded && minHospDist <= 50))) {
+        targetCoords = { lat: nearestHosp.lat, lng: nearestHosp.lng };
       }
     }
 
@@ -5790,7 +5814,7 @@ export const App: React.FC = () => {
                 lat: myPlayer.lat ?? room.centerLat,
                 lng: myPlayer.lng ?? room.centerLng,
               }}
-              hospital={hospitalStructure}
+              hospital={nearestHospital || hospitalStructure}
             />
           )}
 

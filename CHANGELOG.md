@@ -4,6 +4,13 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Unreleased]
+### Added
+- **Feature: Converted all tactical shelters into fully functional hospitals with dynamic nearest-facility guideline routing (`src/services/mapEntities.ts`, `src/services/mapStructures.ts`, `src/components/GameMap.tsx`, `src/App.tsx`, `CHANGELOG.md`, `README.md`):**
+  - **Red Médica Distribuida de 5 Hospitales de Campaña:** Transformadas todas las instalaciones seguras del sector operativo (Hospital Central y los antiguos refugios Alfa, Bravo, Charlie y Delta) en Hospitales de Campaña plenamente funcionales. Cada uno cuenta con iconografía médica dedicada, área perimetral esmeralda de 40 metros (`#10b981`), capacidad autónoma de bio-regeneración médica (`HospitalModal.tsx`) y coordenadas inmutables entre fases.
+  - **Directriz de Emergencia al Hospital Más Cercano:** Al caer herido (`isMeWounded`), el overlay SVG calcula en tiempo real a 60 FPS la distancia geodésica del avatar a cada uno de los 5 hospitales disponibles y traza dinámicamente la directriz médica hacia el más próximo. Si el jugador se desplaza y otro hospital pasa a estar más cerca, la línea se reorienta de forma instantánea y suave hacia la nueva instalación.
+  - **Libertad Táctica de Recuperación y Curación Universal:** El jugador es libre de ingresar a cualquiera de los 5 hospitales de campaña del mapa; al cruzar el radio de 40 metros de cualquiera de ellos, se detiene el movimiento, se despliega la interfaz médica, se restaura la salud al 100%, se limpia el estado herido (`isCriticallyWounded: false`) y se retira el overlay SVG.
+  - **Imán Táctico al Hospital Más Próximo (Snap-to-Center):** Al tocar el mapa dentro o a menos de 45 metros del perímetro de cualquier hospital, o hacer clic en su marcador HTML, el destino se fija de forma exacta en el centro geográfico de dicho hospital para asegurar la entrada y curación inmediata.
+
 ### Changed
 - **Changed: Migrated player action zone and vision circle to lightweight screen-space SVG overlay (`GameMap.tsx`, `index.css`, `CHANGELOG.md`, `README.md`):**
   - **Aparición Instantánea sin Retardo Inicial:** Migrado el perímetro de acción/visión del jugador desde las capas vectoriales GeoJSON WebGL (`SOURCE_PLAYER_VISION`) a un elemento `<polygon>` dentro del Overlay SVG en espacio de pantalla (`visionPolygonRef` en `svgOverlayRef`). Al desacoplarse del Web Worker de teselación y de la guarda `isMapStyleLoaded()`, el círculo aparece desde el primer milisegundo de montado el mapa sin demoras perceptibles.
