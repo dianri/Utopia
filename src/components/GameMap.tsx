@@ -1144,11 +1144,20 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     [isMeWounded]
   );
 
-  // Localización defensiva y garantizada de coordenadas del Hospital de Campaña (nunca retorna null)
-  const hospitalCoords = useMemo(
-    () => resolveHospitalCoordinates(structures, center, playAreaRadius, treasureLocation),
-    [structures, center?.lat, center?.lng, playAreaRadius, treasureLocation?.lat, treasureLocation?.lng]
-  );
+  // Caché persistente e inmutable de coordenadas del hospital para anclar la directriz de emergencia
+  const cachedHospitalCoordsRef = useRef<Coordinates | null>(null);
+
+  // Localización defensiva y garantizada de coordenadas del Hospital de Campaña (inmutable ante cambios de fase de cofres)
+  const hospitalCoords = useMemo(() => {
+    const resolved = resolveHospitalCoordinates(structures, center, playAreaRadius);
+    if (resolved && (resolved.lat !== 0 || resolved.lng !== 0)) {
+      if (!cachedHospitalCoordsRef.current) {
+        cachedHospitalCoordsRef.current = resolved;
+      }
+      return cachedHospitalCoordsRef.current;
+    }
+    return cachedHospitalCoordsRef.current || resolved;
+  }, [structures, center?.lat, center?.lng, playAreaRadius]);
 
   /**
    * Sincroniza la geometría del límite de la zona de juego con fallbacks robustos y autosuficiencia

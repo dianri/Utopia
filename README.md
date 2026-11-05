@@ -150,6 +150,10 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 - **Casas / Refugios Tácticos (`🏠`):**
   - De 3 a 5 búnkeres distribuidos en el área operativa con radio de 14 metros.
   - **Mecánica de Cobertura Total:** Al entrar, el avatar se oculta visualmente del mapa exterior (`style.display = 'none'`), los aliados lo visualizan con etiqueta `[A CUBIERTO]`, y el monstruo pierde inmediatamente el aggro.
+- **Inmutabilidad Geográfica Absoluta de Estructuras (Desacoplamiento de Fases):**
+  - **Entidades Fijas vs. Dinámicas:** El Hospital de Campaña y los 4 Refugios Tácticos (Alfa, Bravo, Charlie y Delta) son entidades maestras inmutables de sala, completamente desacopladas de las coordenadas móviles de los cofres del tesoro de fase.
+  - **Coordenadas Maestras de Las Meriendas (`MASTER_LAS_MERIENDAS_STRUCTURES`):** Para partidas en el sector operativo de Las Meriendas, las estructuras ocupan coordenadas fijas reales en el terreno (`Hospital: 37.4010, -2.1558`), manteniéndose congeladas en el estado React sin importar cuántas fases o cofres se descifren.
+  - **Directriz de Emergencia Inmutable:** En `GameMap.tsx`, la referencia `hospitalCoords` se almacena en caché persistente (`cachedHospitalCoordsRef`), garantizando que la directriz médica (`hospital-guideline-source`) apunte siempre de forma constante al mismo punto del hospital, permitiendo al cazador evacuar hacia el punto de cura con total certidumbre espacial.
 - **Capa Táctica Visual:** Representación poligonal GeoJSON de las zonas de influencia estructural (`structures-zones`) y banner contextual de estado interior (`IndoorStatusBanner.tsx`).
 
 ---
