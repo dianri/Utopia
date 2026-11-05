@@ -237,6 +237,34 @@
 }
 
 /* ==========================================================================
+   Overlay SVG de Directriz Médica Táctica de Emergencia (Espacio de Pantalla)
+   ========================================================================== */
+@keyframes medicalGuidelineDash {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+
+.medical-guideline-halo {
+  stroke: rgba(0, 0, 0, 0.75);
+  stroke-width: 6.5px;
+  stroke-linecap: round;
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+.medical-guideline-line {
+  stroke: #ef4444;
+  stroke-width: 3.5px;
+  stroke-linecap: round;
+  stroke-dasharray: 10 6;
+  animation: medicalGuidelineDash 0.7s linear infinite;
+  filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.9)) drop-shadow(0 0 2px rgba(255, 255, 255, 0.4));
+  fill: none;
+  vector-effect: non-scaling-stroke;
+}
+
+/* ==========================================================================
    Aislamiento Total de MapLibre GL y Escudo contra Desanclaje / Zoom Drift
    ========================================================================== */
 
