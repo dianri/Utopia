@@ -416,9 +416,20 @@ export const CombatArena: React.FC<CombatArenaProps> = ({
         }
         soundEffects.triggerDamageHaptics();
 
+        // Evaluar anticipadamente si el impacto es letal para forzar salida inmediata sin retrasos
+        const estimatedRemainingHp = myPlayer.hp - currentDamage;
+        const isLethal = estimatedRemainingHp <= 1 || myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded';
+
         // Infligir daño continuo al jugador local (la mitigación de rol se aplica en el manejador central)
         onPlayerDamagedRef.current(currentDamage);
         onAddLogRef.current?.(`¡${curMonster.name || 'El monstruo'} te ha golpeado directamente! (-${currentDamage} HP)`, 'combat');
+
+        if (isLethal) {
+          setIsMonsterAttacking(false);
+          setScreenShake(false);
+          onClose();
+          return;
+        }
 
         setTimeout(() => {
           setIsMonsterAttacking(false);
