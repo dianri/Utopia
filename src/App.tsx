@@ -2144,12 +2144,12 @@ export const App: React.FC = () => {
   const gameMapHandleRef = useRef<GameMapHandle | null>(null);
 
   // Cinemática desacoplada a 60 FPS: traslada el marcador y la directriz hospitalaria en cada frame sin re-renderizar React
-  const handleVisualStep = useCallback((coords: Coordinates) => {
+  const handleVisualStep = useCallback((coords: Coordinates, isMoving: boolean = true) => {
     if (myPlayerRef.current) {
       myPlayerRef.current.lat = coords.lat;
       myPlayerRef.current.lng = coords.lng;
     }
-    gameMapHandleRef.current?.updateLocalPlayerKinematics(coords);
+    gameMapHandleRef.current?.updateLocalPlayerKinematics(coords, isMoving);
   }, []);
 
   // Proyección anticipada e inmediata (0 ms) de la directriz al hospital ante daño crítico o letal

@@ -662,7 +662,7 @@ interface GameMapProps {
 }
 
 export interface GameMapHandle {
-  updateLocalPlayerKinematics: (coords: Coordinates) => void;
+  updateLocalPlayerKinematics: (coords: Coordinates, isMoving?: boolean) => void;
   triggerEmergencyGuideline: (playerCoords?: Coordinates) => void;
   getMapInstance: () => maplibregl.Map | null;
 }
@@ -761,6 +761,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const lastCameraPosRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastVisionPosRef = useRef<{ lat: number; lng: number } | null>(null);
   const updateEmergencyOverlaysRef = useRef<(map: maplibregl.Map) => void>(() => {});
+
+  // Bandera de cinemática local activa (Escudo anti-snapback y amortiguación de cámara)
+  const isLocalInterpolatingRef = useRef<boolean>(false);
+  const lastGuidelineUpdateTimeRef = useRef<number>(0);
+  const lastVisionUpdateTimeRef = useRef<number>(0);
+  const lastCameraFollowTimeRef = useRef<number>(0);
 
   // Estado del jugador local: Herido / Incapacitado (visión de emergencia hospitalaria)
   const isMeWounded = isPlayerWoundedOrCritical(myPlayer);
@@ -1428,7 +1434,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   useEffect(() => {
     if (!mapHandleRef) return;
     mapHandleRef.current = {
-      updateLocalPlayerKinematics: (coords: Coordinates) => {
+      updateLocalPlayerKinematics: (coords: Coordinates, isMoving: boolean = true) => {
+        isLocalInterpolatingRef.current = isMoving;
         const map = mapRef.current;
         if (!map) return;
         const myId = myPlayerRef.current?.id;
@@ -1439,8 +1446,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           // Cinemática procedural (giro y cadencia de paso)
           const kin = playerKinematicsRef.current.get(myId);
           if (kin) {
-            const mov = computeEntityMovement(coords.lat, coords.lng, kin.anchorLat, kin.anchorLng);
-            if (mov.isMoving) {
+            if (isMoving) {
+              const mov = computeEntityMovement(coords.lat, coords.lng, kin.anchorLat, kin.anchorLng);
               kin.isMoving = true;
               kin.facingMode = mov.facingMode;
               kin.anchorLat = coords.lat;
@@ -1450,19 +1457,47 @@ const GameMapComponent: React.FC<GameMapProps> = ({
               kin.stopTimeout = setTimeout(() => {
                 kin.isMoving = false;
                 kin.stopTimeout = null;
+                isLocalInterpolatingRef.current = false;
                 updateKinematicsDOM(`player-bounce-${myId}`, `player-facing-${myId}`, false, kin.facingMode);
                 updatePlayerPetsKinematicsDOM(myId, myPlayerRef.current?.pets, false, kin.facingMode);
-              }, 500);
+              }, 300);
 
               updateKinematicsDOM(`player-bounce-${myId}`, `player-facing-${myId}`, true, kin.facingMode);
               updatePlayerPetsKinematicsDOM(myId, myPlayerRef.current?.pets, true, kin.facingMode);
+            } else {
+              if (kin.stopTimeout) clearTimeout(kin.stopTimeout);
+              kin.isMoving = false;
+              kin.stopTimeout = null;
+              isLocalInterpolatingRef.current = false;
+              updateKinematicsDOM(`player-bounce-${myId}`, `player-facing-${myId}`, false, kin.facingMode);
+              updatePlayerPetsKinematicsDOM(myId, myPlayerRef.current?.pets, false, kin.facingMode);
             }
           }
         }
 
-        // Sincronizar directriz médica inmediatamente si está herido a 60 FPS
+        // Suavizado del seguimiento de cámara en tiempo real sin transiciones en conflicto
+        if (followPlayerRef.current && !isDraggingRef.current) {
+          const now = performance.now();
+          if (now - lastCameraFollowTimeRef.current >= 40) {
+            lastCameraFollowTimeRef.current = now;
+            map.setCenter([coords.lng, coords.lat]);
+          }
+        }
+
+        // Directriz médica: solo procesar si está herido con estrangulamiento a ~12.5 Hz (80 ms)
         if (isMeWoundedRef.current) {
-          updateHospitalGuidelineSync(map, coords.lng, coords.lat, true, hospitalCoordsRef.current);
+          const now = performance.now();
+          if (!isMoving || now - lastGuidelineUpdateTimeRef.current >= 80) {
+            lastGuidelineUpdateTimeRef.current = now;
+            updateHospitalGuidelineSync(map, coords.lng, coords.lat, true, hospitalCoordsRef.current);
+          }
+        }
+
+        // Radio de visión: estrangulado a ~8 Hz (120 ms) para no saturar Web Workers
+        const now = performance.now();
+        if (!isMoving || now - lastVisionUpdateTimeRef.current >= 120) {
+          lastVisionUpdateTimeRef.current = now;
+          syncPlayerVision(map, coords.lng, coords.lat);
         }
       },
       triggerEmergencyGuideline: (playerCoords?: Coordinates) => {
@@ -2099,6 +2134,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     if (!map || !isMapLoadedRef.current || !followPlayerRef.current) return;
     if (isDraggingRef.current) return; // Nunca interrumpir el arrastre del usuario
 
+    // Si el avatar se está desplazando bajo cinemática local, el seguimiento
+    // ya se realiza síncronamente desde updateLocalPlayerKinematics con setCenter
+    if (isLocalInterpolatingRef.current) return;
+
     if (myPlayer.lat != null && myPlayer.lng != null) {
       if (lastCameraPosRef.current) {
         const moved = getDistanceMeters(lastCameraPosRef.current, { lat: myPlayer.lat, lng: myPlayer.lng });
@@ -2106,11 +2145,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       }
       lastCameraPosRef.current = { lat: myPlayer.lat, lng: myPlayer.lng };
 
-      map.easeTo({
-        center: [myPlayer.lng, myPlayer.lat],
-        duration: 300,
-        easing: (t) => t,
-      });
+      map.setCenter([myPlayer.lng, myPlayer.lat]);
     }
   }, [myPlayer.lat, myPlayer.lng, followPlayer]);
 
@@ -3228,10 +3263,31 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }
       } else {
         const marker = playerMarkersRef.current.get(p.id);
-        marker?.setLngLat([lng, lat]);
-        if (isMe) {
-          syncHospitalGuideline(map, lng, lat);
-          syncPlayerVision(map);
+
+        // ESCUDO ANTI-REBOBINADO (ANTI-SNAPBACK):
+        // Si es el jugador local y está activamente desplazándose en la interpolación cinemática viva a 60 FPS,
+        // IGNORAR la reasignación de coordenadas de props atrasadas (100-200ms de retraso).
+        // Solo reasignar si el avatar está detenido o si la distancia supera 30 metros (teletransporte / respawn).
+        let shouldUpdateMarkerPos = true;
+        if (isMe && isLocalInterpolatingRef.current) {
+          const currentMarkerLngLat = marker?.getLngLat();
+          if (currentMarkerLngLat) {
+            const dist = getDistanceMeters(
+              { lat: currentMarkerLngLat.lat, lng: currentMarkerLngLat.lng },
+              { lat, lng }
+            );
+            if (dist < 30) {
+              shouldUpdateMarkerPos = false;
+            }
+          }
+        }
+
+        if (shouldUpdateMarkerPos) {
+          marker?.setLngLat([lng, lat]);
+          if (isMe) {
+            syncHospitalGuideline(map, lng, lat);
+            syncPlayerVision(map);
+          }
         }
         const el = marker?.getElement();
         if (el) {
@@ -3296,7 +3352,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           kin.stopTimeout = null;
           updateKinematicsDOM(`player-bounce-${p.id}`, `player-facing-${p.id}`, false, 'right');
           updatePlayerPetsKinematicsDOM(p.id, p.pets, false, 'right');
-        } else {
+        } else if (!isMe || !isLocalInterpolatingRef.current) {
           // Cinemática del jugador (activo o en estado herido/crítico camino al hospital)
           const mov = computeEntityMovement(lat, lng, kin.anchorLat, kin.anchorLng);
           if (mov.isMoving) {
