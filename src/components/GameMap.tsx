@@ -207,27 +207,40 @@ export const updateHospitalGuidelineSync = (
   }
 
   // 2. Normalización y sanitización estricta de coordenadas geográficas [longitud, latitud]
-  let pLng = typeof playerLng === 'number' && !isNaN(playerLng) ? playerLng : INITIAL_LNG;
-  let pLat = typeof playerLat === 'number' && !isNaN(playerLat) ? playerLat : INITIAL_LAT;
+  // PROHIBICIÓN ABSOLUTA: Jamás recurrir a INITIAL_LNG / INITIAL_LAT o center como fallback para la directriz.
+  // Si las coordenadas vivas del avatar no son válidas o no está herido, se limpia la fuente con features: [].
+  const isValidPlayerCoord =
+    typeof playerLng === 'number' &&
+    typeof playerLat === 'number' &&
+    !isNaN(playerLng) &&
+    !isNaN(playerLat) &&
+    (playerLng !== 0 || playerLat !== 0);
+
+  const isValidHospitalCoord =
+    hospitalCoords != null &&
+    typeof hospitalCoords.lng === 'number' &&
+    typeof hospitalCoords.lat === 'number' &&
+    !isNaN(hospitalCoords.lng) &&
+    !isNaN(hospitalCoords.lat) &&
+    (hospitalCoords.lng !== 0 || hospitalCoords.lat !== 0);
+
+  const shouldRender = Boolean(isWounded && isValidPlayerCoord && isValidHospitalCoord);
+
+  let pLng = isValidPlayerCoord ? playerLng : 0;
+  let pLat = isValidPlayerCoord ? playerLat : 0;
   if (pLng > 0 && pLat < 0) {
     const tmp = pLng;
     pLng = pLat;
     pLat = tmp;
   }
 
-  let hLng = typeof hospitalCoords?.lng === 'number' && !isNaN(hospitalCoords.lng) ? hospitalCoords.lng : -2.1558;
-  let hLat = typeof hospitalCoords?.lat === 'number' && !isNaN(hospitalCoords.lat) ? hospitalCoords.lat : 37.401;
+  let hLng = isValidHospitalCoord ? hospitalCoords.lng : 0;
+  let hLat = isValidHospitalCoord ? hospitalCoords.lat : 0;
   if (hLng > 0 && hLat < 0) {
     const tmp = hLng;
     hLng = hLat;
     hLat = tmp;
   }
-
-  const shouldRender = Boolean(
-    isWounded &&
-    (pLat !== 0 || pLng !== 0) &&
-    (hLat !== 0 || hLng !== 0)
-  );
 
   // 3. Estructura RFC 7946 estándar FeatureCollection: vector continuo elástico [avatar vivo -> hospital]
   const guidelineData: GeoJSON.FeatureCollection = {
@@ -967,12 +980,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           });
         }
 
-        if (!map.getSource('hospital-guideline')) {
-          map.addSource('hospital-guideline', {
-            type: 'geojson',
-            data: { type: 'FeatureCollection', features: [] },
-          });
-        }
 
         if (!map.getLayer('hospital-guideline-halo')) {
           map.addLayer({
@@ -1302,30 +1309,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     [myPlayer?.lat, myPlayer?.lng, myPlayer?.role, myPlayer?.pets, (myPlayer as any)?.visionRadius, (myPlayer as any)?.interactionRadius, center?.lat, center?.lng, playAreaRadius, isRadarActive]
   );
 
-  /**
-   * Sincroniza la directriz hacia el hospital de campaña en reposo y en movimiento
-   */
-  const syncHospitalGuideline = useCallback(
-    (targetMap?: maplibregl.Map) => {
-      const map = targetMap || mapRef.current;
-      if (!map || !isMapStyleLoaded(map)) return;
-
-      let playerLat = myPlayer?.lat ?? center?.lat ?? INITIAL_LAT;
-      let playerLng = myPlayer?.lng ?? center?.lng ?? INITIAL_LNG;
-
-      const meMarker = playerMarkersRef.current.get(myPlayer?.id || '');
-      if (meMarker) {
-        const pos = meMarker.getLngLat();
-        if (pos && typeof pos.lng === 'number' && typeof pos.lat === 'number' && !isNaN(pos.lng) && !isNaN(pos.lat)) {
-          playerLng = pos.lng;
-          playerLat = pos.lat;
-        }
-      }
-
-      updateHospitalGuidelineSync(map, playerLng, playerLat, isMeWounded, hospitalCoords);
-    },
-    [myPlayer?.id, myPlayer?.lat, myPlayer?.lng, center?.lat, center?.lng, isMeWounded, hospitalCoords]
-  );
 
   /**
    * Sincronización directa y síncrona en cada frame para la línea de emergencia al hospital
@@ -1617,37 +1600,14 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   injectTacticalOverlaysRef.current = setupMapLayersAndSources;
 
   // ==========================================
-  // ACTUALIZACIÓN DE OVERLAYS DE EMERGENCIA (Hospital y Perímetro Herido)
+  // ACTUALIZACIÓN DE OVERLAYS DE EMERGENCIA
   // ==========================================
   const updateEmergencyOverlays = useCallback(
-    (map: maplibregl.Map) => {
-      if (!isMapStyleLoaded(map)) {
-        const onStyleLoad = () => {
-          if (mapRef.current === map) {
-            updateEmergencyOverlaysRef.current?.(map);
-          }
-        };
-        map.once('style.load', onStyleLoad);
-        return;
-      }
-
-      try {
-        let myLat = myPlayer.lat ?? center?.lat ?? INITIAL_LAT;
-        let myLng = myPlayer.lng ?? center?.lng ?? INITIAL_LNG;
-        const meMarker = playerMarkersRef.current.get(myPlayer?.id || '');
-        if (meMarker) {
-          const pos = meMarker.getLngLat();
-          if (pos && typeof pos.lng === 'number' && typeof pos.lat === 'number' && !isNaN(pos.lng) && !isNaN(pos.lat)) {
-            myLng = pos.lng;
-            myLat = pos.lat;
-          }
-        }
-        updateHospitalGuidelineSync(map, myLng, myLat, isMeWounded, hospitalCoords);
-      } catch (err) {
-        console.warn('[GameMap] Error al actualizar overlays de emergencia:', err);
-      }
+    (_map: maplibregl.Map) => {
+      // La directriz médica hacia el hospital ha sido delegada de forma soberana
+      // y atómica a la Sección 8 de marcadores (SSOT), erradicando condiciones de carrera y fallbacks de centro.
     },
-    [hospitalCoords, myPlayer?.id, myPlayer.lat, myPlayer.lng, center?.lat, center?.lng, isMeWounded]
+    []
   );
   updateEmergencyOverlaysRef.current = updateEmergencyOverlays;
 
@@ -1708,9 +1668,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     // 3. Rango de visión y actuación bajo el avatar
     syncPlayerVision(map);
-
-    // 4. Línea de emergencia al hospital (activa en reposo y ante cambio de estado)
-    syncHospitalGuideline(map);
   }, [
     mapLoaded,
     styleVersion,
@@ -1743,7 +1700,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     syncGameBoundary,
     syncAllInteractionCircles,
     syncPlayerVision,
-    syncHospitalGuideline,
   ]);
 
   // ==========================================
@@ -2959,7 +2915,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     if (!map || !isMapLoadedRef.current) return;
     if (!center.lat || !center.lng || (center.lat === 0 && center.lng === 0)) return;
 
-    const allPlayers = players.map((p) => (p.id === myPlayer.id ? myPlayer : p));
+    const hasMe = players.some((p) => p.id === myPlayer.id);
+    const allPlayers = hasMe
+      ? players.map((p) => (p.id === myPlayer.id ? myPlayer : p))
+      : [myPlayer, ...players];
     const activePlayerIds = new Set(allPlayers.map((p) => p.id));
 
     playerMarkersRef.current.forEach((marker, id) => {
@@ -3191,7 +3150,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }
       }
     });
-  }, [players, myPlayer, mapLoaded, center?.lat, center?.lng, isMeWounded, updateHospitalGuidelineDirect, syncHospitalGuideline, syncPlayerVision]);
+  }, [players, myPlayer, mapLoaded, center?.lat, center?.lng, isMeWounded, updateHospitalGuidelineDirect, syncPlayerVision]);
 
   // ==========================================
   // 8.5. MASCOTAS ACOMPAÑANTES: Integradas directamente en el DOM del jugador
