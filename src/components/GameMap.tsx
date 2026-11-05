@@ -2123,7 +2123,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             />
           </div>
           <span class="marker-label mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border border-amber-500/50 text-amber-300 rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
-            Tesoro
+            TESORO
           </span>
         </div>
       `;
@@ -2264,9 +2264,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                     style="width: 32px !important; height: 32px !important; max-width: 32px !important; max-height: 32px !important;" 
                   />
                 </div>
-                <span class="marker-label mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border ${info.borderColor} ${info.textColor} rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
-                  ${info.label} (40m)
-                </span>
               </div>
             </div>
           `;
@@ -2297,9 +2294,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                   style="width: 32px !important; height: 32px !important; max-width: 32px !important; max-height: 32px !important;" 
                 />
               </div>
-              <span class="marker-label mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border ${info.borderColor} ${info.textColor} rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
-                ${info.label} (40m)
-              </span>
             </div>
           `;
         }
@@ -2418,9 +2412,15 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                 style="width: 68px !important; height: 68px !important; max-width: 68px !important; max-height: 68px !important;" 
               />
             </div>
+            ${
+              isHospital
+                ? `
             <span class="marker-label mt-1 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border ${badgeBorder} ${badgeText} rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
               ${label}
             </span>
+            `
+                : ''
+            }
           </div>
         `;
 
@@ -2534,9 +2534,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                 class="marker-entity-img select-none transition-transform duration-150 group-hover:scale-110 drop-shadow-[0_4px_6px_rgba(0,0,0,0.85)]" 
               />
             </div>
-            <span class="marker-label mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border ${style.border} ${style.text} rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
-              ${dropped.item.name} (T${dropped.item.tier})
-            </span>
           </div>
         `;
 
@@ -2644,10 +2641,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                 style="width: 34px !important; height: 34px !important; max-width: 34px !important; max-height: 34px !important;" 
                 class="marker-entity-img select-none transition-transform duration-150 group-hover:scale-110 drop-shadow-[0_4px_6px_rgba(0,0,0,0.85)] drop-shadow-[0_0_8px_rgba(52,211,153,0.6)]" 
               />
-            </div>
-            <!-- Etiqueta del nombre centrada bajo el avatar -->
-            <div class="marker-label mt-0.5 px-2 py-0.5 text-[10px] font-mono font-bold bg-slate-950/85 border border-emerald-500/80 text-emerald-300 rounded uppercase tracking-wider whitespace-nowrap shadow-md backdrop-blur-sm">
-              ${wp.pet.name}
             </div>
           </div>
         `;
