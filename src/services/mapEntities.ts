@@ -6,14 +6,16 @@ import type {
   SupplyCrate,
   CrateType,
   Weapon,
+  WeaponType,
   Monster,
   DroppedItem,
+  InventoryItem,
   MapStructure,
   Player,
 } from '../types/game';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { getRandomPointInCircle, getDistanceMeters, getBearing, getDestinationPoint } from './geoUtils';
-import { WEAPON_REGISTRY } from './combatEngine';
+import { WEAPON_REGISTRY, WEAPON_TIER_CONFIG } from './combatEngine';
 
 /**
  * Emite un evento broadcast inmediato al canal de la sala cuando se engendra una entidad (cajas, mascotas o botín)
@@ -577,7 +579,88 @@ export function createSequentialMonster(
     speedMps: config.speedMps,
     isEnraged: false,
     isGuardingChest: true,
+    lootDropped: false,
   };
+}
+
+/**
+ * Genera el botín táctico (un arma de fuego escalada y una caja de vida/botiquín de 100 HP)
+ * al ser derrotado un monstruo, aplicando un desfase geodésico de 2 a 3 metros (2.5m)
+ * a lados opuestos (NE / SO) para impedir superposiciones con la criatura o entre objetos.
+ */
+export function generateMonsterLootDrop(
+  monster: Monster,
+  chestPhase: number = 1
+): DroppedItem[] {
+  if (
+    typeof monster.lat !== 'number' ||
+    typeof monster.lng !== 'number' ||
+    isNaN(monster.lat) ||
+    isNaN(monster.lng)
+  ) {
+    return [];
+  }
+
+  // Desfase geodésico de 2.5 metros:
+  // - Arma al Este/Noreste (rumbo 45°)
+  // - Caja de Vida al Oeste/Suroeste (rumbo 225°)
+  const weaponCoords = getDestinationPoint({ lat: monster.lat, lng: monster.lng }, 2.5, 45);
+  const medkitCoords = getDestinationPoint({ lat: monster.lat, lng: monster.lng }, 2.5, 225);
+
+  // 1. Arma táctica escalada según la fase de combate activa
+  const weaponPoolByPhase: Record<number, WeaponType[]> = {
+    1: ['shotgun', 'rifle', 'pistol'],
+    2: ['rifle', 'grenade', 'shotgun'],
+    3: ['rocket_launcher', 'grenade', 'rifle'],
+  };
+  const phasePool = weaponPoolByPhase[chestPhase] || ['rifle', 'shotgun', 'grenade'];
+  const chosenWeaponType = phasePool[Math.floor(Math.random() * phasePool.length)];
+  const weaponTemplate = WEAPON_TIER_CONFIG[chosenWeaponType] || WEAPON_TIER_CONFIG.rifle;
+
+  const weaponItem: InventoryItem = {
+    ...weaponTemplate,
+    id: `loot_weapon_${crypto.randomUUID()}`,
+  };
+
+  const weaponDrop: DroppedItem = {
+    id: `drop_wpn_${crypto.randomUUID()}`,
+    item: weaponItem,
+    lat: weaponCoords.lat,
+    lng: weaponCoords.lng,
+    droppedAt: Date.now(),
+    droppedBy: monster.name || 'Monstruo',
+    isCollected: false,
+  };
+
+  // 2. Caja de Vida (Botiquín de campo significativo, restaurando 100 HP)
+  const medkitItem: InventoryItem = {
+    id: `loot_medkit_${crypto.randomUUID()}`,
+    name: 'Botiquín Táctico de Campaña',
+    type: 'medkit',
+    category: 'health',
+    tier: 1,
+    damage: 0,
+    cadenceMs: 0,
+    ammo: 0,
+    maxAmmo: 0,
+    durability: -1,
+    isInfinite: false,
+    rangeMeters: 0,
+    healValue: 100, // Curación profunda adaptada a la escala de 300 HP
+    iconName: 'Heart',
+  };
+
+  const medkitDrop: DroppedItem = {
+    id: `drop_med_${crypto.randomUUID()}`,
+    item: medkitItem,
+    lat: medkitCoords.lat,
+    lng: medkitCoords.lng,
+    droppedAt: Date.now(),
+    droppedBy: monster.name || 'Monstruo',
+    isCollected: false,
+  };
+
+  return [weaponDrop, medkitDrop];
 }
 
 /**
@@ -623,8 +706,8 @@ export function generateNextChestLocation(
     previousChest = center;
   }
 
-  // Separación mínima obligatoria: 70 metros (ajustada si el radio de partida es menor a 100m)
-  const MIN_DISTANCE_FROM_PREVIOUS = Math.min(70, Math.max(radiusMeters * 0.6, 40));
+  // Separación mínima obligatoria: adaptada proporcionalmente al radio de la partida (mínimo 20m en 100m)
+  const MIN_DISTANCE_FROM_PREVIOUS = Math.min(70, Math.max(Math.round(radiusMeters * 0.4), 20));
   let bestPoint = getRandomPointInCircle(center, radiusMeters * 0.85);
   let maxMinDist = -1;
   let attempts = 0;
@@ -649,7 +732,8 @@ export function generateNextChestLocation(
   } while (attempts < 50);
 
   // Si tras 50 intentos ningún punto superó MIN_DISTANCE_FROM_PREVIOUS, forzar determinísticamente un punto opuesto
-  if (maxMinDist < 40 && previousChest.lat !== 0) {
+  const fallbackMinDist = Math.min(40, radiusMeters * 0.4);
+  if (maxMinDist < fallbackMinDist && previousChest.lat !== 0) {
     const bearing = getBearing(previousChest, center) || 180;
     return getDestinationPoint(previousChest, MIN_DISTANCE_FROM_PREVIOUS, bearing);
   }
@@ -780,10 +864,12 @@ export function resolveHospitalCoordinates(
     }
   }
 
-  // 2. Si el centro corresponde al sector Las Meriendas o no se especifican coordenadas válidas, contingencia maestra
+  // 2. Si el centro corresponde al sector Las Meriendas (con radio estándar >= 200m) o no se especifican coordenadas válidas, contingencia maestra
   if (
     !center ||
-    (Math.abs(center.lat - 37.4018) < 0.05 && Math.abs(center.lng - -2.1565) < 0.05)
+    ((!playAreaRadius || playAreaRadius >= 200) &&
+      Math.abs(center.lat - 37.4018) < 0.05 &&
+      Math.abs(center.lng - -2.1565) < 0.05)
   ) {
     return { ...DEFAULT_HOSPITAL_COORDINATES };
   }
@@ -798,7 +884,7 @@ export function resolveHospitalCoordinates(
   ) {
     const effectiveRadius = playAreaRadius && playAreaRadius > 0 ? playAreaRadius : 100;
     const hospitalBearing = 180;
-    const hospitalDistance = Math.max(30, Math.min(effectiveRadius * 0.6, effectiveRadius - 20));
+    const hospitalDistance = Math.max(15, Math.min(effectiveRadius * 0.55, effectiveRadius - 15));
     const computedHospital = getDestinationPoint(center, hospitalDistance, hospitalBearing);
 
     if (

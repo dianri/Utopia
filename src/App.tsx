@@ -55,6 +55,7 @@ import {
   createAirdropCrate,
   generateInitialCrates,
   createSequentialMonster,
+  generateMonsterLootDrop,
   generateNextChestLocation,
   resolveNearestHospital,
   PET_ADOPTION_RADIUS_METERS,
@@ -371,6 +372,9 @@ export const App: React.FC = () => {
   chestHoldersCountRef.current = chestHoldersCount;
 
   const lastPetCapacityWarningRef = useRef<number>(0);
+  const isHostRef = useRef<boolean>(false);
+  const droppedMonsterLootIdsRef = useRef<Set<string>>(new Set());
+  const handleHostMonsterLootDropRef = useRef<((monster: Monster) => void) | null>(null);
 
   // ==========================================
   // PERSISTENCIA CONTINUA DE SESIÓN Y SUPABASE
@@ -1124,9 +1128,16 @@ export const App: React.FC = () => {
             setActiveCombatMonsterId(null);
             activeCombatMonsterIdRef.current = null;
           }
+          // Disparador soberano de botín táctico en el Host
+          if (isHostRef.current) {
+            const currentList = monstersRef.current && monstersRef.current.length > 0 ? monstersRef.current : [monsterRef.current];
+            const liveM = currentList.find((m) => m.id === monsterId) || monsterRef.current;
+            handleHostMonsterLootDropRef.current?.(liveM);
+          }
         } else {
           soundEffects.playMonsterRoar();
           addLog(`¡El monstruo se ha reanimado completamente con salud al 100%! Reanudando hostilidad.`, 'warning');
+          droppedMonsterLootIdsRef.current.delete(monsterId);
         }
       },
       onChestTransition: (payload) => {
@@ -1836,6 +1847,7 @@ export const App: React.FC = () => {
     myPlayer?.isHost ||
     (room && myPlayer && room.hostId === myPlayer.userId)
   );
+  isHostRef.current = isHost;
 
   // Solicitar sincronización de partida al conectarse al canal Realtime si la partida está en curso
   useEffect(() => {
@@ -2305,6 +2317,39 @@ export const App: React.FC = () => {
   }, [room?.id, addLog]);
 
   // ==========================================
+  // GENERACIÓN DE BOTÍN TÁCTICO AL ABATIR AL MONSTRUO (ARMA + BOTIQUÍN)
+  // ==========================================
+  const handleHostMonsterLootDrop = useCallback((monsterToDrop: Monster) => {
+    if (!isHostRef.current) return;
+    const monsterKey = monsterToDrop.id || monsterToDrop.name || 'monster_1';
+    if (droppedMonsterLootIdsRef.current.has(monsterKey)) return;
+    droppedMonsterLootIdsRef.current.add(monsterKey);
+
+    const drops = generateMonsterLootDrop(monsterToDrop, chestPhaseRef.current);
+    if (drops.length === 0) return;
+
+    setDroppedItems((prev) => {
+      const updated = [...prev, ...drops];
+      if (roomRef.current?.id) {
+        syncRoomEntitiesToSupabase(roomRef.current.id, { droppedItems: updated });
+      }
+      return updated;
+    });
+
+    drops.forEach((drop) => {
+      realtimeRef.current.broadcastSpawnEntity('dropped_item', drop);
+      realtimeRef.current.broadcastItemDropped(drop);
+    });
+
+    addLogRef.current?.(
+      `¡${monsterToDrop.name || 'El monstruo'} abatido! Ha soltado un arma táctica y un botiquín en el terreno.`,
+      'loot'
+    );
+    soundEffects.playCrateLoot();
+  }, []);
+  handleHostMonsterLootDropRef.current = handleHostMonsterLootDrop;
+
+  // ==========================================
   // BUCLE DE IA DEL MONSTRUO (CON PROTOCOLO DE FAILOVER Y MIGRACIÓN DETERMINISTA DE HOST)
   // ==========================================
   useMonsterAI({
@@ -2313,6 +2358,7 @@ export const App: React.FC = () => {
     presenceState: realtime.presenceState,
     lastExternalTick: lastExternalMonsterTick,
     onBroadcastHostHeartbeat: realtime.broadcastMonsterAIHeartbeat,
+    onMonsterDefeatedLootDrop: handleHostMonsterLootDrop,
     myPlayer,
     players,
     monsters,
@@ -4687,9 +4733,60 @@ export const App: React.FC = () => {
       const result = applyDroppedItemPickup(dropped, prev);
       addLog(result.logMessage, result.logType);
       soundEffects.playCrateLoot();
+      if (prev.lat && prev.lng) {
+        realtimeRef.current.broadcastPlayerMove(
+          prev.lat,
+          prev.lng,
+          result.updatedPlayer.hp,
+          true,
+          result.updatedPlayer.status,
+          result.updatedPlayer.isCriticallyWounded,
+          result.updatedPlayer.insideBuildingId,
+          result.updatedPlayer.insideBuildingType,
+          result.updatedPlayer.pets
+        );
+      }
       return result.updatedPlayer;
     });
   }, [addLog]);
+
+  // ==========================================
+  // RECOGIDA AUTOMÁTICA POR PROXIMIDAD DE OBJETOS EN EL TERRENO (<= 12m)
+  // ==========================================
+  useEffect(() => {
+    if (
+      room?.status !== 'playing' ||
+      !myPlayer?.isAlive ||
+      myPlayer?.isCriticallyWounded ||
+      myPlayer?.status === 'critically_wounded'
+    )
+      return;
+
+    const myCoord: Coordinates = {
+      lat: myPlayer.lat ?? room?.centerLat ?? 0,
+      lng: myPlayer.lng ?? room?.centerLng ?? 0,
+    };
+    if (myCoord.lat === 0 && myCoord.lng === 0) return;
+
+    droppedItems.forEach((dropped) => {
+      if (dropped.isCollected) return;
+      const dist = getDistanceMeters(myCoord, { lat: dropped.lat, lng: dropped.lng });
+      if (dist <= 12) {
+        handlePickDroppedItem(dropped);
+      }
+    });
+  }, [
+    myPlayer?.lat,
+    myPlayer?.lng,
+    myPlayer?.isAlive,
+    myPlayer?.isCriticallyWounded,
+    myPlayer?.status,
+    droppedItems,
+    room?.status,
+    room?.centerLat,
+    room?.centerLng,
+    handlePickDroppedItem,
+  ]);
 
   const handleAdoptWildPet = useCallback((wp: WildPet) => {
     if (!myPlayerRef.current) return;

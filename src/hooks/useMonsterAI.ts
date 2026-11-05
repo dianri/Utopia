@@ -28,6 +28,7 @@ export interface UseMonsterAIParams {
   onBroadcastMonsterUpdate: (monster: Monster) => void;
   onBroadcastPlayerHit: (victimId: string, damage: number, newHp: number) => void;
   onBroadcastHostHeartbeat?: (payload: { timestamp: number; hostId: string }) => void;
+  onMonsterDefeatedLootDrop?: (monster: Monster) => void;
   onLog: (message: string, type?: 'info' | 'combat' | 'warning' | 'loot') => void;
 }
 
@@ -53,6 +54,7 @@ export function useMonsterAI({
   onBroadcastMonsterUpdate,
   onBroadcastPlayerHit,
   onBroadcastHostHeartbeat,
+  onMonsterDefeatedLootDrop,
   onLog,
 }: UseMonsterAIParams) {
   const monsterAIsRef = useRef<Map<string, MonsterAIController>>(new Map());
@@ -208,6 +210,9 @@ export function useMonsterAI({
   const onBroadcastHostHeartbeatRef = useRef(onBroadcastHostHeartbeat);
   onBroadcastHostHeartbeatRef.current = onBroadcastHostHeartbeat;
 
+  const onMonsterDefeatedLootDropRef = useRef(onMonsterDefeatedLootDrop);
+  onMonsterDefeatedLootDropRef.current = onMonsterDefeatedLootDrop;
+
   const onLogRef = useRef(onLog);
   onLogRef.current = onLog;
 
@@ -285,6 +290,11 @@ export function useMonsterAI({
 
         const result = ai.update(m, playersRef.current, isContest);
         updatedMonsters.push(result.updatedMonster);
+
+        // Disparador soberano de botín táctico en el Host
+        if (result.shouldDropLoot) {
+          onMonsterDefeatedLootDropRef.current?.(result.updatedMonster);
+        }
 
         // FILTRO 1 (Estado): Si el monstruo está neutralizado/herido, NUNCA puede infligir daño
         if (!isMNeutralized && result.attackedPlayerId && result.attackDamage > 0) {

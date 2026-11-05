@@ -11,6 +11,7 @@ export interface MonsterAIUpdateResult {
   justEnraged: boolean;
   justDied: boolean;
   justRespawned: boolean;
+  shouldDropLoot?: boolean;
 }
 
 export class MonsterAIController {
@@ -74,6 +75,11 @@ export class MonsterAIController {
       const defeatedTimestamp = monster.defeatedAt || now;
       const elapsedSinceDefeat = now - defeatedTimestamp;
 
+      // Disparador de botín táctico: una única vez por abatimiento
+      if (!monster.lootDropped) {
+        result.shouldDropLoot = true;
+      }
+
       // Si ha transcurrido el tiempo de convalecencia: ¡REANIMACIÓN COMPLETA!
       if (elapsedSinceDefeat >= REVIVAL_COOLDOWN_MS) {
         result.justRespawned = true;
@@ -92,6 +98,7 @@ export class MonsterAIController {
           isGuardingChest: true,
           isEnraged: false,
           isRespawning: false,
+          lootDropped: false, // Resetear bandera al reanimarse para permitir nuevo botín en el siguiente ciclo
         };
         return result;
       }
@@ -109,6 +116,7 @@ export class MonsterAIController {
         isGuardingChest: false,
         isEnraged: false,
         isRespawning: false,
+        lootDropped: true, // Registrar que el botín de esta baja ya fue procesado
       };
       return result;
     }

@@ -173,6 +173,7 @@ export interface Monster {
   defeatedAt?: number;
   defeatedBy?: string; // Nickname o ID del jugador que lo abatió
   isGuardingChest?: boolean;
+  lootDropped?: boolean; // Indica si ya generó su botín táctico (arma + botiquín) al ser derrotado
 }
 
 export const isMonsterAlive = (monster?: Monster | null): boolean => {
