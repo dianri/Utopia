@@ -2893,6 +2893,19 @@ export const App: React.FC = () => {
   );
 
   const handleArenaClose = useCallback(() => {
+    // Si el jugador local está herido de muerte o neutralizado, cerrar inmediatamente sin buscar nuevos objetivos
+    const isWounded =
+      myPlayerRef.current?.isCriticallyWounded ||
+      myPlayerRef.current?.status === 'critically_wounded' ||
+      (myPlayerRef.current?.hp ?? 100) <= 1;
+
+    if (isWounded) {
+      setIsCombatArenaOpen(false);
+      setActiveCombatMonsterId(null);
+      activeCombatMonsterIdRef.current = null;
+      return;
+    }
+
     const playerCoord: Coordinates = {
       lat: myPlayerRef.current?.lat ?? roomRef.current?.centerLat ?? 0,
       lng: myPlayerRef.current?.lng ?? roomRef.current?.centerLng ?? 0,

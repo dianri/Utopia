@@ -183,6 +183,7 @@ export function useGeolocation({
         deltaMs
       );
 
+      currentPosRef.current = position;
       setCurrentPosition(position);
       if (!isHandlingPositionChangeRef.current) {
         isHandlingPositionChangeRef.current = true;
