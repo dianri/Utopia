@@ -1399,7 +1399,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           )
           .forEach((zone) => {
             activeFeatures.push(
-              createCircleFeature([zone.lng, zone.lat], zone.radius || (zone.type === 'hospital' ? 40 : 14), {
+              createCircleFeature([zone.lng, zone.lat], zone.radius || (zone.type === 'hospital' ? 20 : 14), {
                 color: zone.type === 'hospital' ? '#10b981' : '#06b6d4', // Verde esmeralda médico o cian refugio
                 fillOpacity: 0.12,
                 id: zone.id,
@@ -1905,13 +1905,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (e.defaultPrevented) return;
 
       // 4. Imán de destino táctico al Hospital de Campaña único (Snap-to-Center):
-      // Si el toque se produce en las inmediaciones del hospital (<= 45m), fijar el destino exactamente en su centro
+      // Si el toque se produce en las inmediaciones del hospital (<= 25m), fijar el destino exactamente en su centro
       let clickCoords: Coordinates = { lat: e.lngLat.lat, lng: e.lngLat.lng };
       const hospital =
         (structures || []).find((s) => s.type === 'hospital') || hospitalCoordsRef.current;
       if (hospital) {
         const distToHospital = getDistanceMeters(clickCoords, { lat: hospital.lat, lng: hospital.lng });
-        if (distToHospital <= 45) {
+        if (distToHospital <= 25) {
           clickCoords = { lat: hospital.lat, lng: hospital.lng };
         }
       }
@@ -2365,7 +2365,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                 (s.lat !== 0 || s.lng !== 0)
             )
             .map((s) => {
-              const circle = createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius || (s.type === 'hospital' ? 40 : 14));
+              const circle = createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius || (s.type === 'hospital' ? 20 : 14));
               return {
                 ...circle,
                 properties: {
@@ -2402,8 +2402,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const badgeText = isHospital ? 'text-emerald-300' : 'text-cyan-300';
       const icon = isHospital ? '/assets/icons/structures/structure-hospital.png' : '/assets/icons/structures/structure-shelter.png';
       const aura = isHospital ? 'bg-emerald-500/25 animate-ping' : 'bg-cyan-500/20';
-      const effectiveRadius = structure.radius || (isHospital ? 40 : 14);
-      const label = structure.name ? structure.name.toUpperCase() : `HOSPITAL (${effectiveRadius}m)`;
+      const effectiveRadius = structure.radius || (isHospital ? 20 : 14);
+      const label = isHospital ? `HOSPITAL (${effectiveRadius}M)` : (structure.name ? structure.name.toUpperCase() : '');
 
       if (!structureMarkersRef.current.has(structure.id)) {
         const el = document.createElement('div');

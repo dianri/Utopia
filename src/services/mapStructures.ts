@@ -2,14 +2,14 @@ import type { Coordinates, MapStructure } from '../types/game';
 import { getBearing, getDestinationPoint } from './geoUtils';
 
 /**
- * Radio de acción, protección y curación táctica del Hospital de Campaña en metros (40m).
- * Asegura la entrada y recuperación automática incluso al interactuar con niveles reducidos de zoom.
+ * Radio de acción, protección y curación táctica del Hospital de Campaña en metros (20m).
+ * Equilibra la frontera de recuperación ciñéndola fielmente a la edificación física.
  */
-export const HOSPITAL_RADIUS_METERS = 40;
+export const HOSPITAL_RADIUS_METERS = 20;
 
 /**
  * Coordenadas maestras fijas e inmutables de estructuras en el sector operativo Las Meriendas.
- * 1 Hospital de Campaña central (radio 40m) y 4 Refugios Tácticos de guarecimiento y cobertura.
+ * 1 Hospital de Campaña central (radio 20m) y 4 Refugios Tácticos de guarecimiento y cobertura.
  */
 export const MASTER_LAS_MERIENDAS_STRUCTURES: MapStructure[] = [
   {
@@ -18,7 +18,7 @@ export const MASTER_LAS_MERIENDAS_STRUCTURES: MapStructure[] = [
     name: 'Hospital de Campaña',
     lat: 37.401,
     lng: -2.1558,
-    radius: HOSPITAL_RADIUS_METERS, // 40m
+    radius: HOSPITAL_RADIUS_METERS, // 20m
   },
   {
     id: 'shelter-1',
@@ -80,10 +80,10 @@ export function generateMapStructures(
     ? getBearing(center, initialAnchor)
     : 0;
 
-  // Radio de interacción adaptativo para hospital en zonas compactas
+  // Radio de interacción adaptativo para hospital en zonas compactas (20m estándar)
   const effectiveHospitalRadius = Math.min(
     HOSPITAL_RADIUS_METERS,
-    Math.max(15, Math.round(playAreaRadius * 0.2))
+    Math.max(12, Math.round(playAreaRadius * 0.15))
   );
 
   // Radio de refugio adaptativo para zonas compactas
