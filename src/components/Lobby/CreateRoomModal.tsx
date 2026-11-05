@@ -20,7 +20,7 @@ interface CreateRoomModalProps {
 export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onCancel }) => {
   const [roomName, setRoomName] = useState<string>('Las Meriendas Hunt');
   const [isPublic, setIsPublic] = useState<boolean>(true);
-  const [radiusKm, setRadiusKm] = useState<number>(0.35); // 0.1 a 3.0 km (100m a 3000m de radio)
+  const [radiusKm, setRadiusKm] = useState<number>(0.35); // 0.2 a 3.0 km (200m a 3000m de radio)
   const [movementMode, setMovementMode] = useState<MovementMode>('manual');
   const [playerSpeed, setPlayerSpeed] = useState<PlayerSpeed>('normal');
   const [nickname, setNickname] = useState<string>('');
@@ -62,8 +62,8 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
     fetchCurrentLocation();
   }, []);
 
-  // Radio en metros a partir del valor en km (mínimo garantizado: 100m)
-  const radiusMeters = Math.max(100, Math.round(radiusKm * 1000));
+  // Radio en metros a partir del valor en km (mínimo garantizado: 200m)
+  const radiusMeters = Math.max(200, Math.round(radiusKm * 1000));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -204,20 +204,20 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({ onConfirm, onC
             <div className="flex justify-between items-center text-xs font-mono">
               <span className="text-hud-muted">Radio de la Zona:</span>
               <span className="text-hud-cyan font-bold">
-                {radiusKm.toFixed(1)} km (~{radiusMeters}m radio)
+                {parseFloat(radiusKm.toFixed(2))} km (~{radiusMeters}m radio)
               </span>
             </div>
             <input
               type="range"
-              min="0.1"
+              min="0.2"
               max="3.0"
-              step="0.1"
+              step="0.05"
               value={radiusKm}
-              onChange={(e) => setRadiusKm(parseFloat(e.target.value))}
+              onChange={(e) => setRadiusKm(Math.max(0.2, parseFloat(e.target.value)))}
               className="accent-hud-cyan w-full cursor-pointer"
             />
             <div className="flex justify-between text-[10px] font-mono text-hud-muted">
-              <span>0.1 km (100m)</span>
+              <span>0.2 km (200m)</span>
               <span>0.35 km (Estándar)</span>
               <span>3.0 km (3000m)</span>
             </div>
