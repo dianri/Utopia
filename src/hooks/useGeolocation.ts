@@ -8,7 +8,7 @@ interface UseGeolocationOptions {
   initialPosition: Coordinates | null;
   positionKey?: string | null;
   onPositionChange: (pos: Coordinates, isFinal?: boolean) => void;
-  onVisualStep?: (pos: Coordinates) => void;
+  onVisualStep?: (pos: Coordinates, isMoving: boolean) => void;
   isAlive: boolean;
   isSlowed?: boolean;
   speedMultiplier?: number;
@@ -85,6 +85,9 @@ export function useGeolocation({
     const wasMoving = targetPositionRef.current !== null;
     targetPositionRef.current = null;
     setTargetPosition(null);
+    if (currentPosRef.current) {
+      onVisualStepRef.current?.(currentPosRef.current, false);
+    }
     // Si no había movimiento activo o ya estamos dentro de un ciclo de cambio de posición,
     // NO re-disparar onPositionChange sincrónicamente para prevenir llamadas recursivas y desbordamiento de pila
     if (!wasMoving || isHandlingPositionChangeRef.current) return;
@@ -130,7 +133,7 @@ export function useGeolocation({
         setGpsError(null);
         setCurrentPosition(coords);
         currentPosRef.current = coords;
-        onVisualStepRef.current?.(coords);
+        onVisualStepRef.current?.(coords, false);
         if (isHandlingPositionChangeRef.current) return;
         isHandlingPositionChangeRef.current = true;
         try {
@@ -195,7 +198,7 @@ export function useGeolocation({
       currentPosRef.current = position;
 
       // 1. Cinemática visual a 60 FPS sin pasar por React ni provocar re-renderizados
-      onVisualStepRef.current?.(position);
+      onVisualStepRef.current?.(position, !arrived);
 
       // 2. Estrangulamiento (throttling) de estado React a ~6.6 Hz (cada 150 ms) o inmediato al llegar
       const now = performance.now();
