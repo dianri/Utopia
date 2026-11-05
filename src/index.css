@@ -243,6 +243,8 @@
 /* El contenedor raíz de MapLibre debe ser inviolable (sin transiciones ni dimensiones fijas) */
 .maplibregl-marker {
   position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
   will-change: transform !important;
   transition: none !important; /* Prohibido transicionar transform en el root */
   width: 0 !important;
@@ -252,7 +254,9 @@
 
 /* 1. Contenedor Raíz de Anclaje: Posicionamiento neutro para MapLibre */
 .map-marker-anchor {
-  position: relative;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
   width: 0 !important;
   height: 0 !important;
   overflow: visible !important;
@@ -358,9 +362,12 @@
 /* Contenedores de MapLibre: nunca por encima del HUD */
 #map,
 .maplibregl-map,
-.maplibregl-canvas-container,
-.maplibregl-marker {
+.maplibregl-canvas-container {
   z-index: 10 !important;
+}
+
+.maplibregl-marker {
+  z-index: 20;
 }
 
 /* Barras HUD y Modales de interfaz: prioridad absoluta */

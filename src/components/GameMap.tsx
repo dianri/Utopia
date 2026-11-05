@@ -660,6 +660,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
   // Marcadores HTML persistentes en refs para animación a 60 FPS sin re-renderizar React
   const playerMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
+  const localPlayerMarkerRef = useRef<maplibregl.Marker | null>(null);
   const monsterMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const chestMarkerRef = useRef<maplibregl.Marker | null>(null);
   const crateMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
@@ -1603,11 +1604,23 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // ACTUALIZACIÓN DE OVERLAYS DE EMERGENCIA
   // ==========================================
   const updateEmergencyOverlays = useCallback(
-    (_map: maplibregl.Map) => {
-      // La directriz médica hacia el hospital ha sido delegada de forma soberana
-      // y atómica a la Sección 8 de marcadores (SSOT), erradicando condiciones de carrera y fallbacks de centro.
+    (targetMap: maplibregl.Map) => {
+      const map = targetMap || mapRef.current;
+      if (!map || !isMapStyleLoaded(map)) return;
+
+      const liveMarkerPos = localPlayerMarkerRef.current?.getLngLat();
+      const currentLng =
+        liveMarkerPos?.lng ??
+        (myPlayer?.lng != null && !isNaN(myPlayer.lng) && myPlayer.lng !== 0 ? myPlayer.lng : null);
+      const currentLat =
+        liveMarkerPos?.lat ??
+        (myPlayer?.lat != null && !isNaN(myPlayer.lat) && myPlayer.lat !== 0 ? myPlayer.lat : null);
+
+      if (currentLng != null && currentLat != null) {
+        updateHospitalGuidelineDirect(map, currentLng, currentLat, isMeWounded);
+      }
     },
-    []
+    [isMeWounded, myPlayer?.lat, myPlayer?.lng, updateHospitalGuidelineDirect]
   );
   updateEmergencyOverlaysRef.current = updateEmergencyOverlays;
 
@@ -1874,6 +1887,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       }
       playerMarkersRef.current.forEach((m) => m.remove());
       playerMarkersRef.current.clear();
+      localPlayerMarkerRef.current = null;
       crateMarkersRef.current.forEach((m) => m.remove());
       crateMarkersRef.current.clear();
       pingMarkersRef.current.forEach((m) => m.remove());
@@ -2086,7 +2100,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     if (!chestMarkerRef.current) {
       const el = document.createElement('div');
-      el.className = 'map-marker-anchor marker-chest treasure-marker';
+      el.className = 'maplibregl-marker map-marker-anchor marker-chest treasure-marker';
       el.setAttribute('data-entity', 'chest');
       el.style.pointerEvents = 'none';
       if (isMeWounded) {
@@ -2102,7 +2116,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       chestMarkerRef.current.setLngLat([treasureLocation.lng, treasureLocation.lat]);
       const el = chestMarkerRef.current.getElement();
       if (el) {
-        el.className = 'map-marker-anchor marker-chest treasure-marker';
+        el.className = 'maplibregl-marker map-marker-anchor marker-chest treasure-marker';
         el.setAttribute('data-entity', 'chest');
         el.style.pointerEvents = 'none';
         el.style.display = isMeWounded ? 'none' : 'block';
@@ -2182,7 +2196,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       if (!crateMarkersRef.current.has(crate.id)) {
         const el = document.createElement('div');
-        el.className = 'map-marker-anchor marker-crate';
+        el.className = 'maplibregl-marker map-marker-anchor marker-crate';
         el.setAttribute('data-entity', 'crate');
         el.style.pointerEvents = 'none';
         if (isMeWounded) {
@@ -2275,7 +2289,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker?.setLngLat([crate.lng, crate.lat]);
         const el = marker?.getElement();
         if (el) {
-          el.className = 'map-marker-anchor marker-crate';
+          el.className = 'maplibregl-marker map-marker-anchor marker-crate';
           el.setAttribute('data-entity', 'crate');
           el.style.pointerEvents = 'none';
           el.style.display = isMeWounded ? 'none' : 'block';
@@ -2355,7 +2369,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       if (!structureMarkersRef.current.has(structure.id)) {
         const el = document.createElement('div');
-        el.className = `map-marker-anchor marker-structure structure-marker-${structure.id}`;
+        el.className = `maplibregl-marker map-marker-anchor marker-structure structure-marker-${structure.id}`;
         el.setAttribute('data-entity', 'structure');
         el.style.pointerEvents = 'none';
         if (isMeWounded && !isHospital) {
@@ -2390,7 +2404,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker?.setLngLat([structure.lng, structure.lat]);
         const el = marker?.getElement();
         if (el) {
-          el.className = `map-marker-anchor marker-structure structure-marker-${structure.id}`;
+          el.className = `maplibregl-marker map-marker-anchor marker-structure structure-marker-${structure.id}`;
           el.setAttribute('data-entity', 'structure');
           el.style.pointerEvents = 'none';
           el.style.display = (isMeWounded && !isHospital) ? 'none' : 'block';
@@ -2471,7 +2485,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!droppedItemMarkersRef.current.has(dropped.id)) {
         const style = getTierStyle(dropped.item);
         const el = document.createElement('div');
-        el.className = `map-marker-anchor marker-loot dropped-item-${dropped.id}`;
+        el.className = `maplibregl-marker map-marker-anchor marker-loot dropped-item-${dropped.id}`;
         el.setAttribute('data-entity', 'crate');
         el.style.pointerEvents = 'none';
         if (isMeWounded) {
@@ -2521,7 +2535,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker?.setLngLat([dropped.lng, dropped.lat]);
         const el = marker?.getElement();
         if (el) {
-          el.className = `map-marker-anchor marker-loot dropped-item-${dropped.id}`;
+          el.className = `maplibregl-marker map-marker-anchor marker-loot dropped-item-${dropped.id}`;
           el.setAttribute('data-entity', 'crate');
           el.style.pointerEvents = 'none';
           el.style.display = isMeWounded ? 'none' : 'block';
@@ -2577,7 +2591,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       if (!wildPetMarkersRef.current.has(wp.id)) {
         const el = document.createElement('div');
-        el.className = 'map-marker-anchor marker-pet pet-marker-container';
+        el.className = 'maplibregl-marker map-marker-anchor marker-pet pet-marker-container';
         el.setAttribute('data-entity', 'pet');
         el.style.pointerEvents = 'none';
         el.style.zIndex = '35'; // Visible por encima del canvas
@@ -2646,7 +2660,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker?.setLngLat([wp.lng, wp.lat]);
         const el = marker?.getElement();
         if (el) {
-          el.className = 'map-marker-anchor marker-pet pet-marker-container';
+          el.className = 'maplibregl-marker map-marker-anchor marker-pet pet-marker-container';
           el.setAttribute('data-entity', 'pet');
           el.style.pointerEvents = 'none';
           el.style.display = isMeWounded ? 'none' : 'block';
@@ -2787,7 +2801,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       let marker = monsterMarkersRef.current.get(monsterKey);
       if (!marker) {
         const el = document.createElement('div');
-        el.className = 'map-marker-anchor marker-monster monster-map-marker';
+        el.className = 'maplibregl-marker map-marker-anchor marker-monster monster-map-marker';
         el.setAttribute('data-entity', 'monster');
         el.setAttribute('data-monster-id', m.id || monsterKey);
         el.setAttribute('data-defeated', isDefeated ? 'true' : 'false');
@@ -2823,7 +2837,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker.setLngLat([m.lng, m.lat]);
         const el = marker.getElement();
         if (el) {
-          el.className = 'map-marker-anchor marker-monster monster-map-marker';
+          el.className = 'maplibregl-marker map-marker-anchor marker-monster monster-map-marker';
           el.setAttribute('data-entity', 'monster');
           el.setAttribute('data-monster-id', m.id || monsterKey);
           if (isDefeated) {
@@ -2923,6 +2937,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     playerMarkersRef.current.forEach((marker, id) => {
       if (!activePlayerIds.has(id)) {
+        if (id === myPlayer.id) {
+          localPlayerMarkerRef.current = null;
+        }
         const kin = playerKinematicsRef.current.get(id);
         if (kin?.stopTimeout) clearTimeout(kin.stopTimeout);
         if (kin?.flankWatchInterval) {
@@ -2977,7 +2994,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
       if (!playerMarkersRef.current.has(p.id)) {
         const el = document.createElement('div');
-        el.className = `map-marker-anchor marker-player player-marker-${p.id}`;
+        el.className = `maplibregl-marker map-marker-anchor marker-player player-marker-${p.id}`;
         el.setAttribute('data-entity', 'player');
         el.setAttribute('data-is-me', isMe ? 'true' : 'false');
         el.style.pointerEvents = 'none';
@@ -3042,7 +3059,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         playerMarkersRef.current.set(p.id, marker);
 
         if (isMe) {
-          updateHospitalGuidelineDirect(map, lng, lat, isMeWounded);
+          localPlayerMarkerRef.current = marker;
+          const livePos = marker.getLngLat();
+          const startLng = livePos?.lng ?? lng;
+          const startLat = livePos?.lat ?? lat;
+          updateHospitalGuidelineDirect(map, startLng, startLat, isMeWounded);
           syncPlayerVision(map);
         }
 
@@ -3053,12 +3074,16 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const marker = playerMarkersRef.current.get(p.id);
         marker?.setLngLat([lng, lat]);
         if (isMe) {
-          updateHospitalGuidelineDirect(map, lng, lat, isMeWounded);
+          if (marker) localPlayerMarkerRef.current = marker;
+          const livePos = marker?.getLngLat();
+          const startLng = livePos?.lng ?? lng;
+          const startLat = livePos?.lat ?? lat;
+          updateHospitalGuidelineDirect(map, startLng, startLat, isMeWounded);
           syncPlayerVision(map);
         }
         const el = marker?.getElement();
         if (el) {
-          el.className = `map-marker-anchor marker-player player-marker-${p.id}`;
+          el.className = `maplibregl-marker map-marker-anchor marker-player player-marker-${p.id}`;
           el.setAttribute('data-entity', 'player');
           el.setAttribute('data-is-me', isMe ? 'true' : 'false');
           el.style.pointerEvents = 'none';
@@ -3175,7 +3200,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (!pingMarkersRef.current.has(ping.id)) {
         const pingIcon = `/assets/icons/hud/ping-${ping.type || 'assist'}.png`;
         const el = document.createElement('div');
-        el.className = 'map-marker-anchor marker-ping ping-marker';
+        el.className = 'maplibregl-marker map-marker-anchor marker-ping ping-marker';
         el.setAttribute('data-entity', 'ping');
         el.style.pointerEvents = 'none';
         if (isMeWounded) {
