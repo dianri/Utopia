@@ -666,6 +666,12 @@ export const DEFAULT_HOSPITAL_COORDINATES: Coordinates = {
 };
 
 /**
+ * Radio de acción, protección y curación táctica predeterminado para el Hospital de Campaña (40 metros).
+ * Proporciona un margen holgado para navegación e interacción con niveles reducidos de zoom.
+ */
+export const DEFAULT_HOSPITAL_RADIUS = 40;
+
+/**
  * Evalúa de forma unificada e inclusiva si un jugador se encuentra en estado herido, crítico o incapacitado.
  * Salvaguarda contra discrepancias de nomenclatura, diferencias mayúsculas/minúsculas y umbrales de salud.
  */

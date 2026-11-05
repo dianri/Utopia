@@ -522,7 +522,8 @@ export const App: React.FC = () => {
     if (player.lat == null || player.lng == null) return false;
     return mapStructures.some((s) => {
       const d = getDistanceMeters({ lat: player.lat, lng: player.lng }, { lat: s.lat, lng: s.lng });
-      return d <= s.radius;
+      const effectiveRadius = s.radius || (s.type === 'hospital' ? 40 : 14);
+      return d <= effectiveRadius;
     });
   }, []);
 
@@ -1848,7 +1849,8 @@ export const App: React.FC = () => {
       let insideType: StructureType | null = null;
       for (const s of structuresRef.current) {
         const d = getDistanceMeters(coords, { lat: s.lat, lng: s.lng });
-        if (d <= s.radius) {
+        const effectiveRadius = s.radius || (s.type === 'hospital' ? 40 : 14);
+        if (d <= effectiveRadius) {
           insideId = s.id;
           insideType = s.type;
           break;
@@ -3903,7 +3905,7 @@ export const App: React.FC = () => {
   // consiga descifrar y abrir el cofre del tesoro para alcanzar 'victory'.
 
   // ==========================================
-  // HOSPITAL DE CAMPAÑA: DETECCIÓN CONTINUA Y APERTURA DE BAHÍA MÉDICA (< 18M)
+  // HOSPITAL DE CAMPAÑA: DETECCIÓN CONTINUA Y APERTURA DE BAHÍA MÉDICA (< 40M)
   // Toda la curación hospitalaria ocurre exclusivamente a través de HospitalModal
   // ==========================================
   const hasShownFullHealthNoticeRef = useRef(false);
@@ -3926,7 +3928,7 @@ export const App: React.FC = () => {
       };
 
       const hospitalDistance = getDistanceMeters(pCoord, hospitalCoord);
-      const hospitalRadius = hospital.radius || 18;
+      const hospitalRadius = hospital.radius || 40;
 
       const playerNeedsHealing =
         player.hp < (player.maxHp || 100) ||
@@ -5413,12 +5415,30 @@ export const App: React.FC = () => {
   const handleMapClick = useCallback((coords: Coordinates) => {
     if (!room || isCombatArenaOpen || isHospitalModalOpen) return;
 
+    // IMÁN TÁCTICO AL HOSPITAL (SNAP-TO-CENTER):
+    // Si el clic se produce dentro o en las inmediaciones del Hospital de Campaña (<= 45 metros),
+    // o el jugador está herido/incapacitado y toca en la zona, forzar que las coordenadas de destino
+    // se fijen exactamente en el centro geográfico del hospital para garantizar la entrada y curación al 100%.
+    let targetCoords = coords;
+    const hospital = hospitalStructureRef.current;
+    if (hospital) {
+      const distToHospital = getDistanceMeters(coords, { lat: hospital.lat, lng: hospital.lng });
+      const isWounded = Boolean(
+        myPlayer?.isCriticallyWounded ||
+        myPlayer?.status === 'critically_wounded' ||
+        (myPlayer?.hp ?? 100) < 100
+      );
+      if (distToHospital <= 45 || (isWounded && distToHospital <= 50)) {
+        targetCoords = { lat: hospital.lat, lng: hospital.lng };
+      }
+    }
+
     if (myPlayer && !myPlayer.isAlive) {
       // MODO FANTASMA: EMITIR PING TÁCTICO
       const ping: GhostPing = {
         id: crypto.randomUUID(),
-        lat: coords.lat,
-        lng: coords.lng,
+        lat: targetCoords.lat,
+        lng: targetCoords.lng,
         timestamp: Date.now(),
         playerNickname: myPlayer.nickname,
         type: 'danger',
@@ -5429,10 +5449,10 @@ export const App: React.FC = () => {
     } else if (room.movementMode === 'manual' && myPlayer?.isAlive) {
       // MODO MANUAL: MOVERSE AL PUNTO SELECCIONADO
       // Si el toque es fuera del perímetro de juego, reajustar hacia el límite interior (95% del radio)
-      const clickDist = getDistanceMeters(coords, { lat: room.centerLat, lng: room.centerLng });
+      const clickDist = getDistanceMeters(targetCoords, { lat: room.centerLat, lng: room.centerLng });
       if (clickDist > room.playAreaRadius) {
         addLog('Destino fuera del área de operaciones. Reajustando al límite.', 'warning');
-        const bearing = getBearing({ lat: room.centerLat, lng: room.centerLng }, coords);
+        const bearing = getBearing({ lat: room.centerLat, lng: room.centerLng }, targetCoords);
         const clampedTarget = getDestinationPoint(
           { lat: room.centerLat, lng: room.centerLng },
           room.playAreaRadius * 0.95,
@@ -5440,7 +5460,7 @@ export const App: React.FC = () => {
         );
         setManualDestination(clampedTarget);
       } else {
-        setManualDestination(coords);
+        setManualDestination(targetCoords);
       }
     }
   }, [room, myPlayer, addLog, realtime]);
