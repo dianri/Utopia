@@ -715,7 +715,10 @@ export function isPlayerWoundedOrCritical(player?: Partial<Player> | null): bool
 
 /**
  * Localiza de forma defensiva y resiliente las coordenadas del Hospital de Campaña.
- * Nunca retorna null: recurre a estructuras activas, cálculo determinista o coordenadas tácticas de contingencia.
+ * Garantiza inmutabilidad geográfica: nunca varía ante transiciones de fase de cofres del tesoro.
+ * 1. Búsqueda directa en estructuras activas.
+ * 2. Si el centro corresponde a Las Meriendas o estructuras no cargadas, retorna coordenadas maestras fijas.
+ * 3. Fallback determinista anclado al centro operativo.
  */
 export function resolveHospitalCoordinates(
   structures?: MapStructure[] | null,
@@ -744,9 +747,16 @@ export function resolveHospitalCoordinates(
     }
   }
 
-  // 2. Fallback determinista computado a partir del centro y cofre (mismo vector matemático que mapStructures.ts)
+  // 2. Si el centro corresponde al sector Las Meriendas o no se especifican coordenadas válidas, contingencia maestra
   if (
-    center &&
+    !center ||
+    (Math.abs(center.lat - 37.4018) < 0.05 && Math.abs(center.lng - -2.1565) < 0.05)
+  ) {
+    return { ...DEFAULT_HOSPITAL_COORDINATES };
+  }
+
+  // 3. Fallback determinista anclado al centro operativo de la sala (fijo a 180° Sur)
+  if (
     typeof center.lat === 'number' &&
     typeof center.lng === 'number' &&
     !isNaN(center.lat) &&
@@ -754,18 +764,7 @@ export function resolveHospitalCoordinates(
     (center.lat !== 0 || center.lng !== 0)
   ) {
     const effectiveRadius = playAreaRadius && playAreaRadius > 0 ? playAreaRadius : 100;
-    const effectiveTreasure =
-      treasureLocation &&
-      typeof treasureLocation.lat === 'number' &&
-      typeof treasureLocation.lng === 'number' &&
-      !isNaN(treasureLocation.lat) &&
-      !isNaN(treasureLocation.lng) &&
-      (treasureLocation.lat !== 0 || treasureLocation.lng !== 0)
-        ? treasureLocation
-        : center;
-
-    const treasureBearing = getBearing(center, effectiveTreasure) || 0;
-    const hospitalBearing = (treasureBearing + 180) % 360;
+    const hospitalBearing = 180;
     const hospitalDistance = Math.max(30, Math.min(effectiveRadius * 0.6, effectiveRadius - 20));
     const computedHospital = getDestinationPoint(center, hospitalDistance, hospitalBearing);
 
@@ -781,6 +780,6 @@ export function resolveHospitalCoordinates(
     }
   }
 
-  // 3. Contingencia fija de alta fiabilidad en Las Meriendas (garantiza destino válido)
+  // 4. Contingencia fija de alta fiabilidad en Las Meriendas (garantiza destino válido)
   return { ...DEFAULT_HOSPITAL_COORDINATES };
 }

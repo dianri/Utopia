@@ -496,15 +496,21 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // ESTRUCTURAS TÁCTICAS EN EL MAPA (1 HOSPITAL Y 4 REFUGIOS)
+  // ESTRUCTURAS TÁCTICAS INMUTABLES DE SALA (1 HOSPITAL Y 4 REFUGIOS)
+  // Desacopladas absolutamente de las coordenadas de fase del cofre del tesoro para garantizar inmutabilidad geográfica
   const structures = useMemo<MapStructure[]>(() => {
     if (!room) return [];
-    return generateMapStructures(
-      { lat: room.centerLat, lng: room.centerLng },
-      room.playAreaRadius,
-      { lat: room.treasureLat, lng: room.treasureLng }
-    );
-  }, [room?.centerLat, room?.centerLng, room?.playAreaRadius, room?.treasureLat, room?.treasureLng]);
+    const center = {
+      lat: room.centerLat ?? (room as any).center_lat ?? 37.4018,
+      lng: room.centerLng ?? (room as any).center_lng ?? -2.1565,
+    };
+    const radius = room.playAreaRadius ?? (room as any).play_area_radius ?? 350;
+    const initialTreasure = {
+      lat: (room as any)?.settings?.initial_treasure_lat ?? (room as any)?.settings?.treasure_lat ?? room.treasureLat ?? center.lat,
+      lng: (room as any)?.settings?.initial_treasure_lng ?? (room as any)?.settings?.treasure_lng ?? room.treasureLng ?? center.lng,
+    };
+    return generateMapStructures(center, radius, initialTreasure);
+  }, [room?.id, room?.centerLat, room?.centerLng, room?.playAreaRadius]);
 
   const structuresRef = useRef<MapStructure[]>(structures);
   structuresRef.current = structures;
