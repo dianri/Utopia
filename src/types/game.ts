@@ -19,6 +19,13 @@ export interface MapStructure {
 
 export type PlayerStatus = 'active' | 'critically_wounded' | 'dead' | 'wounded' | 'downed' | 'incapacitated';
 
+/**
+ * Constantes de salud y vitalidad de los jugadores
+ */
+export const PLAYER_BASE_HP = 300;
+export const PLAYER_MAX_HP = 300;
+export const TANK_MAX_HP = 450;
+
 export const DEFAULT_PLAYER_SPEED: PlayerSpeed = 'normal';
 
 export const PLAYER_SPEED_MPS: Record<PlayerSpeed, number> = {

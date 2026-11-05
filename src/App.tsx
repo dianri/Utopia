@@ -577,7 +577,7 @@ export const App: React.FC = () => {
   const isSquadFullyHealed = useMemo(() => {
     if (!myPlayer) return false;
     const playerFull =
-      myPlayer.hp >= (myPlayer.maxHp || 100) &&
+      myPlayer.hp >= (myPlayer.maxHp || 300) &&
       !myPlayer.isCriticallyWounded &&
       myPlayer.status !== 'critically_wounded';
     const petsFull =
@@ -1873,7 +1873,7 @@ export const App: React.FC = () => {
           const st = structuresRef.current.find((s) => s.id === insideId);
           if (st?.type === 'hospital') {
             const playerNeedsHealing =
-              myPlayerRef.current.hp < (myPlayerRef.current.maxHp || 100) ||
+              myPlayerRef.current.hp < (myPlayerRef.current.maxHp || 300) ||
               myPlayerRef.current.isCriticallyWounded ||
               myPlayerRef.current.status === 'critically_wounded';
 
@@ -1904,7 +1904,7 @@ export const App: React.FC = () => {
       // Verificación directa e inmediata en hospital si necesita curación
       if (insideType === 'hospital') {
         const playerNeedsHealing =
-          myPlayerRef.current.hp < (myPlayerRef.current.maxHp || 100) ||
+          myPlayerRef.current.hp < (myPlayerRef.current.maxHp || 300) ||
           myPlayerRef.current.isCriticallyWounded ||
           myPlayerRef.current.status === 'critically_wounded';
 
@@ -2909,7 +2909,7 @@ export const App: React.FC = () => {
     const isWounded =
       myPlayerRef.current?.isCriticallyWounded ||
       myPlayerRef.current?.status === 'critically_wounded' ||
-      (myPlayerRef.current?.hp ?? 100) <= 1;
+      (myPlayerRef.current?.hp ?? 300) <= 1;
 
     if (isWounded) {
       setIsCombatArenaOpen(false);
@@ -3947,7 +3947,7 @@ export const App: React.FC = () => {
       }
 
       const playerNeedsHealing =
-        player.hp < (player.maxHp || 100) ||
+        player.hp < (player.maxHp || 300) ||
         player.status === 'critically_wounded' ||
         player.isCriticallyWounded;
 
@@ -5190,7 +5190,8 @@ export const App: React.FC = () => {
     };
 
     const finalRole = (playerData.role as PlayerRole) || config.role || 'medic';
-    const finalMaxHp = playerData.max_hp ?? getMaxHpForRole(finalRole);
+    const roleBaseMaxHp = getMaxHpForRole(finalRole);
+    const finalMaxHp = Math.max(playerData.max_hp ?? 0, roleBaseMaxHp);
 
     // Recuperar inventario: Snapshot local > Base de datos > Inventario por defecto
     let restoredInventory: InventoryItem[] = getDefaultInventoryForRole(finalRole);
@@ -5224,9 +5225,21 @@ export const App: React.FC = () => {
       restoredPets = playerData.pets;
     }
 
-    // Recuperar salud y estado crítico
-    const restoredHp =
-      localSnapshot?.hp != null ? localSnapshot.hp : (playerData.hp ?? finalMaxHp);
+    // Recuperar salud y estado crítico (con escalado a la nueva escala de 300 HP base)
+    const rawHp = localSnapshot?.hp ?? playerData.hp;
+    const isWoundedState =
+      (playerData.status as PlayerStatus) === 'critically_wounded' ||
+      (rawHp != null && rawHp <= 1) ||
+      localSnapshot?.isCriticallyWounded;
+    const wasFullHealth =
+      rawHp != null &&
+      rawHp >= (playerData.max_hp ?? 100) &&
+      !isWoundedState;
+    const restoredHp = isWoundedState
+      ? Math.max(1, rawHp ?? 1)
+      : wasFullHealth
+      ? finalMaxHp
+      : Math.min(finalMaxHp, rawHp ?? finalMaxHp);
     const restoredStatus: PlayerStatus =
       localSnapshot?.status ||
       (playerData.status as PlayerStatus) ||
@@ -5450,7 +5463,7 @@ export const App: React.FC = () => {
       const isWounded = Boolean(
         myPlayer?.isCriticallyWounded ||
         myPlayer?.status === 'critically_wounded' ||
-        (myPlayer?.hp ?? 100) < 100
+        (myPlayer?.hp ?? 300) < (myPlayer?.maxHp || 300)
       );
       if (nearestHosp && (minHospDist <= 45 || (isWounded && minHospDist <= 50))) {
         targetCoords = { lat: nearestHosp.lat, lng: nearestHosp.lng };
@@ -6027,8 +6040,8 @@ export const App: React.FC = () => {
               gameId: room.id,
               nickname: 'Oponente',
               role: 'tank',
-              hp: 100,
-              maxHp: 100,
+              hp: 450,
+              maxHp: 450,
               isAlive: true,
               lat: myPlayer.lat,
               lng: myPlayer.lng,

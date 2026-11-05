@@ -140,7 +140,7 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
       if (!p) return;
 
       const prevHp = currentHpRef.current;
-      const maxHp = p.maxHp || 100;
+      const maxHp = p.maxHp || 300;
       const prevWounded = isWoundedRef.current;
       const prevStatus = currentStatusRef.current;
 
@@ -263,7 +263,7 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
 
   if (!isOpen || !activePlayer) return null;
 
-  const playerMaxHp = activePlayer.maxHp || 100;
+  const playerMaxHp = activePlayer.maxHp || 300;
   const playerHpPercent = Math.max(0, Math.min(100, Math.round((currentHp / playerMaxHp) * 100)));
   const alivePetsCount = pets.filter((p) => !p.isWounded && p.hp > 0).length;
 
