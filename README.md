@@ -289,7 +289,7 @@ Gobernado por [`MonsterAIController`](file:///Users/dian/antigravity/Utopia/src/
 | Clase | Icono Táctico | Rol Táctico | Habilidad Especial / Ventaja |
 | :--- | :--- | :--- | :--- |
 | **Médico** | `/assets/icons/roles/role-medic.png` | Soporte y Sanación | Reanimación rápida y radio de curación táctica ampliado a 35m. |
-| **Tanque** | `/assets/icons/roles/role-tank.png` | Primera Línea | +50% de vida base (150 HP) y atracción prioritaria del aggro del monstruo. |
+| **Tanque** | `/assets/icons/roles/role-tank.png` | Primera Línea | +50% de vida base (450 HP frente a los 300 HP estándar) y atracción prioritaria del aggro del monstruo. |
 | **Explorador** | `/assets/icons/roles/role-scout.png` | Reconocimiento | Radio de visión de 105m y habilidad activa **Radar Táctico** (revela al monstruo a toda la escuadra). |
 | **Tirador** | `/assets/icons/roles/role-marksman.png` | Daño a Distancia | +35% de daño con armas de fuego y mayor alcance efectivo de disparo. |
 
