@@ -565,13 +565,8 @@ export const App: React.FC = () => {
   hospitalStructureRef.current = hospitalStructure;
 
   const nearestHospital = useMemo(() => {
-    const allHospitals = structures.filter((s) => s.type === 'hospital');
-    if (allHospitals.length === 0) return null;
-    const pLat = myPlayer?.lat ?? room?.centerLat;
-    const pLng = myPlayer?.lng ?? room?.centerLng;
-    if (pLat == null || pLng == null) return allHospitals[0];
-    return resolveNearestHospital(allHospitals, { lat: pLat, lng: pLng });
-  }, [structures, myPlayer?.lat, myPlayer?.lng, room?.centerLat, room?.centerLng]);
+    return hospitalStructure;
+  }, [hospitalStructure]);
 
   const currentBuilding = useMemo(
     () => structures.find((s) => s.id === myPlayer?.insideBuildingId) || null,
@@ -3978,19 +3973,13 @@ export const App: React.FC = () => {
         lng: player.lng ?? room.centerLng,
       };
 
-      const allHospitals = structuresRef.current.filter((s) => s.type === 'hospital');
-      if (allHospitals.length === 0) return;
+      const hospital = structuresRef.current.find((s) => s.type === 'hospital');
+      if (!hospital) return;
 
-      // Buscar si el jugador se encuentra dentro del radio de CUALQUIER Hospital de Campaña
-      let activeHospital: MapStructure | null = null;
-      for (const h of allHospitals) {
-        const dist = getDistanceMeters(pCoord, { lat: h.lat, lng: h.lng });
-        const radius = h.radius || 40;
-        if (dist <= radius) {
-          activeHospital = h;
-          break;
-        }
-      }
+      // Buscar si el jugador se encuentra dentro del radio del Hospital de Campaña único (40m)
+      const dist = getDistanceMeters(pCoord, { lat: hospital.lat, lng: hospital.lng });
+      const radius = hospital.radius || 40;
+      const activeHospital = dist <= radius ? hospital : null;
 
       const playerNeedsHealing =
         player.hp < (player.maxHp || 300) ||
@@ -5541,29 +5530,21 @@ export const App: React.FC = () => {
   const handleMapClick = useCallback((coords: Coordinates) => {
     if (!room || isCombatArenaOpen || isHospitalModalOpen) return;
 
-    // IMÁN TÁCTICO A CUALQUIER HOSPITAL (SNAP-TO-CENTER):
-    // Si el clic se produce dentro o en las inmediaciones de CUALQUIER Hospital de Campaña (<= 45 metros),
+    // IMÁN TÁCTICO AL HOSPITAL DE CAMPAÑA ÚNICO (SNAP-TO-CENTER):
+    // Si el clic se produce dentro o en las inmediaciones del Hospital de Campaña (<= 45 metros),
     // o el jugador está herido/incapacitado y toca en la zona, forzar que las coordenadas de destino
-    // se fijen exactamente en el centro geográfico del hospital correspondiente para garantizar la entrada y curación al 100%.
+    // se fijen exactamente en el centro geográfico del hospital para garantizar la entrada y curación al 100%.
     let targetCoords = coords;
-    const allHospitals = structuresRef.current.filter((s) => s.type === 'hospital');
-    if (allHospitals.length > 0) {
-      let nearestHosp: MapStructure | null = null;
-      let minHospDist = Infinity;
-      for (const h of allHospitals) {
-        const d = getDistanceMeters(coords, { lat: h.lat, lng: h.lng });
-        if (d < minHospDist) {
-          minHospDist = d;
-          nearestHosp = h;
-        }
-      }
+    const hospital = structuresRef.current.find((s) => s.type === 'hospital');
+    if (hospital) {
+      const distToHosp = getDistanceMeters(coords, { lat: hospital.lat, lng: hospital.lng });
       const isWounded = Boolean(
         myPlayer?.isCriticallyWounded ||
         myPlayer?.status === 'critically_wounded' ||
         (myPlayer?.hp ?? 300) < (myPlayer?.maxHp || 300)
       );
-      if (nearestHosp && (minHospDist <= 45 || (isWounded && minHospDist <= 50))) {
-        targetCoords = { lat: nearestHosp.lat, lng: nearestHosp.lng };
+      if (distToHosp <= 45 || (isWounded && distToHosp <= 50)) {
+        targetCoords = { lat: hospital.lat, lng: hospital.lng };
       }
     }
 

@@ -804,14 +804,14 @@ export function isPlayerWoundedOrCritical(player?: Partial<Player> | null): bool
 }
 
 /**
- * Encuentra el Hospital de Campaña más próximo a una coordenada determinada dentro de una colección de estructuras.
+ * Encuentra el Hospital de Campaña único dentro de una colección de estructuras.
  */
 export function resolveNearestHospital(
   structures: MapStructure[] | undefined | null,
-  playerPos: Coordinates | undefined | null
+  _playerPos?: Coordinates | undefined | null
 ): MapStructure | null {
   if (!structures || structures.length === 0) return null;
-  const hospitals = structures.filter((s) => {
+  return structures.find((s) => {
     const typeStr = String(s.type || '').toLowerCase().trim();
     const idStr = String(s.id || '').toLowerCase().trim();
     const nameStr = String(s.name || '').toLowerCase().trim();
@@ -823,29 +823,13 @@ export function resolveNearestHospital(
       !isNaN(s.lng) &&
       (s.lat !== 0 || s.lng !== 0)
     );
-  });
-
-  if (hospitals.length === 0) return null;
-  if (!playerPos || typeof playerPos.lat !== 'number' || typeof playerPos.lng !== 'number') {
-    return hospitals[0];
-  }
-
-  let nearest = hospitals[0];
-  let minDist = Infinity;
-  for (const h of hospitals) {
-    const d = getDistanceMeters(playerPos, { lat: h.lat, lng: h.lng });
-    if (d < minDist) {
-      minDist = d;
-      nearest = h;
-    }
-  }
-  return nearest;
+  }) || null;
 }
 
 /**
- * Localiza de forma defensiva y resiliente las coordenadas del Hospital de Campaña.
+ * Localiza de forma defensiva y resiliente las coordenadas del Hospital de Campaña único.
  * Garantiza inmutabilidad geográfica: nunca varía ante transiciones de fase de cofres del tesoro.
- * 1. Búsqueda directa en estructuras activas (seleccionando el más cercano si se provee posición).
+ * 1. Búsqueda directa en estructuras activas del único Hospital de Campaña.
  * 2. Si el centro corresponde a Las Meriendas o estructuras no cargadas, retorna coordenadas maestras fijas.
  * 3. Fallback determinista anclado al centro operativo.
  */
@@ -856,11 +840,11 @@ export function resolveHospitalCoordinates(
   treasureLocation?: Coordinates | null,
   playerPos?: Coordinates | null
 ): Coordinates {
-  // 1. Búsqueda defensiva en estructuras activas (seleccionando el más cercano si hay coordenadas del jugador)
+  // 1. Búsqueda defensiva en estructuras activas del único hospital de campaña
   if (Array.isArray(structures) && structures.length > 0) {
-    const nearest = resolveNearestHospital(structures, playerPos);
-    if (nearest) {
-      return { lat: nearest.lat, lng: nearest.lng };
+    const hospital = resolveNearestHospital(structures, playerPos);
+    if (hospital) {
+      return { lat: hospital.lat, lng: hospital.lng };
     }
   }
 

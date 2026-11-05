@@ -1241,39 +1241,28 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
     if (!hasPlayerPos) return;
 
-    // 2. DESTINO: Calcular en tiempo real el Hospital de Campaña más próximo a la posición viva del jugador
-    const playerCoords: Coordinates = { lat: pLat, lng: pLng };
-    const allHospitals = (structures || []).filter((s) => {
-      const typeStr = String(s.type || '').toLowerCase().trim();
-      const idStr = String(s.id || '').toLowerCase().trim();
-      const nameStr = String(s.name || '').toLowerCase().trim();
-      return (
-        (typeStr === 'hospital' || idStr.includes('hospital') || nameStr.includes('hospital')) &&
-        typeof s.lat === 'number' &&
-        typeof s.lng === 'number' &&
-        !isNaN(s.lat) &&
-        !isNaN(s.lng) &&
-        (s.lat !== 0 || s.lng !== 0)
-      );
-    });
-
-    let nearestHospital: MapStructure | null = null;
-    let minDistance = Infinity;
-
-    for (const h of allHospitals) {
-      const d = getDistanceMeters(playerCoords, { lat: h.lat, lng: h.lng });
-      if (d < minDistance) {
-        minDistance = d;
-        nearestHospital = h;
-      }
-    }
+    // 2. DESTINO: Conectar unívocamente con el Hospital de Campaña único
+    const hospitalStruct =
+      (structures || []).find((s) => {
+        const typeStr = String(s.type || '').toLowerCase().trim();
+        const idStr = String(s.id || '').toLowerCase().trim();
+        const nameStr = String(s.name || '').toLowerCase().trim();
+        return (
+          (typeStr === 'hospital' || idStr.includes('hospital') || nameStr.includes('hospital')) &&
+          typeof s.lat === 'number' &&
+          typeof s.lng === 'number' &&
+          !isNaN(s.lat) &&
+          !isNaN(s.lng) &&
+          (s.lat !== 0 || s.lng !== 0)
+        );
+      }) || null;
 
     let x2 = 0;
     let y2 = 0;
     let hasHospitalPos = false;
 
-    if (nearestHospital) {
-      const hospMarker = structureMarkersRef.current.get(nearestHospital.id);
+    if (hospitalStruct) {
+      const hospMarker = structureMarkersRef.current.get(hospitalStruct.id);
       const hospEl = hospMarker?.getElement();
       if (hospEl && hospEl.style.display !== 'none') {
         const hospImg = (hospEl.querySelector('img') || hospEl) as HTMLElement;
@@ -1286,7 +1275,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       }
 
       if (!hasHospitalPos) {
-        const pt = map.project([nearestHospital.lng, nearestHospital.lat]);
+        const pt = map.project([hospitalStruct.lng, hospitalStruct.lat]);
         x2 = Math.round(pt.x);
         y2 = Math.round(pt.y);
         hasHospitalPos = true;
@@ -1915,28 +1904,15 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       // 3. Descartar si el evento fue prevenido
       if (e.defaultPrevented) return;
 
-      // 4. Imán de destino táctico a cualquiera de los Hospitales de Campaña (Snap-to-Center):
-      // Si el toque se produce en las inmediaciones de cualquier hospital (<= 45m), fijar el destino exactamente en su centro
+      // 4. Imán de destino táctico al Hospital de Campaña único (Snap-to-Center):
+      // Si el toque se produce en las inmediaciones del hospital (<= 45m), fijar el destino exactamente en su centro
       let clickCoords: Coordinates = { lat: e.lngLat.lat, lng: e.lngLat.lng };
-      const allHospitals = (structures || []).filter((s) => s.type === 'hospital');
-      let nearestClickHosp: MapStructure | null = null;
-      let minClickHospDist = Infinity;
-      for (const h of allHospitals) {
-        const d = getDistanceMeters(clickCoords, { lat: h.lat, lng: h.lng });
-        if (d < minClickHospDist) {
-          minClickHospDist = d;
-          nearestClickHosp = h;
-        }
-      }
-      if (nearestClickHosp && minClickHospDist <= 45) {
-        clickCoords = { lat: nearestClickHosp.lat, lng: nearestClickHosp.lng };
-      } else {
-        const targetHospital = hospitalCoordsRef.current;
-        if (targetHospital) {
-          const distToHospital = getDistanceMeters(clickCoords, targetHospital);
-          if (distToHospital <= 45) {
-            clickCoords = { lat: targetHospital.lat, lng: targetHospital.lng };
-          }
+      const hospital =
+        (structures || []).find((s) => s.type === 'hospital') || hospitalCoordsRef.current;
+      if (hospital) {
+        const distToHospital = getDistanceMeters(clickCoords, { lat: hospital.lat, lng: hospital.lng });
+        if (distToHospital <= 45) {
+          clickCoords = { lat: hospital.lat, lng: hospital.lng };
         }
       }
 

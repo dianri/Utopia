@@ -9,57 +9,56 @@ export const HOSPITAL_RADIUS_METERS = 40;
 
 /**
  * Coordenadas maestras fijas e inmutables de estructuras en el sector operativo Las Meriendas.
- * Red distribuida de 5 Hospitales de Campaña plenamente operativos con radio de 40m
- * anclados a edificios físicos reales del terreno para garantizar la recuperación en cualquiera de ellos.
+ * 1 Hospital de Campaña central (radio 40m) y 4 Refugios Tácticos de guarecimiento y cobertura.
  */
 export const MASTER_LAS_MERIENDAS_STRUCTURES: MapStructure[] = [
   {
     id: 'hospital-main',
     type: 'hospital',
-    name: 'Hospital Central',
+    name: 'Hospital de Campaña',
     lat: 37.401,
     lng: -2.1558,
     radius: HOSPITAL_RADIUS_METERS, // 40m
   },
   {
-    id: 'hospital-alfa',
-    type: 'hospital',
-    name: 'Hospital Alfa',
+    id: 'shelter-1',
+    type: 'shelter',
+    name: 'Refugio Alfa',
     lat: 37.4028,
     lng: -2.1548,
-    radius: HOSPITAL_RADIUS_METERS, // 40m
+    radius: 14,
   },
   {
-    id: 'hospital-bravo',
-    type: 'hospital',
-    name: 'Hospital Bravo',
+    id: 'shelter-2',
+    type: 'shelter',
+    name: 'Refugio Bravo',
     lat: 37.4005,
     lng: -2.1542,
-    radius: HOSPITAL_RADIUS_METERS, // 40m
+    radius: 14,
   },
   {
-    id: 'hospital-charlie',
-    type: 'hospital',
-    name: 'Hospital Charlie',
+    id: 'shelter-3',
+    type: 'shelter',
+    name: 'Refugio Charlie',
     lat: 37.4008,
     lng: -2.1582,
-    radius: HOSPITAL_RADIUS_METERS, // 40m
+    radius: 14,
   },
   {
-    id: 'hospital-delta',
-    type: 'hospital',
-    name: 'Hospital Delta',
+    id: 'shelter-4',
+    type: 'shelter',
+    name: 'Refugio Delta',
     lat: 37.4032,
     lng: -2.1578,
-    radius: HOSPITAL_RADIUS_METERS, // 40m
+    radius: 14,
   },
 ];
 
 /**
- * Genera de forma determinista la red de Hospitales de Campaña en el mapa (5 instalaciones médicas plenamente operativas).
+ * Genera de forma determinista las estructuras tácticas en el mapa (1 Hospital de Campaña y 4 Refugios Tácticos).
  * Garantiza inmutabilidad geográfica absoluta:
  * 1. Para Las Meriendas (centro ~37.4018, -2.1565), retorna siempre las estructuras maestras fijas.
- * 2. Para otros sectores operativos, calcula posiciones estables fijadas al centro de la sala
+ * 2. Para otros sectores operativos o radios compactos, calcula posiciones estables fijadas al centro de la sala
  *    sin depender de las coordenadas móviles de los cofres de fase subsecuentes.
  */
 export function generateMapStructures(
@@ -81,13 +80,16 @@ export function generateMapStructures(
     ? getBearing(center, initialAnchor)
     : 0;
 
-  // Radio de interacción adaptativo para zonas compactas (ej. 20m en 100m de radio)
-  const effectiveStructureRadius = Math.min(
+  // Radio de interacción adaptativo para hospital en zonas compactas
+  const effectiveHospitalRadius = Math.min(
     HOSPITAL_RADIUS_METERS,
     Math.max(15, Math.round(playAreaRadius * 0.2))
   );
 
-  // Hospital Central (opuesto al ancla base, a ~55% del radio)
+  // Radio de refugio adaptativo para zonas compactas
+  const effectiveShelterRadius = Math.min(14, Math.max(10, Math.round(playAreaRadius * 0.1)));
+
+  // Hospital de Campaña único (opuesto al ancla base, a ~55% del radio)
   const hospitalBearing = (baseBearing + 180) % 360;
   const hospitalDistance = Math.max(15, Math.min(playAreaRadius * 0.55, playAreaRadius - 15));
   const hospitalPos = getDestinationPoint(center, hospitalDistance, hospitalBearing);
@@ -95,33 +97,33 @@ export function generateMapStructures(
   const hospital: MapStructure = {
     id: 'hospital-main',
     type: 'hospital',
-    name: 'Hospital Central',
+    name: 'Hospital de Campaña',
     lat: hospitalPos.lat,
     lng: hospitalPos.lng,
-    radius: effectiveStructureRadius,
+    radius: effectiveHospitalRadius,
   };
 
-  // Hospitales de campaña distribuidos radialmente
-  const hospitalOffsets = [
-    { name: 'Hospital Alfa', angleOffset: 65, distRatio: 0.45 },
-    { name: 'Hospital Bravo', angleOffset: 125, distRatio: 0.70 },
-    { name: 'Hospital Charlie', angleOffset: 235, distRatio: 0.50 },
-    { name: 'Hospital Delta', angleOffset: 295, distRatio: 0.65 },
+  // Refugios tácticos distribuidos radialmente
+  const shelterOffsets = [
+    { name: 'Refugio Alfa', angleOffset: 65, distRatio: 0.45 },
+    { name: 'Refugio Bravo', angleOffset: 125, distRatio: 0.70 },
+    { name: 'Refugio Charlie', angleOffset: 235, distRatio: 0.50 },
+    { name: 'Refugio Delta', angleOffset: 295, distRatio: 0.65 },
   ];
 
-  const subHospitals: MapStructure[] = hospitalOffsets.map((s, index) => {
+  const shelters: MapStructure[] = shelterOffsets.map((s, index) => {
     const bearing = (baseBearing + s.angleOffset) % 360;
     const distance = Math.max(15, Math.min(playAreaRadius * s.distRatio, playAreaRadius - 15));
     const pos = getDestinationPoint(center, distance, bearing);
     return {
-      id: `hospital-${index + 1}`,
-      type: 'hospital',
+      id: `shelter-${index + 1}`,
+      type: 'shelter',
       name: s.name,
       lat: pos.lat,
       lng: pos.lng,
-      radius: effectiveStructureRadius,
+      radius: effectiveShelterRadius,
     };
   });
 
-  return [hospital, ...subHospitals];
+  return [hospital, ...shelters];
 }
