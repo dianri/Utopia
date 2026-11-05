@@ -10,6 +10,8 @@ import {
   LogOut,
   AlertTriangle,
   X,
+  Share2,
+  Check,
 } from 'lucide-react';
 
 interface TacticalHeaderProps {
@@ -40,6 +42,8 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
   onLeaveGame,
 }) => {
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
+  const [copiedShare, setCopiedShare] = useState<boolean>(false);
+  const [shareToast, setShareToast] = useState<string | null>(null);
   const hpPercent = Math.max(0, Math.min(100, (myPlayer.hp / (myPlayer.maxHp || 300)) * 100));
   const alivePlayers = players.filter((p) => p.isAlive).length;
 
@@ -57,14 +61,64 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
     marksman: 'text-red-400 border-red-500/40 bg-red-500/10',
   };
 
+  const handleShare = async () => {
+    const shareUrl = `${window.location.origin}${window.location.pathname}?room=${roomCode}`;
+    const shareData = {
+      title: 'Utopia - Partida Multijugador',
+      text: '¡Únete a mi partida de Utopia!',
+      url: shareUrl,
+    };
+
+    if (navigator.share && (typeof navigator.canShare === 'function' ? navigator.canShare(shareData) : true)) {
+      try {
+        await navigator.share(shareData);
+        setCopiedShare(true);
+        setTimeout(() => setCopiedShare(false), 2500);
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+
+    // Respaldo automático al portapapeles si la Web Share API no está disponible
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(shareUrl);
+      } else {
+        const input = document.createElement('input');
+        input.value = shareUrl;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+      }
+      setCopiedShare(true);
+      setShareToast('Enlace de la partida copiado al portapapeles');
+      setTimeout(() => {
+        setCopiedShare(false);
+        setShareToast(null);
+      }, 2500);
+    } catch (err) {
+      console.warn('[TacticalHeader] Error al copiar enlace:', err);
+    }
+  };
+
   return (
     <header className="tactical-header hud-top-bar absolute top-0 left-0 right-0 z-50 p-2 sm:p-3 pointer-events-none">
       <div className="max-w-4xl mx-auto flex flex-col gap-1.5 sm:gap-2">
+        {/* TOAST CONFIRMACIÓN DE COMPARTIR */}
+        {shareToast && (
+          <div className="bg-slate-950/95 border border-hud-cyan/60 px-3 py-1.5 rounded-lg shadow-2xl text-xs font-mono text-hud-cyan flex items-center justify-center gap-2 pointer-events-auto self-center animate-fadeIn whitespace-nowrap">
+            <Check className="w-3.5 h-3.5 text-emerald-400" />
+            <span>{shareToast}</span>
+          </div>
+        )}
+
         {/* FILA SUPERIOR: SALA, ROL, SIGILO Y CONECTADOS */}
         <div className="flex items-center justify-between bg-hud-dark/90 border border-hud-border/80 backdrop-blur-md px-3 py-1.5 rounded-lg shadow-xl pointer-events-auto">
           {/* CÓDIGO DE SALA Y VIVOS */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
               <span className="text-[10px] uppercase font-mono text-hud-muted tracking-wider">
                 SALA
               </span>
@@ -73,7 +127,31 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
               </span>
             </div>
 
-            <div className="flex items-center gap-1 text-xs font-mono text-slate-300">
+            {/* BOTÓN TÁCTICO COMPARTIR PARTIDA */}
+            <button
+              onClick={handleShare}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-mono font-bold transition-all border shrink-0 whitespace-nowrap active:scale-95 ${
+                copiedShare
+                  ? 'border-emerald-500 bg-emerald-500/20 text-emerald-300 shadow-sm shadow-emerald-500/30'
+                  : 'border-hud-cyan/40 bg-hud-cyan/10 text-hud-cyan hover:bg-hud-cyan/25 hover:border-hud-cyan shadow-sm'
+              }`}
+              title="Compartir enlace de la partida"
+              aria-label="Compartir enlace de la partida"
+            >
+              {copiedShare ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span className="text-[10px] text-emerald-300 font-mono hidden sm:inline">COPIADO</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[10px] font-mono hidden sm:inline">COMPARTIR</span>
+                </>
+              )}
+            </button>
+
+            <div className="flex items-center gap-1 text-xs font-mono text-slate-300 shrink-0">
               <Users className="w-3.5 h-3.5 text-hud-cyan" />
               <span>
                 {alivePlayers}/{players.length}
@@ -82,12 +160,12 @@ export const TacticalHeader: React.FC<TacticalHeaderProps> = ({
           </div>
 
           {/* ROL DEL JUGADOR */}
-          <div className={`px-2 py-0.5 rounded text-[11px] font-black tracking-wider border ${roleColors[myPlayer.role]}`}>
+          <div className={`px-2 py-0.5 rounded text-[11px] font-black tracking-wider border shrink-0 ${roleColors[myPlayer.role]}`}>
             {roleLabels[myPlayer.role]}
           </div>
 
           {/* ACCIONES: MODO SIGILO Y ABANDONAR / CANCELAR */}
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               onClick={onToggleStealth}
               className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-mono font-bold transition-all border ${

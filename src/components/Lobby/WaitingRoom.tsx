@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { GameRoom, Player, PlayerRole } from '../../types/game';
-import { Copy, Check, Play, LogOut, Users, Shield, HeartPulse, Eye, Crosshair, AlertTriangle, X } from 'lucide-react';
+import { Copy, Check, Play, LogOut, Users, Shield, HeartPulse, Eye, Crosshair, AlertTriangle, X, Share2 } from 'lucide-react';
 
 interface WaitingRoomProps {
   room: GameRoom;
@@ -22,12 +22,33 @@ export const WaitingRoom: React.FC<WaitingRoomProps> = ({
   const [copied, setCopied] = useState<boolean>(false);
   const [showConfirmLeave, setShowConfirmLeave] = useState<boolean>(false);
 
-  const shareUrl = `${window.location.origin}/?room=${room.code}`;
+  const shareUrl = `${window.location.origin}${window.location.pathname}?room=${room.code}`;
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(shareUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+  const handleCopyLink = async () => {
+    const shareData = {
+      title: 'Utopia - Partida Multijugador',
+      text: '¡Únete a mi partida de Utopia!',
+      url: shareUrl,
+    };
+
+    if (navigator.share && (typeof navigator.canShare === 'function' ? navigator.canShare(shareData) : true)) {
+      try {
+        await navigator.share(shareData);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+        return;
+      } catch (err: any) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // fallback
+    }
   };
 
   const roleIcons: Record<PlayerRole, React.ReactNode> = {
@@ -81,12 +102,12 @@ export const WaitingRoom: React.FC<WaitingRoomProps> = ({
             {copied ? (
               <>
                 <Check className="w-4 h-4 text-emerald-400" />
-                <span className="text-emerald-300">¡Enlace Copiado!</span>
+                <span className="text-emerald-300">¡Enlace Copiado / Compartido!</span>
               </>
             ) : (
               <>
-                <Copy className="w-4 h-4" />
-                <span>Copiar Enlace de Invitación</span>
+                <Share2 className="w-4 h-4" />
+                <span>Compartir / Copiar Enlace</span>
               </>
             )}
           </button>

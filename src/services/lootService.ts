@@ -392,13 +392,16 @@ export function applyDroppedItemPickup(
 
   // 1. Si es curación (botiquín / kit médico)
   if (item.category === 'health' || item.type === 'medkit') {
-    const healAmount = item.healValue ?? 40;
+    const healAmount = item.healValue ?? 100;
     const healedHp = Math.min(player.maxHp || 300, player.hp + healAmount);
+    const isNowHealthy = healedHp > 1;
 
     return {
       updatedPlayer: {
         ...player,
         hp: healedHp,
+        isCriticallyWounded: isNowHealthy ? false : player.isCriticallyWounded,
+        status: isNowHealthy && player.status === 'critically_wounded' ? 'active' : player.status,
       },
       logMessage: `¡Has usado ${item.name}! +${healAmount} HP restaurados al instante.`,
       logType: 'loot',

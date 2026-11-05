@@ -67,19 +67,29 @@ export function generateMapStructures(
   playAreaRadius: number,
   initialAnchor?: Coordinates
 ): MapStructure[] {
-  // 1. Sector Operativo Las Meriendas: Coordenadas maestras fijas
-  if (Math.abs(center.lat - 37.4018) < 0.05 && Math.abs(center.lng - -2.1565) < 0.05) {
+  // 1. Sector Operativo Las Meriendas: Coordenadas maestras fijas (solo si el radio es >= 250m)
+  if (
+    playAreaRadius >= 250 &&
+    Math.abs(center.lat - 37.4018) < 0.05 &&
+    Math.abs(center.lng - -2.1565) < 0.05
+  ) {
     return MASTER_LAS_MERIENDAS_STRUCTURES.map((s) => ({ ...s }));
   }
 
-  // 2. Otros sectores operativos: Generación determinista anclada al centro de sala
+  // 2. Otros sectores operativos o radios compactos (< 250m): Generación determinista proporcional
   const baseBearing = initialAnchor && (initialAnchor.lat !== center.lat || initialAnchor.lng !== center.lng)
     ? getBearing(center, initialAnchor)
     : 0;
 
-  // Hospital Central (opuesto al ancla base, a ~60% del radio)
+  // Radio de interacción adaptativo para zonas compactas (ej. 20m en 100m de radio)
+  const effectiveStructureRadius = Math.min(
+    HOSPITAL_RADIUS_METERS,
+    Math.max(15, Math.round(playAreaRadius * 0.2))
+  );
+
+  // Hospital Central (opuesto al ancla base, a ~55% del radio)
   const hospitalBearing = (baseBearing + 180) % 360;
-  const hospitalDistance = Math.max(30, Math.min(playAreaRadius * 0.6, playAreaRadius - 20));
+  const hospitalDistance = Math.max(15, Math.min(playAreaRadius * 0.55, playAreaRadius - 15));
   const hospitalPos = getDestinationPoint(center, hospitalDistance, hospitalBearing);
 
   const hospital: MapStructure = {
@@ -88,20 +98,20 @@ export function generateMapStructures(
     name: 'Hospital Central',
     lat: hospitalPos.lat,
     lng: hospitalPos.lng,
-    radius: HOSPITAL_RADIUS_METERS,
+    radius: effectiveStructureRadius,
   };
 
   // Hospitales de campaña distribuidos radialmente
   const hospitalOffsets = [
-    { name: 'Hospital Alfa', angleOffset: 65, distRatio: 0.45, radius: HOSPITAL_RADIUS_METERS },
-    { name: 'Hospital Bravo', angleOffset: 125, distRatio: 0.70, radius: HOSPITAL_RADIUS_METERS },
-    { name: 'Hospital Charlie', angleOffset: 235, distRatio: 0.50, radius: HOSPITAL_RADIUS_METERS },
-    { name: 'Hospital Delta', angleOffset: 295, distRatio: 0.65, radius: HOSPITAL_RADIUS_METERS },
+    { name: 'Hospital Alfa', angleOffset: 65, distRatio: 0.45 },
+    { name: 'Hospital Bravo', angleOffset: 125, distRatio: 0.70 },
+    { name: 'Hospital Charlie', angleOffset: 235, distRatio: 0.50 },
+    { name: 'Hospital Delta', angleOffset: 295, distRatio: 0.65 },
   ];
 
   const subHospitals: MapStructure[] = hospitalOffsets.map((s, index) => {
     const bearing = (baseBearing + s.angleOffset) % 360;
-    const distance = Math.max(25, Math.min(playAreaRadius * s.distRatio, playAreaRadius - 15));
+    const distance = Math.max(15, Math.min(playAreaRadius * s.distRatio, playAreaRadius - 15));
     const pos = getDestinationPoint(center, distance, bearing);
     return {
       id: `hospital-${index + 1}`,
@@ -109,7 +119,7 @@ export function generateMapStructures(
       name: s.name,
       lat: pos.lat,
       lng: pos.lng,
-      radius: s.radius,
+      radius: effectiveStructureRadius,
     };
   });
 

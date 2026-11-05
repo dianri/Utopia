@@ -2573,7 +2573,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const el = document.createElement('div');
         el.className = `map-marker-anchor marker-loot dropped-item-${dropped.id}`;
         el.setAttribute('data-entity', 'crate');
-        el.style.pointerEvents = 'none';
+        el.style.pointerEvents = 'auto';
+        el.style.cursor = 'pointer';
         if (isMeWounded) {
           el.style.display = 'none';
         }
@@ -2593,7 +2594,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           </div>
         `;
 
-        el.addEventListener('click', (e) => {
+        const handleDroppedItemTap = (e: Event) => {
           e.stopPropagation();
           const myPos = {
             lat: myPlayer.lat ?? center.lat,
@@ -2606,7 +2607,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             onMapClickRef.current?.({ lat: dropped.lat, lng: dropped.lng });
             onPickDroppedItemRef.current?.(dropped);
           }
-        });
+        };
+
+        el.addEventListener('click', handleDroppedItemTap);
+        el.addEventListener('touchend', (e) => {
+          e.stopPropagation();
+          handleDroppedItemTap(e);
+        }, { passive: true });
 
         const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([dropped.lng, dropped.lat])
@@ -2620,7 +2627,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (el) {
           el.className = `map-marker-anchor marker-loot dropped-item-${dropped.id}`;
           el.setAttribute('data-entity', 'crate');
-          el.style.pointerEvents = 'none';
+          el.style.pointerEvents = 'auto';
+          el.style.cursor = 'pointer';
           el.style.display = isMeWounded ? 'none' : 'block';
         }
       }
