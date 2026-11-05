@@ -829,31 +829,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           });
         }
 
-        // Capa legacy player-vision para retrocompatibilidad
-        if (!map.getSource('player-vision')) {
-          map.addSource('player-vision', {
-            type: 'geojson',
-            data: { type: 'FeatureCollection', features: [] },
-          });
-        }
-
-        if (!map.getLayer('player-vision-outline')) {
-          map.addLayer({
-            id: 'player-vision-outline',
-            type: 'line',
-            source: 'player-vision',
-            layout: {
-              visibility: isMeWounded ? 'none' : 'visible',
-            },
-            paint: {
-              'line-color': '#00ff88',
-              'line-width': 2,
-              'line-opacity': 0.75,
-              'line-dasharray': [2, 2],
-            },
-          });
-        }
-
         // 4. OVERLAYS DE EMERGENCIA (La directriz médica se renderiza a través del overlay SVG en espacio de pantalla)
         if (!map.getSource(SOURCE_HOSPITAL_GUIDELINE)) {
           map.addSource(SOURCE_HOSPITAL_GUIDELINE, {
@@ -871,7 +846,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           LAYER_CIRCLES_LINE,
           LAYER_PLAYER_VISION_FILL,
           LAYER_PLAYER_VISION_LINE,
-          'player-vision-outline',
           'hospital-guideline-halo',
           'hospital-guideline-line',
         ];
@@ -906,6 +880,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     }
     return cachedHospitalCoordsRef.current || resolved;
   }, [structures, center?.lat, center?.lng, playAreaRadius]);
+
+  const hospitalCoordsRef = useRef<Coordinates | null>(hospitalCoords);
+  hospitalCoordsRef.current = hospitalCoords;
 
   /**
    * Sincroniza la geometría del límite de la zona de juego con fallbacks robustos y autosuficiencia
@@ -1102,27 +1079,50 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   ]);
 
   /**
-   * Sincroniza el radio de visión del jugador sobre el mapa en capas de radar
+   * Sincroniza el único radio de acción/visión del jugador sobre el mapa en capas de radar.
+   * Anclado estrictamente a las coordenadas vivas del marcador para eliminar desfases y círculos fantasma.
    */
   const syncPlayerVision = useCallback(
-    (targetMap?: maplibregl.Map) => {
+    (targetMap?: maplibregl.Map, liveLng?: number, liveLat?: number) => {
       const map = targetMap || mapRef.current;
       if (!map || !isMapStyleLoaded(map)) return;
 
       try {
-        const source = (map.getSource(SOURCE_PLAYER_VISION) || map.getSource('player-vision')) as
-          | maplibregl.GeoJSONSource
-          | undefined;
+        const source = map.getSource(SOURCE_PLAYER_VISION) as maplibregl.GeoJSONSource | undefined;
         if (!source) return;
 
-        const playerLat = myPlayer?.lat ?? center?.lat ?? INITIAL_LAT;
-        const playerLng = myPlayer?.lng ?? center?.lng ?? INITIAL_LNG;
+        const isWounded = isPlayerWoundedOrCritical(myPlayer);
+        if (isWounded) {
+          source.setData({ type: 'FeatureCollection', features: [] });
+          return;
+        }
+
+        // Anclaje estricto a las coordenadas vivas del marcador en pantalla
+        let playerLng = typeof liveLng === 'number' && !isNaN(liveLng) && liveLng !== 0 ? liveLng : null;
+        let playerLat = typeof liveLat === 'number' && !isNaN(liveLat) && liveLat !== 0 ? liveLat : null;
+
+        if (playerLng == null || playerLat == null) {
+          const meMarker = playerMarkersRef.current.get(myPlayer.id);
+          if (meMarker) {
+            const pos = meMarker.getLngLat();
+            if (pos && typeof pos.lng === 'number' && typeof pos.lat === 'number' && !isNaN(pos.lng) && !isNaN(pos.lat)) {
+              playerLng = pos.lng;
+              playerLat = pos.lat;
+            }
+          }
+        }
+
+        if (playerLng == null || playerLat == null) {
+          playerLng = myPlayer?.lng ?? center?.lng ?? INITIAL_LNG;
+          playerLat = myPlayer?.lat ?? center?.lat ?? INITIAL_LAT;
+        }
 
         if (
           typeof playerLat !== 'number' ||
           typeof playerLng !== 'number' ||
           isNaN(playerLat) ||
-          isNaN(playerLng)
+          isNaN(playerLng) ||
+          (playerLat === 0 && playerLng === 0)
         ) {
           return;
         }
@@ -1135,22 +1135,16 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           color: '#00f2fe',
           id: 'player-vision-circle',
         });
-        const visionFC: GeoJSON.FeatureCollection = {
+
+        source.setData({
           type: 'FeatureCollection',
           features: [visionCircle],
-        };
-
-        source.setData(visionFC);
-
-        const legacyVisionSource = map.getSource('player-vision') as maplibregl.GeoJSONSource | undefined;
-        if (legacyVisionSource && legacyVisionSource !== source) {
-          legacyVisionSource.setData(visionFC);
-        }
+        });
       } catch (err) {
         console.warn('[GameMap] Error al sincronizar radio de visión:', err);
       }
     },
-    [myPlayer?.lat, myPlayer?.lng, myPlayer?.role, myPlayer?.pets, (myPlayer as any)?.visionRadius, (myPlayer as any)?.interactionRadius, center?.lat, center?.lng, playAreaRadius, isRadarActive]
+    [myPlayer, center?.lat, center?.lng, isRadarActive]
   );
 
   /**
@@ -1348,7 +1342,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           )
           .forEach((zone) => {
             activeFeatures.push(
-              createCircleFeature([zone.lng, zone.lat], zone.radius || (zone.type === 'hospital' ? 20 : 18), {
+              createCircleFeature([zone.lng, zone.lat], zone.radius || (zone.type === 'hospital' ? 40 : 14), {
                 color: zone.type === 'hospital' ? '#10b981' : '#06b6d4', // Verde esmeralda médico o cian refugio
                 fillOpacity: 0.12,
                 id: zone.id,
@@ -1513,26 +1507,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             });
         }
 
-        // G. RANGO DE ACCIÓN/VISIÓN DEL JUGADOR LOCAL
-        if (myPlayer?.lng && myPlayer?.lat && !isMeWounded) {
-          const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
-          const calcRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
-          const playerRadius = (myPlayer as any)?.visionRadius || (myPlayer as any)?.interactionRadius || calcRadius || 28;
-
-          activeFeatures.push(
-            createCircleFeature(
-              [myPlayer.lng, myPlayer.lat],
-              playerRadius,
-              {
-                id: 'player-vision-radius',
-                color: '#00f2fe', // Cian táctico
-                fillOpacity: 0.08,
-                type: 'player-vision',
-              }
-            )
-          );
-        }
-
         // Sobrescribir de forma atómica la fuente GeoJSON
         source.setData({
           type: 'FeatureCollection',
@@ -1559,12 +1533,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       isMeWounded,
       monsters,
       monster,
-      myPlayer?.lng,
-      myPlayer?.lat,
-      myPlayer?.role,
-      myPlayer?.pets,
-      (myPlayer as any)?.visionRadius,
-      (myPlayer as any)?.interactionRadius,
+      myPlayer,
+      center.lat,
+      center.lng,
       isRadarActive,
       cleanOrphanSourcesAndLayers,
     ]
@@ -1876,7 +1847,18 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       // 3. Descartar si el evento fue prevenido
       if (e.defaultPrevented) return;
 
-      onMapClickRef.current({ lat: e.lngLat.lat, lng: e.lngLat.lng });
+      // 4. Imán de destino táctico al Hospital de Campaña (Snap-to-Center):
+      // Si el toque se produce en las inmediaciones del hospital (<= 45m), fijar el destino exactamente en su centro
+      let clickCoords: Coordinates = { lat: e.lngLat.lat, lng: e.lngLat.lng };
+      const targetHospital = hospitalCoordsRef.current;
+      if (targetHospital) {
+        const distToHospital = getDistanceMeters(clickCoords, targetHospital);
+        if (distToHospital <= 45) {
+          clickCoords = { lat: targetHospital.lat, lng: targetHospital.lng };
+        }
+      }
+
+      onMapClickRef.current(clickCoords);
     });
 
     mapRef.current = map;
@@ -2325,7 +2307,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
                 (s.lat !== 0 || s.lng !== 0)
             )
             .map((s) => {
-              const circle = createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius);
+              const circle = createGeoJsonCircle({ lat: s.lat, lng: s.lng }, s.radius || (s.type === 'hospital' ? 40 : 14));
               return {
                 ...circle,
                 properties: {
@@ -2362,18 +2344,22 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const badgeText = isHospital ? 'text-emerald-300' : 'text-cyan-300';
       const icon = isHospital ? '/assets/icons/structures/structure-hospital.png' : '/assets/icons/structures/structure-shelter.png';
       const aura = isHospital ? 'bg-emerald-500/25 animate-ping' : 'bg-cyan-500/20';
-      const label = isHospital ? `HOSPITAL (${structure.radius}m)` : `${structure.name.toUpperCase()} (${structure.radius}m)`;
+      const effectiveRadius = structure.radius || (isHospital ? 40 : 14);
+      const label = isHospital ? `HOSPITAL (${effectiveRadius}m)` : `${structure.name.toUpperCase()} (${effectiveRadius}m)`;
 
       if (!structureMarkersRef.current.has(structure.id)) {
         const el = document.createElement('div');
         el.className = `map-marker-anchor marker-structure structure-marker-${structure.id}`;
         el.setAttribute('data-entity', 'structure');
-        el.style.pointerEvents = 'none';
+        el.style.pointerEvents = isHospital ? 'auto' : 'none';
+        if (isHospital) {
+          el.style.cursor = 'pointer';
+        }
         if (isMeWounded && !isHospital) {
           el.style.display = 'none';
         }
         el.innerHTML = `
-          <div class="marker-content flex flex-col items-center select-none pointer-events-none" style="pointer-events: auto;">
+          <div class="marker-content flex flex-col items-center select-none ${isHospital ? 'cursor-pointer pointer-events-auto' : 'pointer-events-none'}" style="pointer-events: ${isHospital ? 'auto' : 'none'}; cursor: ${isHospital ? 'pointer' : 'default'};">
             <div class="relative flex items-center justify-center">
               <div class="absolute w-20 h-20 ${aura} rounded-full pointer-events-none"></div>
               <img 
@@ -2397,6 +2383,16 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           </div>
         `;
 
+        if (isHospital) {
+          const handleHospitalTap = (ev: Event) => {
+            ev.stopPropagation();
+            ev.preventDefault();
+            onMapClickRef.current?.({ lat: structure.lat, lng: structure.lng });
+          };
+          el.addEventListener('click', handleHospitalTap);
+          el.addEventListener('touchend', handleHospitalTap, { passive: false });
+        }
+
         const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([structure.lng, structure.lat])
           .addTo(map);
@@ -2409,8 +2405,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (el) {
           el.className = `map-marker-anchor marker-structure structure-marker-${structure.id}`;
           el.setAttribute('data-entity', 'structure');
-          el.style.pointerEvents = 'none';
+          el.style.pointerEvents = isHospital ? 'auto' : 'none';
+          el.style.cursor = isHospital ? 'pointer' : 'default';
           el.style.display = (isMeWounded && !isHospital) ? 'none' : 'block';
+          const labelSpan = el.querySelector('.marker-label');
+          if (labelSpan && isHospital) {
+            labelSpan.textContent = label;
+          }
         }
       }
     });
@@ -3050,7 +3051,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
         if (isMe) {
           updateHospitalGuidelineDirect(map, lng, lat, isMeWounded);
-          syncPlayerVision(map);
+          syncPlayerVision(map, lng, lat);
         }
 
         if (p.pets && p.pets.length > 0 && !kin.isMoving) {
@@ -3061,7 +3062,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker?.setLngLat([lng, lat]);
         if (isMe) {
           updateHospitalGuidelineDirect(map, lng, lat, isMeWounded);
-          syncPlayerVision(map);
+          syncPlayerVision(map, lng, lat);
         }
         const el = marker?.getElement();
         if (el) {
@@ -3324,13 +3325,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         'crates-zones-outline',
         'interaction-ranges-fill',
         'interaction-ranges-outline',
-        'player-vision-outline',
       ];
       areaLayers.forEach((layerId) => {
         try {
           if (map.getLayer(layerId)) {
             const isPlayerVision =
-              layerId === 'player-vision-outline' ||
               layerId === LAYER_PLAYER_VISION_FILL ||
               layerId === LAYER_PLAYER_VISION_LINE;
             const isLegacyNonHospital =
