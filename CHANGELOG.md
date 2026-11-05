@@ -4,6 +4,13 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Unreleased]
+### Reverted
+- **Revert: Restored single Field Hospital and returned tactical shelters to non-healing shelters (`src/services/mapEntities.ts`, `src/services/mapStructures.ts`, `src/components/GameMap.tsx`, `src/App.tsx`, `CHANGELOG.md`, `README.md`):**
+  - **Unificación de la Evacuación Médica en un Único Hospital de Campaña:** Desmantelada la red multihospitalaria. El sector operativo vuelve a contar con un único Hospital de Campaña oficial (`type: 'hospital'`, radio 40m) anclado en coordenadas fijas e inmutables, con bahía táctica de bio-regeneración médica y reanimación de escuadra.
+  - **Restauración de Refugios Tácticos de Cobertura (Alfa, Bravo, Charlie y Delta):** Los cuatro edificios recuperan su rol original como zonas de resguardo (`type: 'shelter'`, radio 14m, color cian `#06b6d4`, icono propio de búnker). Proveen cobertura pasiva frente al monstruo y zona de no-combate, pero no restauran vitalidad ni limpian el estado de herido de muerte.
+  - **Directriz Médica de Emergencia Unívoca y Fija:** El vector dinámico SVG en espacio de pantalla calcula el destino exclusivamente hacia el Hospital de Campaña único, sin desviaciones a refugios colindantes.
+  - **Restricción Estricta de Curación y Snapping:** La apertura de la bahía médica (`HospitalModal.tsx`), la regeneración al 100% y el imán táctico al tocar el mapa (*snap-to-center*) operan exclusivamente dentro del radio de 40 metros del Hospital de Campaña.
+
 ### Added
 - **Feature: Tactical weapon and medkit loot drop on monster defeat (`src/services/monsterAI.ts`, `src/services/mapEntities.ts`, `src/App.tsx`, `src/types/game.ts`, `src/components/GameMap.tsx`, `src/services/lootService.ts`, `CHANGELOG.md`, `README.md`):**
   - **Recompensa Inmediata en Combate Directo:** Al abatir a un monstruo ($\le 0\text{ HP}$ o pasar a estado convaleciente `wounded`), la criatura genera de forma autoritativa en el terreno dos recompensas tácticas inmediatas: un arma de fuego escalada por fase y una caja de vida/botiquín de campaña (+100 HP).
