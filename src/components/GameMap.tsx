@@ -142,130 +142,18 @@ export const isMapStyleLoaded = (
  * Garantiza dinamismo absoluto: el vértice inicial está siempre anclado a las coordenadas vivas del avatar
  * del jugador local y el vértice final al Hospital de Campaña.
  */
+/**
+ * Desactivada la fuente GeoJSON: la directriz médica hacia el Hospital de Campaña se
+ * proyecta exclusivamente a través de un overlay SVG ultraligero en espacio de pantalla con cero latencia.
+ */
 export const updateHospitalGuidelineSync = (
-  map: maplibregl.Map,
-  playerLng: number,
-  playerLat: number,
-  isWounded: boolean,
-  hospitalCoords: { lat: number; lng: number } | null
+  _map: maplibregl.Map,
+  _playerLng: number,
+  _playerLat: number,
+  _isWounded: boolean,
+  _hospitalCoords: { lat: number; lng: number } | null
 ) => {
-  if (!map || !isMapStyleLoaded(map)) return;
-
-  // 1. Garantizar de forma defensiva que la fuente exista en el estilo activo de MapLibre
-  if (!map.getSource(SOURCE_HOSPITAL_GUIDELINE)) {
-    try {
-      map.addSource(SOURCE_HOSPITAL_GUIDELINE, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] },
-      });
-    } catch {
-      // Ignorar si el estilo se encuentra en transición
-    }
-  }
-
-  // Capa de halo oscuro inferior para contraste
-  if (!map.getLayer('hospital-guideline-halo')) {
-    try {
-      map.addLayer({
-        id: 'hospital-guideline-halo',
-        type: 'line',
-        source: SOURCE_HOSPITAL_GUIDELINE,
-        layout: {
-          visibility: isWounded ? 'visible' : 'none',
-          'line-join': 'round',
-          'line-cap': 'round',
-        },
-        paint: {
-          'line-color': '#000000',
-          'line-width': 6.0,
-          'line-opacity': 0.85,
-        },
-      });
-    } catch {}
-  }
-
-  // Capa de línea roja discontinua superior
-  if (!map.getLayer('hospital-guideline-line')) {
-    try {
-      map.addLayer({
-        id: 'hospital-guideline-line',
-        type: 'line',
-        source: SOURCE_HOSPITAL_GUIDELINE,
-        layout: {
-          visibility: isWounded ? 'visible' : 'none',
-          'line-join': 'round',
-          'line-cap': 'round',
-        },
-        paint: {
-          'line-color': '#ef4444',
-          'line-width': 4.0,
-          'line-dasharray': [3, 2],
-          'line-opacity': 1.0,
-        },
-      });
-    } catch {}
-  }
-
-  // 2. Normalización y sanitización estricta de coordenadas geográficas [longitud, latitud]
-  let pLng = typeof playerLng === 'number' && !isNaN(playerLng) ? playerLng : INITIAL_LNG;
-  let pLat = typeof playerLat === 'number' && !isNaN(playerLat) ? playerLat : INITIAL_LAT;
-  if (pLng > 0 && pLat < 0) {
-    const tmp = pLng;
-    pLng = pLat;
-    pLat = tmp;
-  }
-
-  let hLng = typeof hospitalCoords?.lng === 'number' && !isNaN(hospitalCoords.lng) ? hospitalCoords.lng : -2.1558;
-  let hLat = typeof hospitalCoords?.lat === 'number' && !isNaN(hospitalCoords.lat) ? hospitalCoords.lat : 37.401;
-  if (hLng > 0 && hLat < 0) {
-    const tmp = hLng;
-    hLng = hLat;
-    hLat = tmp;
-  }
-
-  const shouldRender = Boolean(
-    isWounded &&
-    (pLat !== 0 || pLng !== 0) &&
-    (hLat !== 0 || hLng !== 0)
-  );
-
-  // 3. Estructura RFC 7946 estándar FeatureCollection: vector continuo elástico [avatar vivo -> hospital]
-  const guidelineData: GeoJSON.FeatureCollection = {
-    type: 'FeatureCollection',
-    features: shouldRender
-      ? [
-          {
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: [
-                [pLng, pLat],
-                [hLng, hLat],
-              ],
-            },
-            properties: {
-              status: 'emergency',
-              description: 'Directriz táctica de emergencia hacia el Hospital de Campaña',
-            },
-          },
-        ]
-      : [],
-  };
-
-  const source = map.getSource(SOURCE_HOSPITAL_GUIDELINE) as maplibregl.GeoJSONSource | undefined;
-  if (source) {
-    source.setData(guidelineData);
-  }
-
-  const visibility = shouldRender ? 'visible' : 'none';
-  try {
-    if (map.getLayer('hospital-guideline-halo')) {
-      map.setLayoutProperty('hospital-guideline-halo', 'visibility', visibility);
-    }
-    if (map.getLayer('hospital-guideline-line')) {
-      map.setLayoutProperty('hospital-guideline-line', 'visibility', visibility);
-    }
-  } catch {}
+  // NO-OP: Desactivada para liberar el Web Worker de MapLibre GL y garantizar 60 FPS cinemáticos.
 };
 
 export interface EntityMovementState {
@@ -656,6 +544,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const wildPetMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const companionPetMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
 
+  // Overlay SVG ultraligero para directriz médica de emergencia (espacio de pantalla, cero latencia WebGL)
+  const svgOverlayRef = useRef<SVGSVGElement | null>(null);
+  const guidelineHaloRef = useRef<SVGLineElement | null>(null);
+  const guidelineLineRef = useRef<SVGLineElement | null>(null);
+
   // Registros de cinemática (movimiento, zancada y orientación) para jugadores y monstruos
   const playerKinematicsRef = useRef<Map<string, EntityKinematicsRecord>>(new Map());
   const monsterKinematicsRef = useRef<Map<string, EntityKinematicsRecord>>(new Map());
@@ -705,6 +598,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
   // Estado del jugador local: Herido / Incapacitado (visión de emergencia hospitalaria)
   const isMeWounded = isPlayerWoundedOrCritical(myPlayer);
+  const isMeWoundedRef = useRef(isMeWounded);
+  isMeWoundedRef.current = isMeWounded;
 
   // ==========================================
   // GESTIÓN ROBUSTA DE FUENTES Y CAPAS GEOJSON RESILIENTES
@@ -959,55 +854,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           });
         }
 
-        // 4. OVERLAYS DE EMERGENCIA (Hospital Guideline y Wounded Perimeter)
+        // 4. OVERLAYS DE EMERGENCIA (La directriz médica se renderiza a través del overlay SVG en espacio de pantalla)
         if (!map.getSource(SOURCE_HOSPITAL_GUIDELINE)) {
           map.addSource(SOURCE_HOSPITAL_GUIDELINE, {
             type: 'geojson',
             data: { type: 'FeatureCollection', features: [] },
-          });
-        }
-
-        if (!map.getSource('hospital-guideline')) {
-          map.addSource('hospital-guideline', {
-            type: 'geojson',
-            data: { type: 'FeatureCollection', features: [] },
-          });
-        }
-
-        if (!map.getLayer('hospital-guideline-halo')) {
-          map.addLayer({
-            id: 'hospital-guideline-halo',
-            type: 'line',
-            source: SOURCE_HOSPITAL_GUIDELINE,
-            layout: {
-              visibility: isMeWounded ? 'visible' : 'none',
-              'line-join': 'round',
-              'line-cap': 'round',
-            },
-            paint: {
-              'line-color': '#000000',
-              'line-width': 6.0,
-              'line-opacity': 0.85,
-            },
-          });
-        }
-
-        if (!map.getLayer('hospital-guideline-line')) {
-          map.addLayer({
-            id: 'hospital-guideline-line',
-            type: 'line',
-            source: SOURCE_HOSPITAL_GUIDELINE,
-            layout: {
-              visibility: isMeWounded ? 'visible' : 'none',
-              'line-join': 'round',
-              'line-cap': 'round',
-            },
-            paint: {
-              'line-color': '#ef4444',
-              'line-width': 4.0,
-              'line-dasharray': [3, 2],
-              'line-opacity': 1.0,
-            },
           });
         }
 
@@ -1303,28 +1154,156 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   );
 
   /**
+   * Actualización síncrona en espacio de pantalla (píxeles) de la directriz médica SVG.
+   * Conecta matemáticamente los pies del avatar local con el centro del Hospital de Campaña.
+   * Cero overhead en Web Worker, cero serialización GeoJSON y cero latencia.
+   */
+  const updateSvgGuideline = useCallback(() => {
+    const isWounded = isPlayerWoundedOrCritical(myPlayer);
+    const isInside = !!myPlayer.insideBuildingId;
+
+    if (!isWounded || isInside) {
+      if (svgOverlayRef.current && svgOverlayRef.current.style.display !== 'none') {
+        svgOverlayRef.current.style.display = 'none';
+      }
+      return;
+    }
+
+    const map = mapRef.current;
+    const container = mapContainerRef.current;
+    if (!map || !container) return;
+
+    const targetHospital = hospitalCoords;
+    if (!targetHospital || (targetHospital.lat === 0 && targetHospital.lng === 0)) return;
+
+    const containerRect = container.getBoundingClientRect();
+
+    // 1. ORIGEN: Posición exacta en pantalla del avatar del jugador local
+    let x1 = 0;
+    let y1 = 0;
+    let hasPlayerPos = false;
+
+    const meMarker = playerMarkersRef.current.get(myPlayer.id);
+    const meEl = meMarker?.getElement();
+    if (meEl && meEl.style.display !== 'none') {
+      const avatarImg = (meEl.querySelector('img') || meEl) as HTMLElement;
+      const imgRect = avatarImg.getBoundingClientRect();
+      if (imgRect.width > 0 && imgRect.height > 0) {
+        x1 = Math.round(imgRect.left + imgRect.width / 2 - containerRect.left);
+        y1 = Math.round(imgRect.bottom - containerRect.top);
+        hasPlayerPos = true;
+      }
+    }
+
+    if (!hasPlayerPos) {
+      const pLng = meMarker ? meMarker.getLngLat().lng : (myPlayer.lng ?? center.lng);
+      const pLat = meMarker ? meMarker.getLngLat().lat : (myPlayer.lat ?? center.lat);
+      if (pLng !== 0 || pLat !== 0) {
+        const pt = map.project([pLng, pLat]);
+        x1 = Math.round(pt.x);
+        y1 = Math.round(pt.y + 12);
+        hasPlayerPos = true;
+      }
+    }
+
+    if (!hasPlayerPos) return;
+
+    // 2. DESTINO: Posición exacta en pantalla del Hospital de Campaña
+    let x2 = 0;
+    let y2 = 0;
+    let hasHospitalPos = false;
+
+    const hospitalStructure = (structures || []).find((s) => s.type === 'hospital');
+    if (hospitalStructure) {
+      const hospMarker = structureMarkersRef.current.get(hospitalStructure.id);
+      const hospEl = hospMarker?.getElement();
+      if (hospEl && hospEl.style.display !== 'none') {
+        const hospImg = (hospEl.querySelector('img') || hospEl) as HTMLElement;
+        const hRect = hospImg.getBoundingClientRect();
+        if (hRect.width > 0 && hRect.height > 0) {
+          x2 = Math.round(hRect.left + hRect.width / 2 - containerRect.left);
+          y2 = Math.round(hRect.top + hRect.height / 2 - containerRect.top);
+          hasHospitalPos = true;
+        }
+      }
+    }
+
+    if (!hasHospitalPos) {
+      const pt = map.project([targetHospital.lng, targetHospital.lat]);
+      x2 = Math.round(pt.x);
+      y2 = Math.round(pt.y);
+      hasHospitalPos = true;
+    }
+
+    if (!hasHospitalPos) return;
+
+    // 3. Mutación directa de atributos SVG en el DOM (cero re-renderizado React)
+    const svgEl = svgOverlayRef.current;
+    const lineEl = guidelineLineRef.current;
+    const haloEl = guidelineHaloRef.current;
+
+    if (svgEl && svgEl.style.display !== 'block') {
+      svgEl.style.display = 'block';
+    }
+
+    const sX1 = String(x1);
+    const sY1 = String(y1);
+    const sX2 = String(x2);
+    const sY2 = String(y2);
+
+    if (lineEl) {
+      lineEl.setAttribute('x1', sX1);
+      lineEl.setAttribute('y1', sY1);
+      lineEl.setAttribute('x2', sX2);
+      lineEl.setAttribute('y2', sY2);
+    }
+
+    if (haloEl) {
+      haloEl.setAttribute('x1', sX1);
+      haloEl.setAttribute('y1', sY1);
+      haloEl.setAttribute('x2', sX2);
+      haloEl.setAttribute('y2', sY2);
+    }
+  }, [hospitalCoords, myPlayer, center.lng, center.lat, structures]);
+
+  const updateSvgGuidelineRef = useRef(updateSvgGuideline);
+  updateSvgGuidelineRef.current = updateSvgGuideline;
+
+  // Bucle de sincronización pasiva a 60 FPS exclusivo para el estado herido
+  // Cero consumo cuando el jugador está sano o dentro de una estructura
+  useEffect(() => {
+    if (!isMeWounded || myPlayer.insideBuildingId) {
+      if (svgOverlayRef.current) {
+        svgOverlayRef.current.style.display = 'none';
+      }
+      return;
+    }
+
+    if (svgOverlayRef.current) {
+      svgOverlayRef.current.style.display = 'block';
+    }
+    updateSvgGuideline();
+
+    let animId: number;
+    const loop = () => {
+      updateSvgGuideline();
+      animId = requestAnimationFrame(loop);
+    };
+    animId = requestAnimationFrame(loop);
+
+    return () => {
+      cancelAnimationFrame(animId);
+    };
+  }, [isMeWounded, myPlayer.insideBuildingId, updateSvgGuideline]);
+
+  /**
    * Sincroniza la directriz hacia el hospital de campaña en reposo y en movimiento
    */
   const syncHospitalGuideline = useCallback(
-    (targetMap?: maplibregl.Map) => {
-      const map = targetMap || mapRef.current;
-      if (!map || !isMapStyleLoaded(map)) return;
-
-      let playerLat = myPlayer?.lat ?? center?.lat ?? INITIAL_LAT;
-      let playerLng = myPlayer?.lng ?? center?.lng ?? INITIAL_LNG;
-
-      const meMarker = playerMarkersRef.current.get(myPlayer?.id || '');
-      if (meMarker) {
-        const pos = meMarker.getLngLat();
-        if (pos && typeof pos.lng === 'number' && typeof pos.lat === 'number' && !isNaN(pos.lng) && !isNaN(pos.lat)) {
-          playerLng = pos.lng;
-          playerLat = pos.lat;
-        }
-      }
-
-      updateHospitalGuidelineSync(map, playerLng, playerLat, isMeWounded, hospitalCoords);
+    (_targetMap?: maplibregl.Map) => {
+      updateSvgGuideline();
     },
-    [myPlayer?.id, myPlayer?.lat, myPlayer?.lng, center?.lat, center?.lng, isMeWounded, hospitalCoords]
+    [updateSvgGuideline]
   );
 
   /**
@@ -1332,10 +1311,10 @@ const GameMapComponent: React.FC<GameMapProps> = ({
    * Elimina cualquier latencia o lag al mover el marcador del jugador
    */
   const updateHospitalGuidelineDirect = useCallback(
-    (targetMap: maplibregl.Map, currentLng: number, currentLat: number, isWounded: boolean) => {
-      updateHospitalGuidelineSync(targetMap, currentLng, currentLat, isWounded, hospitalCoords);
+    (_targetMap: maplibregl.Map, _currentLng: number, _currentLat: number, _isWounded: boolean) => {
+      updateSvgGuideline();
     },
-    [hospitalCoords]
+    [updateSvgGuideline]
   );
 
   /**
@@ -1631,23 +1610,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         return;
       }
 
-      try {
-        let myLat = myPlayer.lat ?? center?.lat ?? INITIAL_LAT;
-        let myLng = myPlayer.lng ?? center?.lng ?? INITIAL_LNG;
-        const meMarker = playerMarkersRef.current.get(myPlayer?.id || '');
-        if (meMarker) {
-          const pos = meMarker.getLngLat();
-          if (pos && typeof pos.lng === 'number' && typeof pos.lat === 'number' && !isNaN(pos.lng) && !isNaN(pos.lat)) {
-            myLng = pos.lng;
-            myLat = pos.lat;
-          }
-        }
-        updateHospitalGuidelineSync(map, myLng, myLat, isMeWounded, hospitalCoords);
-      } catch (err) {
-        console.warn('[GameMap] Error al actualizar overlays de emergencia:', err);
-      }
+      updateSvgGuideline();
     },
-    [hospitalCoords, myPlayer?.id, myPlayer.lat, myPlayer.lng, center?.lat, center?.lng, isMeWounded]
+    [updateSvgGuideline]
   );
   updateEmergencyOverlaysRef.current = updateEmergencyOverlays;
 
@@ -1835,6 +1800,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       updateEmergencyOverlaysRef.current?.(map);
     });
 
+    const handleRender = () => {
+      if (isMeWoundedRef.current) {
+        updateSvgGuidelineRef.current?.();
+      }
+    };
+    map.on('render', handleRender);
+
     const handleIdle = () => {
       if (mapRef.current && isMapStyleLoaded(mapRef.current)) {
         syncGameBoundaryRef.current?.(mapRef.current);
@@ -1945,6 +1917,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       });
       monsterKinematicsRef.current.clear();
 
+      map.off('render', handleRender);
       map.off('idle', handleIdle);
       map.off('styledata', handleStyleData);
       map.remove();
@@ -3404,6 +3377,31 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   return (
     <div className={`relative w-screen h-screen overflow-hidden bg-hud-dark ${inCombat ? 'pointer-events-none' : ''}`}>
       <div ref={mapContainerRef} id="map" className="relative w-full h-full" />
+
+      {/* OVERLAY SVG LIGERO PARA DIRECTRIZ MÉDICA DE EMERGENCIA EN ESPACIO DE PANTALLA */}
+      <svg
+        ref={svgOverlayRef}
+        className="absolute inset-0 w-full h-full pointer-events-none z-20 overflow-hidden"
+        style={{ display: isMeWounded && !myPlayer.insideBuildingId ? 'block' : 'none' }}
+        aria-hidden="true"
+      >
+        <line
+          ref={guidelineHaloRef}
+          className="medical-guideline-halo"
+          x1="0"
+          y1="0"
+          x2="0"
+          y2="0"
+        />
+        <line
+          ref={guidelineLineRef}
+          className="medical-guideline-line"
+          x1="0"
+          y1="0"
+          x2="0"
+          y2="0"
+        />
+      </svg>
 
       {/* BOTÓN DE CENTRAR CÁMARA */}
       <button
