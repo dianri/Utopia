@@ -237,8 +237,18 @@
 }
 
 /* ==========================================================================
-   Overlay SVG de Directriz Médica Táctica de Emergencia (Espacio de Pantalla)
+   Overlay SVG en Espacio de Pantalla: Visión y Directriz Médica Táctica
    ========================================================================== */
+.player-vision-polygon {
+  fill: rgba(0, 242, 254, 0.08);
+  stroke: #00f2fe;
+  stroke-width: 2px;
+  stroke-dasharray: 6 4;
+  filter: drop-shadow(0 0 4px rgba(0, 242, 254, 0.45));
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
 @keyframes medicalGuidelineDash {
   to {
     stroke-dashoffset: -28;
@@ -386,9 +396,23 @@
 /* Contenedores de MapLibre: nunca por encima del HUD */
 #map,
 .maplibregl-map,
-.maplibregl-canvas-container,
+.maplibregl-canvas-container {
+  z-index: auto !important;
+}
+
+/* Overlay SVG en espacio de pantalla: sobre el lienzo de MapLibre, bajo los marcadores */
+.map-svg-overlay {
+  z-index: 15 !important;
+}
+
+/* Marcadores de MapLibre: por encima del overlay SVG pero nunca por encima del HUD */
 .maplibregl-marker {
-  z-index: 10 !important;
+  z-index: 25;
+}
+
+.maplibregl-marker[data-is-me="true"],
+.marker-player[data-is-me="true"] {
+  z-index: 40 !important;
 }
 
 /* Barras HUD y Modales de interfaz: prioridad absoluta */
