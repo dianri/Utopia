@@ -527,7 +527,7 @@ export const App: React.FC = () => {
     if (player.lat == null || player.lng == null) return false;
     return mapStructures.some((s) => {
       const d = getDistanceMeters({ lat: player.lat, lng: player.lng }, { lat: s.lat, lng: s.lng });
-      const effectiveRadius = s.radius || (s.type === 'hospital' ? 40 : 14);
+      const effectiveRadius = s.radius || (s.type === 'hospital' ? 20 : 14);
       return d <= effectiveRadius;
     });
   }, []);
@@ -1866,7 +1866,7 @@ export const App: React.FC = () => {
       let insideType: StructureType | null = null;
       for (const s of structuresRef.current) {
         const d = getDistanceMeters(coords, { lat: s.lat, lng: s.lng });
-        const effectiveRadius = s.radius || (s.type === 'hospital' ? 40 : 14);
+        const effectiveRadius = s.radius || (s.type === 'hospital' ? 20 : 14);
         if (d <= effectiveRadius) {
           insideId = s.id;
           insideType = s.type;
@@ -3976,9 +3976,9 @@ export const App: React.FC = () => {
       const hospital = structuresRef.current.find((s) => s.type === 'hospital');
       if (!hospital) return;
 
-      // Buscar si el jugador se encuentra dentro del radio del Hospital de Campaña único (40m)
+      // Buscar si el jugador se encuentra dentro del radio del Hospital de Campaña único (20m)
       const dist = getDistanceMeters(pCoord, { lat: hospital.lat, lng: hospital.lng });
-      const radius = hospital.radius || 40;
+      const radius = hospital.radius || 20;
       const activeHospital = dist <= radius ? hospital : null;
 
       const playerNeedsHealing =
@@ -4870,13 +4870,16 @@ export const App: React.FC = () => {
       }
     }
 
+    // Radio seguro con límite mínimo absoluto garantizado en 200 metros (0.2 km)
+    const safeRadiusMeters = Math.max(200, config.radiusMeters || 200);
+
     // Ubicación del cofre del tesoro dentro del radio
-    const treasureLoc = getRandomPointInCircle(config.center, config.radiusMeters * 0.4);
+    const treasureLoc = getRandomPointInCircle(config.center, safeRadiusMeters * 0.4);
 
     // Spawn point seguro del anfitrión dentro del radio de juego (20% a 70% del radio)
     const hostSpawnPoint = getRandomSpawnPointInPlayArea(
       config.center,
-      config.radiusMeters,
+      safeRadiusMeters,
       0.2,
       0.7
     );
@@ -4884,13 +4887,13 @@ export const App: React.FC = () => {
     // Generar lote base mínimo inicial autoritativo (3 cajas de suministros y 1 mascota silvestre)
     const initialCrates = generateInitialCrates(
       config.center,
-      config.radiusMeters,
+      safeRadiusMeters,
       3
     );
 
     const initialPets = generateWildPets(
       { lat: config.center.lat, lng: config.center.lng },
-      config.radiusMeters,
+      safeRadiusMeters,
       1
     );
 
@@ -4914,7 +4917,7 @@ export const App: React.FC = () => {
         active_dropped_items: [],
         current_chest_index: 1,
       },
-      play_area_radius: config.radiusMeters,
+      play_area_radius: safeRadiusMeters,
       center_lat: config.center.lat,
       center_lng: config.center.lng,
       treasure_lat: treasureLoc.lat,
@@ -5049,7 +5052,7 @@ export const App: React.FC = () => {
     };
 
     // Inicializar monstruo 1 en el cofre del tesoro
-    const initMonster = createSequentialMonster(1, treasureLoc, config.radiusMeters);
+    const initMonster = createSequentialMonster(1, treasureLoc, safeRadiusMeters);
     setMonster(initMonster);
     setMonsters([initMonster]);
 
@@ -5531,7 +5534,7 @@ export const App: React.FC = () => {
     if (!room || isCombatArenaOpen || isHospitalModalOpen) return;
 
     // IMÁN TÁCTICO AL HOSPITAL DE CAMPAÑA ÚNICO (SNAP-TO-CENTER):
-    // Si el clic se produce dentro o en las inmediaciones del Hospital de Campaña (<= 45 metros),
+    // Si el clic se produce dentro o en las inmediaciones del Hospital de Campaña (<= 22-25 metros),
     // o el jugador está herido/incapacitado y toca en la zona, forzar que las coordenadas de destino
     // se fijen exactamente en el centro geográfico del hospital para garantizar la entrada y curación al 100%.
     let targetCoords = coords;
@@ -5543,7 +5546,7 @@ export const App: React.FC = () => {
         myPlayer?.status === 'critically_wounded' ||
         (myPlayer?.hp ?? 300) < (myPlayer?.maxHp || 300)
       );
-      if (distToHosp <= 45 || (isWounded && distToHosp <= 50)) {
+      if (distToHosp <= 22 || (isWounded && distToHosp <= 25)) {
         targetCoords = { lat: hospital.lat, lng: hospital.lng };
       }
     }
