@@ -2,6 +2,12 @@ import type { Coordinates, MapStructure } from '../types/game';
 import { getBearing, getDestinationPoint } from './geoUtils';
 
 /**
+ * Radio de acción, protección y curación táctica del Hospital de Campaña en metros (40m).
+ * Asegura la entrada y recuperación automática incluso al interactuar con niveles reducidos de zoom.
+ */
+export const HOSPITAL_RADIUS_METERS = 40;
+
+/**
  * Coordenadas maestras fijas e inmutables de estructuras en el sector operativo Las Meriendas.
  * Hospital de Campaña y 4 Refugios Tácticos anclados a edificios físicos reales del terreno.
  */
@@ -12,7 +18,7 @@ export const MASTER_LAS_MERIENDAS_STRUCTURES: MapStructure[] = [
     name: 'Hospital de Campaña',
     lat: 37.401,
     lng: -2.1558,
-    radius: 18, // Radio de interacción en metros
+    radius: HOSPITAL_RADIUS_METERS, // Radio de interacción ampliado a 40m para navegación con poco zoom
   },
   {
     id: 'shelter-1',
@@ -81,7 +87,7 @@ export function generateMapStructures(
     name: 'Hospital de Campaña',
     lat: hospitalPos.lat,
     lng: hospitalPos.lng,
-    radius: 18,
+    radius: HOSPITAL_RADIUS_METERS,
   };
 
   // Refugios tácticos distribuidos radialmente
