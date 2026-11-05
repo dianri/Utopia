@@ -544,8 +544,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const wildPetMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
   const companionPetMarkersRef = useRef<Map<string, maplibregl.Marker>>(new Map());
 
-  // Overlay SVG ultraligero para directriz médica de emergencia (espacio de pantalla, cero latencia WebGL)
+  // Overlay SVG ultraligero para directriz médica de emergencia y radio de visión (espacio de pantalla, cero latencia WebGL)
   const svgOverlayRef = useRef<SVGSVGElement | null>(null);
+  const visionPolygonRef = useRef<SVGPolygonElement | null>(null);
   const guidelineHaloRef = useRef<SVGLineElement | null>(null);
   const guidelineLineRef = useRef<SVGLineElement | null>(null);
 
@@ -600,6 +601,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   const isMeWounded = isPlayerWoundedOrCritical(myPlayer);
   const isMeWoundedRef = useRef(isMeWounded);
   isMeWoundedRef.current = isMeWounded;
+
+  const isRadarActiveRef = useRef(isRadarActive);
+  isRadarActiveRef.current = isRadarActive;
 
   // ==========================================
   // GESTIÓN ROBUSTA DE FUENTES Y CAPAS GEOJSON RESILIENTES
@@ -789,43 +793,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           }
         }
 
-        // 3. CAPA DINÁMICA: RADIO DE VISIÓN DEL JUGADOR
+        // 3. CAPA DINÁMICA: RADIO DE VISIÓN DEL JUGADOR (MIGRADO A OVERLAY SVG EN ESPACIO DE PANTALLA)
+        // Se desactiva la inyección de capas vectoriales WebGL para suprimir la latencia del Web Worker
         if (!map.getSource(SOURCE_PLAYER_VISION)) {
           map.addSource(SOURCE_PLAYER_VISION, {
             type: 'geojson',
             data: { type: 'FeatureCollection', features: [] },
-          });
-        }
-
-        if (!map.getLayer(LAYER_PLAYER_VISION_FILL)) {
-          map.addLayer({
-            id: LAYER_PLAYER_VISION_FILL,
-            type: 'fill',
-            source: SOURCE_PLAYER_VISION,
-            layout: {
-              visibility: isMeWounded ? 'none' : 'visible',
-            },
-            paint: {
-              'fill-color': '#00f2fe',
-              'fill-opacity': 0.08,
-            },
-          });
-        }
-
-        if (!map.getLayer(LAYER_PLAYER_VISION_LINE)) {
-          map.addLayer({
-            id: LAYER_PLAYER_VISION_LINE,
-            type: 'line',
-            source: SOURCE_PLAYER_VISION,
-            layout: {
-              visibility: isMeWounded ? 'none' : 'visible',
-            },
-            paint: {
-              'line-color': '#00f2fe',
-              'line-width': 1.6,
-              'line-dasharray': [3, 2],
-              'line-opacity': 0.7,
-            },
           });
         }
 
@@ -1079,73 +1052,136 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   ]);
 
   /**
-   * Sincroniza el único radio de acción/visión del jugador sobre el mapa en capas de radar.
-   * Anclado estrictamente a las coordenadas vivas del marcador para eliminar desfases y círculos fantasma.
+   * Radio de acción y visión migrado a updateSvgPlayerVision en espacio de pantalla (Overlay SVG).
+   * La actualización GeoJSON WebGL se anula para eliminar el Web Worker overhead y evitar el retardo inicial y tirones.
    */
   const syncPlayerVision = useCallback(
-    (targetMap?: maplibregl.Map, liveLng?: number, liveLat?: number) => {
-      const map = targetMap || mapRef.current;
-      if (!map || !isMapStyleLoaded(map)) return;
+    (_targetMap?: maplibregl.Map, _liveLng?: number, _liveLat?: number) => {
+      // No-op: visualización delegada íntegramente al overlay SVG en updateSvgPlayerVision
+    },
+    []
+  );
 
-      try {
-        const source = map.getSource(SOURCE_PLAYER_VISION) as maplibregl.GeoJSONSource | undefined;
-        if (!source) return;
+  /**
+   * Actualización ultra-rápida a 60 FPS del radio de acción/visión del jugador en Overlay SVG.
+   * Proyecta un polígono de 48 vértices geodésicos a espacio de pantalla mediante map.project().
+   * Cero uso de Web Worker, cero source.setData(), aparición instantánea y soldado al avatar con 0 ms de lag.
+   */
+  const updateSvgPlayerVision = useCallback((directLng?: number, directLat?: number) => {
+    const polygonEl = visionPolygonRef.current;
+    if (!polygonEl) return;
 
-        const isWounded = isPlayerWoundedOrCritical(myPlayer);
-        if (isWounded) {
-          source.setData({ type: 'FeatureCollection', features: [] });
-          return;
-        }
+    const player = myPlayerRef.current;
+    const isWounded = isMeWoundedRef.current || isPlayerWoundedOrCritical(player);
+    const isInside = Boolean(player?.insideBuildingId);
 
-        // Anclaje estricto a las coordenadas vivas del marcador en pantalla
-        let playerLng = typeof liveLng === 'number' && !isNaN(liveLng) && liveLng !== 0 ? liveLng : null;
-        let playerLat = typeof liveLat === 'number' && !isNaN(liveLat) && liveLat !== 0 ? liveLat : null;
+    if (isWounded || isInside) {
+      if (polygonEl.style.display !== 'none') {
+        polygonEl.style.display = 'none';
+      }
+      return;
+    }
 
-        if (playerLng == null || playerLat == null) {
-          const meMarker = playerMarkersRef.current.get(myPlayer.id);
-          if (meMarker) {
-            const pos = meMarker.getLngLat();
-            if (pos && typeof pos.lng === 'number' && typeof pos.lat === 'number' && !isNaN(pos.lng) && !isNaN(pos.lat)) {
-              playerLng = pos.lng;
-              playerLat = pos.lat;
-            }
+    const map = mapRef.current;
+    if (!map) return;
+
+    // 1. Obtención de la posición geográfica viva del avatar
+    let centerLng: number | null = typeof directLng === 'number' && !isNaN(directLng) && directLng !== 0 ? directLng : null;
+    let centerLat: number | null = typeof directLat === 'number' && !isNaN(directLat) && directLat !== 0 ? directLat : null;
+
+    if (centerLng == null || centerLat == null) {
+      if (player?.id) {
+        const meMarker = playerMarkersRef.current.get(player.id);
+        if (meMarker) {
+          const pos = meMarker.getLngLat();
+          if (pos && typeof pos.lng === 'number' && typeof pos.lat === 'number' && !isNaN(pos.lng) && !isNaN(pos.lat)) {
+            centerLng = pos.lng;
+            centerLat = pos.lat;
           }
         }
-
-        if (playerLng == null || playerLat == null) {
-          playerLng = myPlayer?.lng ?? center?.lng ?? INITIAL_LNG;
-          playerLat = myPlayer?.lat ?? center?.lat ?? INITIAL_LAT;
-        }
-
-        if (
-          typeof playerLat !== 'number' ||
-          typeof playerLng !== 'number' ||
-          isNaN(playerLat) ||
-          isNaN(playerLng) ||
-          (playerLat === 0 && playerLng === 0)
-        ) {
-          return;
-        }
-
-        const hasActiveDrone = (myPlayer.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
-        const calcRadius = getVisionRadius(myPlayer.role, isRadarActive, hasActiveDrone);
-        const radius = (myPlayer as any)?.visionRadius || (myPlayer as any)?.interactionRadius || calcRadius || 25;
-
-        const visionCircle = createCircleFeature([playerLng, playerLat], radius, {
-          color: '#00f2fe',
-          id: 'player-vision-circle',
-        });
-
-        source.setData({
-          type: 'FeatureCollection',
-          features: [visionCircle],
-        });
-      } catch (err) {
-        console.warn('[GameMap] Error al sincronizar radio de visión:', err);
       }
-    },
-    [myPlayer, center?.lat, center?.lng, isRadarActive]
-  );
+    }
+
+    if (centerLng == null || centerLat == null) {
+      centerLng = typeof player?.lng === 'number' && !isNaN(player.lng) && player.lng !== 0 ? player.lng : null;
+      centerLat = typeof player?.lat === 'number' && !isNaN(player.lat) && player.lat !== 0 ? player.lat : null;
+    }
+
+    if (centerLng == null || centerLat == null) {
+      centerLng = center?.lng ?? INITIAL_LNG;
+      centerLat = center?.lat ?? INITIAL_LAT;
+    }
+
+    if (
+      typeof centerLat !== 'number' ||
+      typeof centerLng !== 'number' ||
+      isNaN(centerLat) ||
+      isNaN(centerLng) ||
+      (centerLat === 0 && centerLng === 0)
+    ) {
+      if (polygonEl.style.display !== 'none') {
+        polygonEl.style.display = 'none';
+      }
+      return;
+    }
+
+    // 2. Cálculo del radio de visión
+    const hasActiveDrone = (player?.pets || []).some((p) => p.type === 'drone' && !p.isWounded);
+    const calcRadius = getVisionRadius(player?.role, isRadarActiveRef.current, hasActiveDrone);
+    const radius = (player as any)?.visionRadius || (player as any)?.interactionRadius || calcRadius || 25;
+
+    // 3. Generación geodésica y proyección 3D a píxeles de pantalla (48 vértices)
+    const pointsCount = 48;
+    let pointsStr = '';
+    const centerPoint = { lat: centerLat, lng: centerLng };
+
+    for (let i = 0; i < pointsCount; i++) {
+      const bearing = (i * 360) / pointsCount;
+      const geoPt = getDestinationPoint(centerPoint, radius, bearing);
+      const screenPt = map.project([geoPt.lng, geoPt.lat]);
+      const x = Math.round(screenPt.x * 10) / 10;
+      const y = Math.round(screenPt.y * 10) / 10;
+      pointsStr += `${i > 0 ? ' ' : ''}${x},${y}`;
+    }
+
+    // 4. Mutación DOM directa sin ciclo React
+    polygonEl.setAttribute('points', pointsStr);
+    if (polygonEl.style.display !== 'block') {
+      polygonEl.style.display = 'block';
+    }
+  }, [center?.lat, center?.lng]);
+
+  const updateSvgPlayerVisionRef = useRef(updateSvgPlayerVision);
+  updateSvgPlayerVisionRef.current = updateSvgPlayerVision;
+
+  // Sincronización continua de la zona de visión en SVG a 60 FPS y en cada evento 'render' de MapLibre GL
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    // Disparo inmediato para evitar cualquier retardo en la aparición inicial
+    updateSvgPlayerVision();
+
+    const handleMapRender = () => {
+      updateSvgPlayerVision();
+    };
+    map.on('render', handleMapRender);
+
+    let animId: number;
+    let isActive = true;
+    const loop = () => {
+      if (!isActive) return;
+      updateSvgPlayerVision();
+      animId = requestAnimationFrame(loop);
+    };
+    animId = requestAnimationFrame(loop);
+
+    return () => {
+      isActive = false;
+      cancelAnimationFrame(animId);
+      map.off('render', handleMapRender);
+    };
+  }, [updateSvgPlayerVision, mapLoaded]);
 
   /**
    * Actualización síncrona en espacio de pantalla (píxeles) de la directriz médica SVG.
@@ -1156,10 +1192,12 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     const isWounded = isPlayerWoundedOrCritical(myPlayer);
     const isInside = !!myPlayer.insideBuildingId;
 
+    const lineEl = guidelineLineRef.current;
+    const haloEl = guidelineHaloRef.current;
+
     if (!isWounded || isInside) {
-      if (svgOverlayRef.current && svgOverlayRef.current.style.display !== 'none') {
-        svgOverlayRef.current.style.display = 'none';
-      }
+      if (lineEl && lineEl.style.display !== 'none') lineEl.style.display = 'none';
+      if (haloEl && haloEl.style.display !== 'none') haloEl.style.display = 'none';
       return;
     }
 
@@ -1232,12 +1270,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     if (!hasHospitalPos) return;
 
     // 3. Mutación directa de atributos SVG en el DOM (cero re-renderizado React)
-    const svgEl = svgOverlayRef.current;
-    const lineEl = guidelineLineRef.current;
-    const haloEl = guidelineHaloRef.current;
-
-    if (svgEl && svgEl.style.display !== 'block') {
-      svgEl.style.display = 'block';
+    if (lineEl && lineEl.style.display !== 'block') {
+      lineEl.style.display = 'block';
+    }
+    if (haloEl && haloEl.style.display !== 'block') {
+      haloEl.style.display = 'block';
     }
 
     const sX1 = String(x1);
@@ -1267,15 +1304,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
   // Cero consumo cuando el jugador está sano o dentro de una estructura
   useEffect(() => {
     if (!isMeWounded || myPlayer.insideBuildingId) {
-      if (svgOverlayRef.current) {
-        svgOverlayRef.current.style.display = 'none';
-      }
+      if (guidelineLineRef.current) guidelineLineRef.current.style.display = 'none';
+      if (guidelineHaloRef.current) guidelineHaloRef.current.style.display = 'none';
       return;
     }
 
-    if (svgOverlayRef.current) {
-      svgOverlayRef.current.style.display = 'block';
-    }
+    if (guidelineLineRef.current) guidelineLineRef.current.style.display = 'block';
+    if (guidelineHaloRef.current) guidelineHaloRef.current.style.display = 'block';
     updateSvgGuideline();
 
     let animId: number;
@@ -3051,6 +3086,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
         if (isMe) {
           updateHospitalGuidelineDirect(map, lng, lat, isMeWounded);
+          updateSvgPlayerVision(lng, lat);
           syncPlayerVision(map, lng, lat);
         }
 
@@ -3062,6 +3098,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         marker?.setLngLat([lng, lat]);
         if (isMe) {
           updateHospitalGuidelineDirect(map, lng, lat, isMeWounded);
+          updateSvgPlayerVision(lng, lat);
           syncPlayerVision(map, lng, lat);
         }
         const el = marker?.getElement();
@@ -3158,7 +3195,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         }
       }
     });
-  }, [players, myPlayer, mapLoaded, center?.lat, center?.lng, isMeWounded, updateHospitalGuidelineDirect, syncHospitalGuideline, syncPlayerVision]);
+  }, [players, myPlayer, mapLoaded, center?.lat, center?.lng, isMeWounded, updateHospitalGuidelineDirect, updateSvgPlayerVision, syncHospitalGuideline, syncPlayerVision]);
 
   // ==========================================
   // 8.5. MASCOTAS ACOMPAÑANTES: Integradas directamente en el DOM del jugador
@@ -3377,13 +3414,18 @@ const GameMapComponent: React.FC<GameMapProps> = ({
     <div className={`relative w-screen h-screen overflow-hidden bg-hud-dark ${inCombat ? 'pointer-events-none' : ''}`}>
       <div ref={mapContainerRef} id="map" className="relative w-full h-full" />
 
-      {/* OVERLAY SVG LIGERO PARA DIRECTRIZ MÉDICA DE EMERGENCIA EN ESPACIO DE PANTALLA */}
+      {/* OVERLAY SVG LIGERO PARA ZONA DE VISIÓN Y DIRECTRIZ MÉDICA EN ESPACIO DE PANTALLA */}
       <svg
         ref={svgOverlayRef}
-        className="absolute inset-0 w-full h-full pointer-events-none z-20 overflow-hidden"
-        style={{ display: isMeWounded && !myPlayer.insideBuildingId ? 'block' : 'none' }}
+        className="absolute inset-0 w-full h-full pointer-events-none map-svg-overlay overflow-hidden"
         aria-hidden="true"
       >
+        <polygon
+          ref={visionPolygonRef}
+          className="player-vision-polygon"
+          points=""
+          style={{ display: 'none' }}
+        />
         <line
           ref={guidelineHaloRef}
           className="medical-guideline-halo"
@@ -3391,6 +3433,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           y1="0"
           x2="0"
           y2="0"
+          style={{ display: isMeWounded && !myPlayer.insideBuildingId ? 'block' : 'none' }}
         />
         <line
           ref={guidelineLineRef}
@@ -3399,6 +3442,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           y1="0"
           x2="0"
           y2="0"
+          style={{ display: isMeWounded && !myPlayer.insideBuildingId ? 'block' : 'none' }}
         />
       </svg>
 
