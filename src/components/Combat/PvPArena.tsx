@@ -46,8 +46,8 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
   onFlee,
   onClose,
 }) => {
-  const [opponentHp, setOpponentHp] = useState<number>(opponentPlayer.hp ?? (opponentPlayer.maxHp || 300));
-  const [myHp, setMyHp] = useState<number>(myPlayer.hp ?? (myPlayer.maxHp || 300));
+  const [opponentHp, setOpponentHp] = useState<number>(opponentPlayer.hp ?? (opponentPlayer.maxHp || (opponentPlayer.role === 'tank' ? 450 : 300)));
+  const [myHp, setMyHp] = useState<number>(myPlayer.hp ?? (myPlayer.maxHp || (myPlayer.role === 'tank' ? 450 : 300)));
   const [isAttacking, setIsAttacking] = useState<boolean>(false);
   const [screenShake, setScreenShake] = useState<boolean>(false);
   const [cardHitAnim, setCardHitAnim] = useState<boolean>(false);
@@ -90,8 +90,8 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
     if (isOpen) {
       soundEffects.playAlarm();
       soundEffects.vibrate([100, 50, 100]);
-      const initialOpponentHp = opponentPlayer.hp ?? (opponentPlayer.maxHp || 300);
-      const initialMyHp = myPlayer.hp ?? (myPlayer.maxHp || 300);
+      const initialOpponentHp = opponentPlayer.hp ?? (opponentPlayer.maxHp || (opponentPlayer.role === 'tank' ? 450 : 300));
+      const initialMyHp = myPlayer.hp ?? (myPlayer.maxHp || (myPlayer.role === 'tank' ? 450 : 300));
       setOpponentHp(initialOpponentHp);
       setMyHp(initialMyHp);
       opponentHpRef.current = initialOpponentHp;
@@ -497,9 +497,9 @@ export const PvPArena: React.FC<PvPArenaProps> = ({
 
   if (!isOpen) return null;
 
-  const opponentMaxHp = opponentPlayer.maxHp || 300;
+  const opponentMaxHp = opponentPlayer.maxHp || (opponentPlayer.role === 'tank' ? 450 : 300);
   const opponentHpPct = Math.max(0, Math.min(100, Math.round((opponentHp / opponentMaxHp) * 100)));
-  const myMaxHp = myPlayer.maxHp || 300;
+  const myMaxHp = myPlayer.maxHp || (myPlayer.role === 'tank' ? 450 : 300);
   const myHpPct = Math.max(0, Math.min(100, Math.round((myHp / myMaxHp) * 100)));
 
   return (

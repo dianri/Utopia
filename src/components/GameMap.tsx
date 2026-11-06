@@ -3006,7 +3006,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       const lat = p.lat ?? center.lat;
       const lng = p.lng ?? center.lng;
       const isMe = p.id === myPlayer.id;
-      const hpPercent = Math.max(0, Math.min(100, (p.hp / (p.maxHp || 300)) * 100));
+      const playerMaxHp = p.maxHp || (p.role === 'tank' ? 450 : 300);
+      const hpPercent = Math.max(0, Math.min(100, (p.hp / playerMaxHp) * 100));
       const isCriticallyWounded = isPlayerWoundedOrCritical(p);
       const isInside = !!p.insideBuildingId;
 
