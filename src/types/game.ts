@@ -26,6 +26,16 @@ export const PLAYER_BASE_HP = 300;
 export const PLAYER_MAX_HP = 300;
 export const TANK_MAX_HP = 450;
 
+/**
+ * Retorna la vida máxima base según el rol (Tanque: +50% HP base, 450 HP; Otros: 300 HP base)
+ */
+export function getMaxHpForRole(role?: PlayerRole | null): number {
+  if (role === 'tank') {
+    return TANK_MAX_HP;
+  }
+  return PLAYER_BASE_HP;
+}
+
 export const DEFAULT_PLAYER_SPEED: PlayerSpeed = 'normal';
 
 export const PLAYER_SPEED_MPS: Record<PlayerSpeed, number> = {
@@ -141,6 +151,7 @@ export interface Player {
   slowedUntil?: number;
   status?: PlayerStatus;
   isCriticallyWounded?: boolean;
+  isWounded?: boolean;
   insideBuildingId?: string | null;
   insideBuildingType?: StructureType | null;
   inCombat?: boolean;

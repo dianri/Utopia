@@ -578,8 +578,9 @@ export const App: React.FC = () => {
 
   const isSquadFullyHealed = useMemo(() => {
     if (!myPlayer) return false;
+    const playerMaxHp = myPlayer.maxHp || (myPlayer.role === 'tank' ? 450 : 300);
     const playerFull =
-      myPlayer.hp >= (myPlayer.maxHp || 300) &&
+      myPlayer.hp >= playerMaxHp &&
       !myPlayer.isCriticallyWounded &&
       myPlayer.status !== 'critically_wounded';
     const petsFull =
@@ -1272,23 +1273,39 @@ export const App: React.FC = () => {
               (playerId && p.id === playerId) ||
               (userId && p.userId === userId);
             if (!matches) return p;
-            // Solo permitir aumento de HP si el jugador está en el hospital; en cualquier otro caso, el movimiento no puede subir la salud
-            const isHospital = insideBuildingType === 'hospital' || p.insideBuildingType === 'hospital';
+            // Permitir aumento de HP si el jugador está en una zona de curación (hospital o refugio) o si explícitamente se le envía curado/activo
+            const isHealStructure =
+              insideBuildingType === 'hospital' ||
+              p.insideBuildingType === 'hospital' ||
+              insideBuildingType === 'shelter' ||
+              p.insideBuildingType === 'shelter';
+            const isHealingOrRevived =
+              isHealStructure ||
+              (status === 'active' && isCriticallyWounded === false) ||
+              (hp !== undefined && hp > p.hp && isCriticallyWounded === false);
             const resolvedHp =
               hp !== undefined
-                ? isHospital
+                ? isHealingOrRevived
                   ? hp
                   : Math.min(p.hp, hp)
                 : p.hp;
+            const resolvedCriticallyWounded =
+              isCriticallyWounded !== undefined
+                ? isCriticallyWounded
+                : (status === 'active' && resolvedHp > 1 ? false : p.isCriticallyWounded);
+            const resolvedStatus =
+              status !== undefined
+                ? status
+                : (!resolvedCriticallyWounded && resolvedHp > 1 && p.status === 'critically_wounded' ? 'active' : p.status);
             return {
               ...p,
               lat,
               lng,
               hp: resolvedHp,
               isAlive: isAlive !== undefined ? isAlive : p.isAlive,
-              status: status !== undefined ? status : p.status,
-              isCriticallyWounded:
-                isCriticallyWounded !== undefined ? isCriticallyWounded : p.isCriticallyWounded,
+              status: resolvedStatus,
+              isCriticallyWounded: resolvedCriticallyWounded,
+              isWounded: resolvedCriticallyWounded,
               insideBuildingId:
                 insideBuildingId !== undefined ? insideBuildingId : p.insideBuildingId,
               insideBuildingType:
@@ -1448,6 +1465,28 @@ export const App: React.FC = () => {
         } else {
           addLog(`${reviverNickname} reanimó a un compañero de escuadra`, 'info');
         }
+      },
+      onPlayerHealed: ({ id, playerId, userId, hp, isWounded, status, isCriticallyWounded, pets }) => {
+        const targetId = playerId || id;
+        setPlayers((prev) =>
+          prev.map((p) => {
+            const matches =
+              (targetId && p.id === targetId) ||
+              (userId && p.userId === userId);
+            if (!matches) return p;
+            const updatedStatus: PlayerStatus = (status as PlayerStatus) || 'active';
+            const updatedHp = hp !== undefined ? hp : Math.max(p.hp, 20);
+            return {
+              ...p,
+              hp: updatedHp,
+              isAlive: true,
+              status: updatedStatus,
+              isCriticallyWounded: false,
+              isWounded: false,
+              pets: pets !== undefined ? pets : p.pets,
+            };
+          })
+        );
       },
       onChestCountdown: ({ secondsRemaining, holdersCount }) => {
         setChestCountdown(secondsRemaining);
@@ -1882,8 +1921,9 @@ export const App: React.FC = () => {
         if (insideId) {
           const st = structuresRef.current.find((s) => s.id === insideId);
           if (st?.type === 'hospital') {
+            const playerMaxHp = myPlayerRef.current.maxHp || (myPlayerRef.current.role === 'tank' ? 450 : 300);
             const playerNeedsHealing =
-              myPlayerRef.current.hp < (myPlayerRef.current.maxHp || 300) ||
+              myPlayerRef.current.hp < playerMaxHp ||
               myPlayerRef.current.isCriticallyWounded ||
               myPlayerRef.current.status === 'critically_wounded';
 
@@ -1915,8 +1955,9 @@ export const App: React.FC = () => {
 
       // Verificación directa e inmediata en hospital si necesita curación
       if (insideType === 'hospital') {
+        const playerMaxHp = myPlayerRef.current.maxHp || (myPlayerRef.current.role === 'tank' ? 450 : 300);
         const playerNeedsHealing =
-          myPlayerRef.current.hp < (myPlayerRef.current.maxHp || 300) ||
+          myPlayerRef.current.hp < playerMaxHp ||
           myPlayerRef.current.isCriticallyWounded ||
           myPlayerRef.current.status === 'critically_wounded';
 
@@ -2278,18 +2319,24 @@ export const App: React.FC = () => {
                   (p) => p.id === d.id || (d.user_id && p.userId === d.user_id)
                 );
                 const teammateRole = (d.role as PlayerRole) || existing?.role || 'medic';
-                const teammateStatus = existing?.status || (d.status as PlayerStatus) || (d.hp <= 0 ? 'critically_wounded' : 'active');
+                const dbStatus = (d.status as PlayerStatus) || (d.hp <= 0 ? 'critically_wounded' : 'active');
+                const isHealedInDb = dbStatus === 'active' && d.hp > 1;
+                const teammateStatus = isHealedInDb ? 'active' : (existing?.status || dbStatus);
+                const teammateHp = isHealedInDb ? Math.max(existing?.hp || 0, d.hp) : (existing ? existing.hp : d.hp);
+                const teammateCriticallyWounded = isHealedInDb
+                  ? false
+                  : (existing?.isCriticallyWounded ?? (teammateStatus === 'critically_wounded' || teammateHp <= 1));
                 return {
                   id: d.id,
                   userId: d.user_id,
                   gameId: d.game_id,
                   nickname: d.nickname,
                   role: teammateRole,
-                  hp: existing ? existing.hp : d.hp, // Preservar salud viva de combate en memoria
+                  hp: teammateHp,
                   maxHp: d.max_hp,
                   isAlive: existing ? existing.isAlive : d.is_alive,
                   status: teammateStatus,
-                  isCriticallyWounded: existing?.isCriticallyWounded ?? (teammateStatus === 'critically_wounded' || d.hp <= 0),
+                  isCriticallyWounded: teammateCriticallyWounded,
                   lat: existing?.lat ?? d.lat ?? room.centerLat,
                   lng: existing?.lng ?? d.lng ?? room.centerLng,
                   damageDealt: existing ? existing.damageDealt : d.damage_dealt,
@@ -3145,6 +3192,12 @@ export const App: React.FC = () => {
       isCriticallyWounded: boolean,
       newPets: Pet[]
     ) => {
+      const prevWounded = Boolean(
+        myPlayerRef.current?.isCriticallyWounded ||
+        myPlayerRef.current?.status === 'critically_wounded'
+      );
+      const isNowStabilized = prevWounded && !isCriticallyWounded && newStatus === 'active';
+
       setMyPlayer((prev) => {
         if (!prev) return null;
         const updated = {
@@ -3170,6 +3223,16 @@ export const App: React.FC = () => {
         return updated;
       });
 
+      if (isNowStabilized && myPlayerRef.current?.id) {
+        realtimeRef.current.broadcastPlayerHealed(
+          myPlayerRef.current.id,
+          newHp,
+          newStatus,
+          false,
+          newPets
+        );
+      }
+
       setPlayers((prev) =>
         prev.map((p) =>
           p.id === myPlayerRef.current?.id
@@ -3193,7 +3256,7 @@ export const App: React.FC = () => {
             isCriticallyWounded,
             pets: newPets,
           },
-          false
+          isNowStabilized
         );
       }
     },
@@ -3226,6 +3289,16 @@ export const App: React.FC = () => {
         }
         return updated;
       });
+
+      if (myPlayerRef.current?.id) {
+        realtimeRef.current.broadcastPlayerHealed(
+          myPlayerRef.current.id,
+          finalHp,
+          finalStatus,
+          false,
+          finalPets
+        );
+      }
 
       setPlayers((prev) =>
         prev.map((p) =>
@@ -3986,8 +4059,9 @@ export const App: React.FC = () => {
       const radius = hospital.radius || 20;
       const activeHospital = dist <= radius ? hospital : null;
 
+      const playerMaxHp = player.maxHp || (player.role === 'tank' ? 450 : 300);
       const playerNeedsHealing =
-        player.hp < (player.maxHp || 300) ||
+        player.hp < playerMaxHp ||
         player.status === 'critically_wounded' ||
         player.isCriticallyWounded;
 
@@ -4030,7 +4104,7 @@ export const App: React.FC = () => {
       });
 
       if (shelter && !isHospitalModalOpenRef.current) {
-        const maxHp = player.maxHp || 300;
+        const maxHp = player.maxHp || (player.role === 'tank' ? 450 : 300);
         const prevHp = player.hp ?? 0;
         const prevWounded = Boolean(
           player.isCriticallyWounded || player.status === 'critically_wounded'
@@ -4083,6 +4157,23 @@ export const App: React.FC = () => {
               addLogRef.current?.(
                 '¡HAS SIDO ESTABILIZADO! Has superado el umbral crítico en el refugio y recuperado la movilidad.',
                 'info'
+              );
+              realtimeRef.current.broadcastPlayerHealed(
+                player.id,
+                nextHp,
+                'active',
+                false,
+                anyPetHealed ? nextPets : prevPets
+              );
+              syncPlayerToSupabase(
+                {
+                  ...player,
+                  hp: nextHp,
+                  status: 'active',
+                  isCriticallyWounded: false,
+                  pets: anyPetHealed ? nextPets : prevPets,
+                },
+                true
               );
             }
 
@@ -5508,7 +5599,7 @@ export const App: React.FC = () => {
             nickname: d.nickname,
             role: teammateRole,
             hp: d.hp,
-            maxHp: d.max_hp,
+            maxHp: d.max_hp || (teammateRole === 'tank' ? 450 : 300),
             isAlive: d.is_alive,
             status: teammateStatus,
             isCriticallyWounded: teammateStatus === 'critically_wounded',
@@ -5624,10 +5715,11 @@ export const App: React.FC = () => {
     const hospital = structuresRef.current.find((s) => s.type === 'hospital');
     if (hospital) {
       const distToHosp = getDistanceMeters(coords, { lat: hospital.lat, lng: hospital.lng });
+      const playerMaxHp = myPlayer?.maxHp || (myPlayer?.role === 'tank' ? 450 : 300);
       const isWounded = Boolean(
         myPlayer?.isCriticallyWounded ||
         myPlayer?.status === 'critically_wounded' ||
-        (myPlayer?.hp ?? 300) < (myPlayer?.maxHp || 300)
+        (myPlayer?.hp ?? playerMaxHp) < playerMaxHp
       );
       if (distToHosp <= 22 || (isWounded && distToHosp <= 25)) {
         targetCoords = { lat: hospital.lat, lng: hospital.lng };

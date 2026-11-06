@@ -33,9 +33,21 @@ interface RealtimeCallbacks {
     isAlive?: boolean;
     status?: PlayerStatus;
     isCriticallyWounded?: boolean;
+    isWounded?: boolean;
     insideBuildingId?: string | null;
     insideBuildingType?: StructureType | null;
     pets?: Pet[];
+  }) => void;
+  onPlayerHealed?: (payload: {
+    id?: string;
+    playerId?: string;
+    userId?: string;
+    hp: number;
+    isWounded: boolean;
+    status: PlayerStatus;
+    isCriticallyWounded: boolean;
+    pets?: Pet[];
+    timestamp?: number;
   }) => void;
   onPlayerDamaged?: (payload: { playerId: string; damage: number; currentHp: number }) => void;
   onMonsterDamaged?: (payload: { damage: number; fromPlayerId: string; currentHp: number; monsterId?: string }) => void;
@@ -203,6 +215,12 @@ export function useGameRealtime(
     // 8. JUGADOR REVIVIDO
     channel.on('broadcast', { event: 'player_revived' }, ({ payload }) => {
       callbacksRef.current.onPlayerRevived?.(payload);
+    });
+
+    // 8.1. JUGADOR CURADO / ESTABILIZADO (HOSPITAL O REFUGIO)
+    channel.on('broadcast', { event: 'player_healed' }, ({ payload }) => {
+      console.log('[Realtime:Healed] Receive:', payload);
+      callbacksRef.current.onPlayerHealed?.(payload);
     });
 
     // 9. CUENTA ATRÁS DEL COFRE (VICTORIA)
@@ -411,6 +429,7 @@ export function useGameRealtime(
     ) => {
       if (!channelRef.current || !isSubscribedRef.current) return;
       const payload = {
+        id: myPlayerId,
         userId: myUserId,
         playerId: myPlayerId,
         lat,
@@ -419,6 +438,7 @@ export function useGameRealtime(
         isAlive,
         status,
         isCriticallyWounded,
+        isWounded: isCriticallyWounded ?? (hp !== undefined ? hp <= 1 : false),
         insideBuildingId,
         insideBuildingType,
         pets,
@@ -431,6 +451,36 @@ export function useGameRealtime(
       });
     },
     [myUserId, myPlayerId]
+  );
+
+  const broadcastPlayerHealed = useCallback(
+    (
+      playerId: string,
+      newHp: number,
+      status: PlayerStatus = 'active',
+      isCriticallyWounded: boolean = false,
+      pets?: Pet[]
+    ) => {
+      if (!channelRef.current || !isSubscribedRef.current) return;
+      const payload = {
+        id: playerId,
+        playerId,
+        userId: myUserId,
+        hp: newHp,
+        isWounded: false,
+        status: status || 'active',
+        isCriticallyWounded: false,
+        pets,
+        timestamp: Date.now(),
+      };
+      console.log('[Realtime:Healed] Emit:', payload);
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'player_healed',
+        payload,
+      });
+    },
+    [myUserId]
   );
 
   const broadcastPlayerHit = useCallback((playerId: string, damage: number, currentHp: number) => {
@@ -817,6 +867,7 @@ export function useGameRealtime(
     broadcastRadarActivated,
     broadcastCrateLooted,
     broadcastPlayerRevived,
+    broadcastPlayerHealed,
     broadcastChestCountdown,
     broadcastChestProgress,
     broadcastChestInteracting,
