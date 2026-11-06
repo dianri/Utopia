@@ -160,7 +160,8 @@ export function applyCratePickup(
   // CASO 1: SUMINISTRO MÉDICO (BOTIQUÍN)
   if (crate.crateType === 'medkit' || (crate.healReward > 0 && !crate.weaponReward)) {
     const healValue = crate.healReward > 0 ? crate.healReward : 100;
-    const healedHp = Math.min(player.maxHp || 300, player.hp + healValue);
+    const maxHp = player.maxHp || (player.role === 'tank' ? 450 : 300);
+    const healedHp = Math.min(maxHp, player.hp + healValue);
 
     return {
       updatedPlayer: {
@@ -264,8 +265,9 @@ export function applyPetCratePickup(
     const updatedPets = [...(player.pets || [])];
     let logMessage = '';
 
-    if (player.hp < (player.maxHp || 300)) {
-      healedPlayerHp = Math.min(player.maxHp || 300, player.hp + healValue);
+    const maxHp = player.maxHp || (player.role === 'tank' ? 450 : 300);
+    if (player.hp < maxHp) {
+      healedPlayerHp = Math.min(maxHp, player.hp + healValue);
       logMessage = `🐾 ${fetchingPet.name} te trajo suministros médicos: +${healValue} HP!`;
     } else {
       let lowestPetIndex = -1;
@@ -393,7 +395,8 @@ export function applyDroppedItemPickup(
   // 1. Si es curación (botiquín / kit médico)
   if (item.category === 'health' || item.type === 'medkit') {
     const healAmount = item.healValue ?? 100;
-    const healedHp = Math.min(player.maxHp || 300, player.hp + healAmount);
+    const maxHp = player.maxHp || (player.role === 'tank' ? 450 : 300);
+    const healedHp = Math.min(maxHp, player.hp + healAmount);
     const isNowHealthy = healedHp > 1;
 
     return {

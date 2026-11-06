@@ -245,7 +245,7 @@ export function getModifiedWeaponStats(weapon: Weapon, role: PlayerRole): { dama
 /**
  * Retorna la vida máxima base según el rol (Tanque: +50% HP base, 450 HP; Otros: 300 HP base)
  */
-export function getMaxHpForRole(role: PlayerRole): number {
+export function getMaxHpForRole(role?: PlayerRole | null): number {
   if (role === 'tank') {
     return TANK_MAX_HP; // Tanque: +50% HP base (450 HP)
   }

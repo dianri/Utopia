@@ -27,7 +27,7 @@ export const ROLE_OPTIONS: RoleConfig[] = [
   {
     id: 'tank',
     label: 'Tanque',
-    desc: '+50% HP (150 HP) y atrae la atención del monstruo',
+    desc: '+50% HP (450 HP) y atrae la atención del monstruo',
     imageSrc: '/assets/icons/roles/role-tank.png',
     color: 'border-blue-500/50 bg-blue-500/10 text-blue-300',
   },
