@@ -756,6 +756,22 @@ export const DEFAULT_HOSPITAL_COORDINATES: Coordinates = {
 export const DEFAULT_HOSPITAL_RADIUS = 20;
 
 /**
+ * Tasa de regeneración acelerada e intensiva del Hospital de Campaña (+60 HP/s).
+ */
+export const HOSPITAL_HEAL_PER_SECOND = 60;
+
+/**
+ * Tasa de regeneración progresiva paulatina en Refugios Tácticos (+15 HP/s).
+ * Proporciona un ritmo gradual equivalente al 25% de la velocidad hospitalaria.
+ */
+export const SHELTER_HEAL_PER_SECOND = 15;
+
+/**
+ * Umbral mínimo de salud para salir de estado crítico/herido y restablecer operatividad (20 HP).
+ */
+export const WOUNDED_SURVIVAL_THRESHOLD = 20;
+
+/**
  * Evalúa de forma unificada e inclusiva si un jugador se encuentra en estado herido, crítico o incapacitado.
  * Salvaguarda contra discrepancias de nomenclatura, diferencias mayúsculas/minúsculas y umbrales de salud.
  */

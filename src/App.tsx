@@ -62,6 +62,8 @@ import {
   MAX_PETS_PER_PLAYER,
   MAX_UNCLAIMED_LOOT,
   MAX_UNCLAIMED_WILD_PETS,
+  SHELTER_HEAL_PER_SECOND,
+  WOUNDED_SURVIVAL_THRESHOLD,
 } from './services/mapEntities';
 import { soundEffects } from './services/soundEffects';
 import { MonsterAIController } from './services/monsterAI';
@@ -268,6 +270,7 @@ export const App: React.FC = () => {
   const [isHospitalModalOpen, setIsHospitalModalOpen] = useState<boolean>(false);
   const isHospitalModalOpenRef = useRef<boolean>(false);
   isHospitalModalOpenRef.current = isHospitalModalOpen;
+  const lastShelterHealTickRef = useRef<number>(0);
 
   // COFRE MULTI-FASE COOPERATIVO (3 FASES, 2 PASOS C/U = 6 CERROJOS)
   const [currentChestIndex, setCurrentChestIndex] = useState<number>(1);
@@ -1899,6 +1902,8 @@ export const App: React.FC = () => {
             // Si la escuadra está al 100% no se emite toast flotante redundante;
             // el banner fijo superior IndoorStatusBanner muestra "Todos los signos vitales se encuentran al 100%"
           } else {
+            // Entrada a refugio táctico: reiniciar tick para que el primer pulso paulatino inicie de inmediato
+            lastShelterHealTickRef.current = 0;
             addLog(`Has entrado a ${st?.name || 'un refugio'}. El monstruo pierde tu rastro.`, 'info');
           }
         } else if (myPlayerRef.current.insideBuildingId) {
@@ -4013,10 +4018,88 @@ export const App: React.FC = () => {
           isHospitalModalOpenRef.current = false;
         }
       }
+
+      // ==========================================
+      // REFUGIOS TÁCTICOS: REGENERACIÓN PAULATINA (+15 HP/s, +5 HP/s MASCOTAS)
+      // ==========================================
+      const shelter = structuresRef.current.find((s) => {
+        if (s.type !== 'shelter') return false;
+        if (player.insideBuildingId === s.id) return true;
+        const d = getDistanceMeters(pCoord, { lat: s.lat, lng: s.lng });
+        return d <= (s.radius || 14);
+      });
+
+      if (shelter && !isHospitalModalOpenRef.current) {
+        const maxHp = player.maxHp || 300;
+        const prevHp = player.hp ?? 0;
+        const prevWounded = Boolean(
+          player.isCriticallyWounded || player.status === 'critically_wounded'
+        );
+        const playerNeedsHealing = prevHp < maxHp || prevWounded;
+
+        const prevPets = player.pets || [];
+        const petsNeedHealing = prevPets.some(
+          (p) => p.hp < (p.maxHp || 100) || p.isWounded
+        );
+
+        if (playerNeedsHealing || petsNeedHealing) {
+          const now = Date.now();
+          if (now - lastShelterHealTickRef.current >= 1000) {
+            lastShelterHealTickRef.current = now;
+
+            // 1. Curación paulatina del jugador (+15 HP/s)
+            let nextHp = Math.min(maxHp, prevHp + SHELTER_HEAL_PER_SECOND);
+            // Si estaba herido, asegurar que supere el umbral vital de supervivencia (20 HP) para restaurar operatividad
+            if (prevWounded && nextHp < WOUNDED_SURVIVAL_THRESHOLD) {
+              nextHp = WOUNDED_SURVIVAL_THRESHOLD;
+            }
+            const nowCured = prevWounded && nextHp >= WOUNDED_SURVIVAL_THRESHOLD;
+            const nextWounded = nowCured ? false : prevWounded;
+            const nextStatus: PlayerStatus = nowCured ? 'active' : (player.status as PlayerStatus);
+
+            // 2. Curación paulatina de mascotas (+5 HP/s)
+            let anyPetHealed = false;
+            const nextPets = prevPets.map((pet) => {
+              const petMaxHp = pet.maxHp || 100;
+              const needsPetHeal = pet.hp < petMaxHp || pet.isWounded;
+              if (needsPetHeal) {
+                anyPetHealed = true;
+                const updatedHp = Math.min(petMaxHp, pet.hp + 5);
+                const isFullyRevived = updatedHp >= petMaxHp;
+                return {
+                  ...pet,
+                  hp: updatedHp,
+                  isWounded: isFullyRevived ? false : pet.isWounded,
+                };
+              }
+              return pet;
+            });
+
+            // Feedback sensorial sutil
+            soundEffects.playMedicalTick?.();
+            soundEffects.vibrate?.(15);
+
+            if (nowCured) {
+              addLogRef.current?.(
+                '¡HAS SIDO ESTABILIZADO! Has superado el umbral crítico en el refugio y recuperado la movilidad.',
+                'info'
+              );
+            }
+
+            // Aplicar curación progresiva al estado del jugador y sincronizar
+            handleHospitalHealTick(
+              nextHp,
+              nextStatus,
+              nextWounded,
+              anyPetHealed ? nextPets : prevPets
+            );
+          }
+        }
+      }
     }, 250);
 
     return () => clearInterval(interval);
-  }, [room?.status, room?.centerLat, room?.centerLng]);
+  }, [room?.status, room?.centerLat, room?.centerLng, handleHospitalHealTick]);
 
   // ==========================================
   // SAQUEO DE AIRDROPS (CAJAS DE SUMINISTROS A 40 METROS)
@@ -5918,7 +6001,8 @@ export const App: React.FC = () => {
             {currentBuilding &&
               !isHospitalModalOpen &&
               !isCombatArenaOpen &&
-              !(myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded') && (
+              (currentBuilding.type === 'shelter' ||
+                !(myPlayer.isCriticallyWounded || myPlayer.status === 'critically_wounded')) && (
                 <IndoorStatusBanner
                   building={currentBuilding}
                   isFullyHealed={isSquadFullyHealed}

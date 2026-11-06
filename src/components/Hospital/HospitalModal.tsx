@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Player, Pet, PlayerStatus } from '../../types/game';
 import { soundEffects } from '../../services/soundEffects';
+import { HOSPITAL_HEAL_PER_SECOND } from '../../services/mapEntities';
 import {
   HeartPulse,
   Shield,
@@ -119,8 +120,8 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
   }, [isOpen, activePlayer?.hp, activePlayer?.status, activePlayer?.isCriticallyWounded, activePlayer?.pets]);
 
   // ==========================================
-  // CICLO DE REGENERACIÓN PROGRESIVA (TICKS MÉDICOS)
-  // Cada 1s: +15 HP al jugador, +20 HP a mascotas dañadas/caídas
+  // CICLO DE REGENERACIÓN PROGRESIVA ACELERADA (TICKS MÉDICOS)
+  // Cada 1s: +60 HP al jugador (curación hospitalaria rápida), +40 HP a mascotas
   // ==========================================
   useEffect(() => {
     if (!isOpen || !activePlayerRef.current) return;
@@ -144,14 +145,14 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
       const prevWounded = isWoundedRef.current;
       const prevStatus = currentStatusRef.current;
 
-      // 1. Curación del jugador (+15 HP/s)
-      const nextHp = Math.min(maxHp, prevHp + 15);
+      // 1. Curación rápida del jugador (+60 HP/s)
+      const nextHp = Math.min(maxHp, prevHp + HOSPITAL_HEAL_PER_SECOND);
       const healedPlayerAmount = nextHp - prevHp;
       const nowCured = prevWounded && nextHp >= 20;
       const nextWounded = nowCured ? false : prevWounded;
       const nextStatus = nowCured ? 'active' : prevStatus;
 
-      // 2. Curación de mascotas (+20 HP/s)
+      // 2. Curación acelerada de mascotas (+40 HP/s)
       const prevPets = petsRef.current;
       const newlyRecoveredIds: string[] = [];
       let anyPetHealed = false;
@@ -162,7 +163,7 @@ export const HospitalModal: React.FC<HospitalModalProps> = ({
 
         if (needsHealing) {
           anyPetHealed = true;
-          const updatedHp = Math.min(petMaxHp, pet.hp + 20);
+          const updatedHp = Math.min(petMaxHp, pet.hp + 40);
           const isFullyRevived = updatedHp >= petMaxHp;
           if (isFullyRevived && pet.isWounded) {
             newlyRecoveredIds.push(pet.id);
