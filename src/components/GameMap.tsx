@@ -1388,7 +1388,6 @@ const GameMapComponent: React.FC<GameMapProps> = ({
 
         // A. ESTRUCTURAS PERMANENTES (Hospital y Refugios)
         safeZones
-          .filter((zone) => !isMeWounded || zone.type === 'hospital')
           .filter(
             (zone) =>
               typeof zone.lat === 'number' &&
@@ -2347,14 +2346,7 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       try {
         const source = map.getSource('structures-zones') as maplibregl.GeoJSONSource | undefined;
         if (source) {
-          const visibleStructures = isMeWounded
-            ? structures.filter((s) => {
-                const t = String(s.type || '').toLowerCase();
-                const id = String(s.id || '').toLowerCase();
-                const n = String(s.name || '').toLowerCase();
-                return t === 'hospital' || id.includes('hospital') || n.includes('hospital');
-              })
-            : structures;
+          const visibleStructures = structures;
           const features = visibleStructures
             .filter(
               (s) =>
@@ -2409,15 +2401,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         const el = document.createElement('div');
         el.className = `map-marker-anchor marker-structure structure-marker-${structure.id}`;
         el.setAttribute('data-entity', 'structure');
-        el.style.pointerEvents = isHospital ? 'auto' : 'none';
-        if (isHospital) {
-          el.style.cursor = 'pointer';
-        }
-        if (isMeWounded && !isHospital) {
-          el.style.display = 'none';
-        }
+        el.style.pointerEvents = 'auto';
+        el.style.cursor = 'pointer';
+        el.style.display = 'block';
         el.innerHTML = `
-          <div class="marker-content flex flex-col items-center select-none ${isHospital ? 'cursor-pointer pointer-events-auto' : 'pointer-events-none'}" style="pointer-events: ${isHospital ? 'auto' : 'none'}; cursor: ${isHospital ? 'pointer' : 'default'};">
+          <div class="marker-content flex flex-col items-center select-none cursor-pointer pointer-events-auto" style="pointer-events: auto; cursor: pointer;">
             <div class="relative flex items-center justify-center">
               <div class="absolute w-20 h-20 ${aura} rounded-full pointer-events-none"></div>
               <img 
@@ -2441,15 +2429,13 @@ const GameMapComponent: React.FC<GameMapProps> = ({
           </div>
         `;
 
-        if (isHospital) {
-          const handleHospitalTap = (ev: Event) => {
-            ev.stopPropagation();
-            ev.preventDefault();
-            onMapClickRef.current?.({ lat: structure.lat, lng: structure.lng });
-          };
-          el.addEventListener('click', handleHospitalTap);
-          el.addEventListener('touchend', handleHospitalTap, { passive: false });
-        }
+        const handleStructureTap = (ev: Event) => {
+          ev.stopPropagation();
+          ev.preventDefault();
+          onMapClickRef.current?.({ lat: structure.lat, lng: structure.lng });
+        };
+        el.addEventListener('click', handleStructureTap);
+        el.addEventListener('touchend', handleStructureTap, { passive: false });
 
         const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
           .setLngLat([structure.lng, structure.lat])
@@ -2463,9 +2449,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         if (el) {
           el.className = `map-marker-anchor marker-structure structure-marker-${structure.id}`;
           el.setAttribute('data-entity', 'structure');
-          el.style.pointerEvents = isHospital ? 'auto' : 'none';
-          el.style.cursor = isHospital ? 'pointer' : 'default';
-          el.style.display = (isMeWounded && !isHospital) ? 'none' : 'block';
+          el.style.pointerEvents = 'auto';
+          el.style.cursor = 'pointer';
+          el.style.display = 'block';
           const labelSpan = el.querySelector('.marker-label');
           if (labelSpan && isHospital) {
             labelSpan.textContent = label;
@@ -3056,8 +3042,11 @@ const GameMapComponent: React.FC<GameMapProps> = ({
         el.setAttribute('data-is-me', isMe ? 'true' : 'false');
         el.style.pointerEvents = 'none';
         el.style.zIndex = isMe ? '40' : '35';
-        if (isMe && isInside) {
+        if (isMe && isInside && p.insideBuildingType === 'hospital') {
           el.style.display = 'none';
+        } else if (isMe && isInside) {
+          el.style.display = 'block';
+          el.style.opacity = '0.85';
         } else if (!isMe && isMeWounded) {
           el.style.display = 'none';
         } else if (!isMe && isInside) {
@@ -3146,7 +3135,8 @@ const GameMapComponent: React.FC<GameMapProps> = ({
             }
           };
           if (isMe) {
-            el.style.display = isInside ? 'none' : 'block';
+            el.style.display = (isInside && p.insideBuildingType === 'hospital') ? 'none' : 'block';
+            el.style.opacity = isInside ? '0.85' : '1';
           } else if (isMeWounded) {
             el.style.display = 'none';
           } else {
@@ -3311,16 +3301,9 @@ const GameMapComponent: React.FC<GameMapProps> = ({
       if (el) el.style.display = isMeWounded ? 'none' : 'block';
     });
 
-    structureMarkersRef.current.forEach((marker, id) => {
-      const struct = structures.find((s) => s.id === id);
-      const isHospital = Boolean(
-        struct &&
-          (String(struct.type || '').toLowerCase() === 'hospital' ||
-            String(struct.id || '').toLowerCase().includes('hospital') ||
-            String(struct.name || '').toLowerCase().includes('hospital'))
-      );
+    structureMarkersRef.current.forEach((marker) => {
       const el = marker.getElement();
-      if (el) el.style.display = isMeWounded && !isHospital ? 'none' : 'block';
+      if (el) el.style.display = 'block';
     });
 
     droppedItemMarkersRef.current.forEach((marker) => {

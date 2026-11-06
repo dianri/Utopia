@@ -1,6 +1,7 @@
 import React from 'react';
 import type { MapStructure } from '../../types/game';
 import { ShieldCheck, HeartPulse } from 'lucide-react';
+import { HOSPITAL_HEAL_PER_SECOND, SHELTER_HEAL_PER_SECOND } from '../../services/mapEntities';
 
 interface IndoorStatusBannerProps {
   building: MapStructure | null;
@@ -38,6 +39,10 @@ export const IndoorStatusBanner: React.FC<IndoorStatusBannerProps> = ({
               <HeartPulse
                 className={`w-4 h-4 sm:w-5 sm:h-5 text-emerald-300 ${isFullyHealed ? '' : 'animate-pulse'}`}
               />
+            ) : !isFullyHealed ? (
+              <HeartPulse
+                className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-300 animate-pulse"
+              />
             ) : (
               <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-300" />
             )}
@@ -51,15 +56,19 @@ export const IndoorStatusBanner: React.FC<IndoorStatusBannerProps> = ({
               {isHospital
                 ? isFullyHealed
                   ? 'SALUD AL 100%'
-                  : 'EN HOSPITAL (+15 HP/s)'
-                : `REFUGIADO: ${building.name.toUpperCase()}`}
+                  : `EN HOSPITAL (+${HOSPITAL_HEAL_PER_SECOND} HP/s)`
+                : !isFullyHealed
+                  ? `REFUGIO (+${SHELTER_HEAL_PER_SECOND} HP/s): ${building.name.toUpperCase()}`
+                  : `REFUGIADO: ${building.name.toUpperCase()}`}
             </span>
             <span className="hidden sm:block text-[10px] font-mono text-slate-200 truncate">
               {isHospital
                 ? isFullyHealed
                   ? 'Todos los signos vitales se encuentran al 100%'
                   : 'Recuperando salud en instalación médica'
-                : 'A cubierto: El monstruo no puede verte'}
+                : !isFullyHealed
+                  ? `Recuperando salud paulatinamente (+${SHELTER_HEAL_PER_SECOND} HP/s) y a cubierto`
+                  : 'A cubierto: El monstruo no puede verte'}
             </span>
           </div>
         </div>
