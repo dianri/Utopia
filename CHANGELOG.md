@@ -4,6 +4,14 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/).
 
 ## [Unreleased]
+### Fixed
+- **Fix: Multiplayer desynchronization in Supabase Realtime when healing in tactical shelters (`src/App.tsx`, `src/hooks/useGameRealtime.ts`, `src/types/game.ts`, `CHANGELOG.md`, `README.md`):**
+  - **Emisión Formal de Curación en Red (`player_healed`):** Creado el evento de broadcast `player_healed` y el método `broadcastPlayerHealed`, transmitiendo de forma inmediata el cese del estado herido a todos los clientes de la sala (`id`, `hp`, `isWounded: false`, `status: 'active'`, `isCriticallyWounded: false`).
+  - **Eliminación del Clamping Restrictivo en `onPlayerMove`:** Desbloqueado el incremento de salud para los refugios tácticos (`insideBuildingType === 'shelter'`), erradicando la limitación `Math.min(p.hp, hp)` que congelaba la vida en 1 HP en clientes remotos.
+  - **Sincronización Inmediata con Base de Datos:** `syncPlayerToSupabase` se ejecuta con prioridad instantánea (`immediate: true`) en cuanto el jugador supera el umbral crítico de 20 HP en el refugio o en el hospital.
+  - **Corrección en `postgres_changes` de la Tabla `players`:** Resuelto el fallo donde los clientes remotos preservaban el estado estático anterior (`existing?.status || d.status`) en lugar de adoptar el nuevo estado `active` y la salud regenerada desde la base de datos.
+  - **Reactivación Inmediata de Targeteabilidad y Combate PvP:** Al eliminarse la bandera `isCriticallyWounded` y actualizarse la salud en todos los clientes, los otros cazadores ven desaparecer de inmediato el rótulo `[HERIDO]`, permitiendo fijar al jugador como objetivo táctico y reanudar duelos PvP tras abandonar la zona segura.
+
 ### Reverted
 - **Revert: Restored single Field Hospital and returned tactical shelters to non-healing shelters (`src/services/mapEntities.ts`, `src/services/mapStructures.ts`, `src/components/GameMap.tsx`, `src/App.tsx`, `CHANGELOG.md`, `README.md`):**
   - **Unificación de la Evacuación Médica en un Único Hospital de Campaña:** Desmantelada la red multihospitalaria. El sector operativo vuelve a contar con un único Hospital de Campaña oficial (`type: 'hospital'`, radio 40m) anclado en coordenadas fijas e inmutables, con bahía táctica de bio-regeneración médica y reanimación de escuadra.
